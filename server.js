@@ -378,9 +378,13 @@ app.get("/api/call-volume-heatmap", async (req, res) => {
   }
 });
 
-// Catch-all route: serve index.html for React Router (Express 5 compatible)
-app.get("/*", (_req, res) => {
-  res.sendFile(path.join(__dirname, "dashboard", "dist", "index.html"));
+// Fallback middleware: serve index.html for non-API routes (Express 5 compatible)
+app.use((req, res, next) => {
+  if (!req.path.startsWith('/api')) {
+    res.sendFile(path.join(__dirname, 'dashboard', 'dist', 'index.html'));
+  } else {
+    next();
+  }
 });
 
 // 4. Start server
