@@ -378,8 +378,8 @@ app.get("/api/call-volume-heatmap", async (req, res) => {
   }
 });
 
-// Catch-all route: serve index.html for React Router
-app.get("*", (_req, res) => {
+// Catch-all route: serve index.html for React Router (Express 5 compatible)
+app.get("/*", (_req, res) => {
   res.sendFile(path.join(__dirname, "dashboard", "dist", "index.html"));
 });
 
