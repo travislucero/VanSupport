@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   BarChart,
   Bar,
@@ -14,8 +14,11 @@ import {
   ResponsiveContainer,
   CartesianGrid,
 } from "recharts";
+import Login from "./Login";
+import { useAuth } from "./hooks/useAuth.jsx";
 
 function App() {
+  const { user, isAuthenticated, authLoading, logout, hasPermission, hasRole } = useAuth();
   const [data, setData] = useState([]);
   const [summary, setSummary] = useState(null);
   const [issueDistribution, setIssueDistribution] = useState([]);
@@ -38,6 +41,8 @@ function App() {
   const COLORS = ["#60A5FA", "#34D399", "#FBBF24", "#FB923C", "#A78BFA"];
 
   useEffect(() => {
+    if (!isAuthenticated) return;
+
     const queryParams =
       rangeType === "custom"
         ? customFrom && customTo
@@ -49,9 +54,11 @@ function App() {
 
     setLoading(true);
 
-    // Fetch all data in parallel
-    Promise.all([
-      fetch(`${API_BASE}/api/resolution-by-step?${queryParams}`)
+    // Build fetch array based on user roles
+    const fetchPromises = [
+      fetch(`${API_BASE}/api/resolution-by-step?${queryParams}`, {
+        credentials: "include",
+      })
         .then((res) => {
           if (!res.ok) throw new Error(`Resolution step error: ${res.status}`);
           return res.json();
@@ -60,7 +67,9 @@ function App() {
           console.error("❌ Resolution step failed:", err);
           return [];
         }),
-      fetch(`${API_BASE}/api/dashboard-summary?${queryParams}`)
+      fetch(`${API_BASE}/api/dashboard-summary?${queryParams}`, {
+        credentials: "include",
+      })
         .then((res) => {
           if (!res.ok) throw new Error(`Summary error: ${res.status}`);
           return res.json();
@@ -69,7 +78,9 @@ function App() {
           console.error("❌ Summary failed:", err);
           return [];
         }),
-      fetch(`${API_BASE}/api/issue-distribution?${queryParams}`)
+      fetch(`${API_BASE}/api/issue-distribution?${queryParams}`, {
+        credentials: "include",
+      })
         .then((res) => {
           if (!res.ok) throw new Error(`Distribution error: ${res.status}`);
           return res.json();
@@ -78,7 +89,9 @@ function App() {
           console.error("❌ Issue distribution failed:", err);
           return [];
         }),
-      fetch(`${API_BASE}/api/resolution-time-trend?${queryParams}`)
+      fetch(`${API_BASE}/api/resolution-time-trend?${queryParams}`, {
+        credentials: "include",
+      })
         .then((res) => {
           if (!res.ok) throw new Error(`Trend error: ${res.status}`);
           return res.json();
@@ -87,7 +100,9 @@ function App() {
           console.error("❌ Resolution time trend failed:", err);
           return [];
         }),
-      fetch(`${API_BASE}/api/first-contact-resolution?${queryParams}`)
+      fetch(`${API_BASE}/api/first-contact-resolution?${queryParams}`, {
+        credentials: "include",
+      })
         .then((res) => {
           if (!res.ok) throw new Error(`FCR error: ${res.status}`);
           return res.json();
@@ -96,34 +111,9 @@ function App() {
           console.error("❌ First contact resolution failed:", err);
           return [];
         }),
-      fetch(`${API_BASE}/api/van-performance?${queryParams}`)
-        .then((res) => {
-          if (!res.ok) throw new Error(`Van performance error: ${res.status}`);
-          return res.json();
-        })
-        .catch((err) => {
-          console.error("❌ Van performance failed:", err);
-          return [];
-        }),
-      fetch(`${API_BASE}/api/chronic-problem-vans?${queryParams}`)
-        .then((res) => {
-          if (!res.ok) throw new Error(`Chronic problem vans error: ${res.status}`);
-          return res.json();
-        })
-        .catch((err) => {
-          console.error("❌ Chronic problem vans failed:", err);
-          return [];
-        }),
-      fetch(`${API_BASE}/api/handoff-patterns?${queryParams}`)
-        .then((res) => {
-          if (!res.ok) throw new Error(`Handoff patterns error: ${res.status}`);
-          return res.json();
-        })
-        .catch((err) => {
-          console.error("❌ Handoff patterns failed:", err);
-          return [];
-        }),
-      fetch(`${API_BASE}/api/call-volume-heatmap?${queryParams}`)
+      fetch(`${API_BASE}/api/call-volume-heatmap?${queryParams}`, {
+        credentials: "include",
+      })
         .then((res) => {
           if (!res.ok) throw new Error(`Call volume heatmap error: ${res.status}`);
           return res.json();
@@ -132,16 +122,63 @@ function App() {
           console.error("❌ Call volume heatmap failed:", err);
           return [];
         }),
-    ])
-      .then(([resolutionData, summaryData, distributionData, trendData, fcrResponse, vanPerformanceData, chronicVansData, handoffData, heatmapResponse]) => {
+    ];
+
+    // Add admin+manager only endpoints
+    if (hasRole('admin') || hasRole('manager')) {
+      fetchPromises.push(
+        fetch(`${API_BASE}/api/van-performance?${queryParams}`, {
+          credentials: "include",
+        })
+          .then((res) => {
+            if (!res.ok) throw new Error(`Van performance error: ${res.status}`);
+            return res.json();
+          })
+          .catch((err) => {
+            console.error("❌ Van performance failed:", err);
+            return [];
+          }),
+        fetch(`${API_BASE}/api/handoff-patterns?${queryParams}`, {
+          credentials: "include",
+        })
+          .then((res) => {
+            if (!res.ok) throw new Error(`Handoff patterns error: ${res.status}`);
+            return res.json();
+          })
+          .catch((err) => {
+            console.error("❌ Handoff patterns failed:", err);
+            return [];
+          })
+      );
+    }
+
+    // Add admin only endpoints
+    if (hasRole('admin')) {
+      fetchPromises.push(
+        fetch(`${API_BASE}/api/chronic-problem-vans?${queryParams}`, {
+          credentials: "include",
+        })
+          .then((res) => {
+            if (!res.ok) throw new Error(`Chronic problem vans error: ${res.status}`);
+            return res.json();
+          })
+          .catch((err) => {
+            console.error("❌ Chronic problem vans failed:", err);
+            return [];
+          })
+      );
+    }
+
+    Promise.all(fetchPromises)
+      .then((results) => {
+        // Always present: resolution, summary, distribution, trend, fcr, heatmap (6 items)
+        const [resolutionData, summaryData, distributionData, trendData, fcrResponse, heatmapResponse] = results;
+
         console.log("📊 Resolution Data:", resolutionData);
         console.log("📈 Summary Data:", summaryData);
         console.log("🥧 Issue Distribution Data:", distributionData);
         console.log("📉 Resolution Time Trend Data:", trendData);
         console.log("🎯 First Contact Resolution Data:", fcrResponse);
-        console.log("🚐 Van Performance Data:", vanPerformanceData);
-        console.log("⚠️ Chronic Problem Vans Data:", chronicVansData);
-        console.log("🔄 Handoff Patterns Data:", handoffData);
         console.log("🔥 Call Volume Heatmap Data:", heatmapResponse);
 
         setData(resolutionData || []);
@@ -149,10 +186,30 @@ function App() {
         setIssueDistribution(distributionData || []);
         setResolutionTimeTrend(trendData || []);
         setFcrData(fcrResponse || []);
-        setVanPerformance(vanPerformanceData || []);
-        setChronicProblemVans(chronicVansData || []);
-        setHandoffPatterns(handoffData || []);
         setHeatmapData(heatmapResponse || []);
+
+        // Admin+Manager data (index 6-7 if present)
+        if (hasRole('admin') || hasRole('manager')) {
+          const vanPerformanceData = results[6];
+          const handoffData = results[7];
+          console.log("🚐 Van Performance Data:", vanPerformanceData);
+          console.log("🔄 Handoff Patterns Data:", handoffData);
+          setVanPerformance(vanPerformanceData || []);
+          setHandoffPatterns(handoffData || []);
+        } else {
+          setVanPerformance([]);
+          setHandoffPatterns([]);
+        }
+
+        // Admin only data (index 8 if admin, index 6 if no admin+manager data)
+        if (hasRole('admin')) {
+          const chronicVansData = results[8];
+          console.log("⚠️ Chronic Problem Vans Data:", chronicVansData);
+          setChronicProblemVans(chronicVansData || []);
+        } else {
+          setChronicProblemVans([]);
+        }
+
         if (resolutionData && resolutionData.length > 0)
           setSelectedSequence(resolutionData[0].sequence_key);
         setLoading(false);
@@ -161,10 +218,35 @@ function App() {
         console.error("❌ Critical error fetching data:", err);
         setLoading(false);
       });
-  }, [rangeType, customFrom, customTo]);
+  }, [rangeType, customFrom, customTo, isAuthenticated, hasRole]);
 
   const sequences = [...new Set(data.map((d) => d.sequence_key))];
   const filteredData = data.filter((d) => d.sequence_key === selectedSequence);
+
+  // Show loading during auth check
+  if (authLoading) {
+    return (
+      <div
+        style={{
+          padding: "2rem",
+          fontFamily: "Arial",
+          backgroundColor: "#1e293b",
+          color: "#f1f5f9",
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <p style={{ fontSize: "1.5rem" }}>Loading...</p>
+      </div>
+    );
+  }
+
+  // Show login page if not authenticated
+  if (!isAuthenticated) {
+    return <Login />;
+  }
 
   if (loading) {
     return (
@@ -195,7 +277,75 @@ function App() {
         minHeight: "100vh",
       }}
     >
-      <h1 style={{ color: "#f1f5f9" }}>VanSupport Dashboard</h1>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: "2rem",
+        }}
+      >
+        <h1 style={{ color: "#f1f5f9", margin: 0 }}>VanSupport Dashboard</h1>
+        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+          {hasRole('admin') && (
+            <a
+              href="/admin/users"
+              style={{
+                padding: "0.5rem 1rem",
+                backgroundColor: "#7c3aed",
+                color: "#f1f5f9",
+                border: "1px solid #8b5cf6",
+                borderRadius: "4px",
+                fontSize: "0.875rem",
+                fontWeight: "500",
+                textDecoration: "none",
+                display: "inline-block",
+                transition: "background-color 0.2s",
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.backgroundColor = "#6d28d9";
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.backgroundColor = "#7c3aed";
+              }}
+            >
+              Manage Users
+            </a>
+          )}
+          <div style={{ textAlign: "right" }}>
+            <div style={{ color: "#f1f5f9", fontSize: "0.875rem" }}>
+              {user?.email}
+            </div>
+            {user?.roles && user.roles.length > 0 && (
+              <div style={{ color: "#94a3b8", fontSize: "0.75rem" }}>
+                {user.roles.map(role => role.name).join(", ")}
+              </div>
+            )}
+          </div>
+          <button
+            onClick={logout}
+            style={{
+              padding: "0.5rem 1rem",
+              backgroundColor: "#475569",
+              color: "#f1f5f9",
+              border: "1px solid #64748b",
+              borderRadius: "4px",
+              fontSize: "0.875rem",
+              fontWeight: "500",
+              cursor: "pointer",
+              transition: "background-color 0.2s",
+            }}
+            onMouseEnter={(e) => {
+              e.target.style.backgroundColor = "#334155";
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.backgroundColor = "#475569";
+            }}
+          >
+            Logout
+          </button>
+        </div>
+      </div>
 
       {/* --- Date Range Controls --- */}
       <div style={{ marginBottom: "1.5rem" }}>
@@ -520,6 +670,7 @@ function App() {
       </div>
 
       {/* --- Van Performance Table --- */}
+      {(hasRole('admin') || hasRole('manager')) && (
       <div style={{ marginBottom: "2rem" }}>
         <h2 style={{ color: "#f1f5f9" }}>Van Performance</h2>
         {vanPerformance.length === 0 ? (
@@ -682,8 +833,10 @@ function App() {
           </div>
         )}
       </div>
+      )}
 
       {/* --- Chronic Problem Vans Table --- */}
+      {hasRole('admin') && (
       <div style={{ marginBottom: "2rem" }}>
         <h2 style={{ color: "#f1f5f9" }}>Chronic Problem Vans</h2>
         {chronicProblemVans.length === 0 ? (
@@ -878,8 +1031,10 @@ function App() {
           </div>
         )}
       </div>
+      )}
 
       {/* --- Handoff Patterns Table --- */}
+      {(hasRole('admin') || hasRole('manager')) && (
       <div style={{ marginBottom: "2rem" }}>
         <h2 style={{ color: "#f1f5f9" }}>Handoff Patterns</h2>
         <p style={{ color: "#94a3b8", marginBottom: "1rem", fontSize: "0.875rem" }}>
@@ -1044,6 +1199,7 @@ function App() {
           </div>
         )}
       </div>
+      )}
 
       {/* --- Call Volume Heatmap --- */}
       <div style={{ marginBottom: "2rem" }}>
@@ -1135,10 +1291,9 @@ function App() {
 
                     {/* Data rows - one per day */}
                     {days.map((day, dayIndex) => (
-                      <>
+                      <React.Fragment key={`day-${dayIndex}`}>
                         {/* Day label */}
                         <div
-                          key={`label-${dayIndex}`}
                           style={{
                             fontSize: "0.875rem",
                             color: "#f1f5f9",
@@ -1188,7 +1343,7 @@ function App() {
                             </div>
                           );
                         })}
-                      </>
+                      </React.Fragment>
                     ))}
                   </div>
 
