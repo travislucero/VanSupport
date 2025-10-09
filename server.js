@@ -1,7 +1,12 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
+import path from "path";
+import { fileURLToPath } from "url";
 import { createClient } from "@supabase/supabase-js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 app.use(cors());
@@ -13,7 +18,10 @@ const supabase = createClient(
   process.env.SUPABASE_ANON_KEY
 );
 
-// 2. Test route
+// 2. Serve static files from dashboard/dist
+app.use(express.static(path.join(__dirname, "dashboard", "dist")));
+
+// 3. API routes (must come before catch-all route)
 app.get("/test-supabase", async (req, res) => {
   // Try to pull just one row from session_events
   const { data, error } = await supabase
@@ -370,7 +378,12 @@ app.get("/api/call-volume-heatmap", async (req, res) => {
   }
 });
 
-// 3. Start server
+// Catch-all route: serve index.html for React Router
+app.get("*", (_req, res) => {
+  res.sendFile(path.join(__dirname, "dashboard", "dist", "index.html"));
+});
+
+// 4. Start server
 app.listen(port, () => {
   console.log(`Server running on http://localhost:${port}`);
 });
