@@ -16,6 +16,12 @@ import {
 } from "recharts";
 import Login from "./Login";
 import { useAuth } from "./hooks/useAuth.jsx";
+import Sidebar from "./components/Sidebar";
+import Card from "./components/Card";
+import StatCard from "./components/StatCard";
+import Badge from "./components/Badge";
+import Avatar from "./components/Avatar";
+import { theme } from "./styles/theme";
 
 function App() {
   const { user, isAuthenticated, authLoading, logout, hasPermission, hasRole } = useAuth();
@@ -29,7 +35,7 @@ function App() {
   const [handoffPatterns, setHandoffPatterns] = useState([]);
   const [heatmapData, setHeatmapData] = useState([]);
   const [selectedSequence, setSelectedSequence] = useState("");
-  const [rangeType, setRangeType] = useState("7"); // "7", "30", or "custom"
+  const [rangeType, setRangeType] = useState("7");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [loading, setLoading] = useState(true);
@@ -38,7 +44,14 @@ function App() {
     ? "http://localhost:3000"
     : "https://vansupport.onrender.com";
 
-  const COLORS = ["#60A5FA", "#34D399", "#FBBF24", "#FB923C", "#A78BFA"];
+  const CHART_COLORS = [
+    theme.colors.chart.blue,
+    theme.colors.chart.green,
+    theme.colors.chart.orange,
+    theme.colors.chart.purple,
+    theme.colors.chart.pink,
+    theme.colors.chart.cyan,
+  ];
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -54,7 +67,6 @@ function App() {
 
     setLoading(true);
 
-    // Build fetch array based on user roles
     const fetchPromises = [
       fetch(`${API_BASE}/api/resolution-by-step?${queryParams}`, {
         credentials: "include",
@@ -124,7 +136,6 @@ function App() {
         }),
     ];
 
-    // Add admin+manager only endpoints
     if (hasRole('admin') || hasRole('manager')) {
       fetchPromises.push(
         fetch(`${API_BASE}/api/van-performance?${queryParams}`, {
@@ -152,7 +163,6 @@ function App() {
       );
     }
 
-    // Add admin only endpoints
     if (hasRole('admin')) {
       fetchPromises.push(
         fetch(`${API_BASE}/api/chronic-problem-vans?${queryParams}`, {
@@ -171,15 +181,7 @@ function App() {
 
     Promise.all(fetchPromises)
       .then((results) => {
-        // Always present: resolution, summary, distribution, trend, fcr, heatmap (6 items)
         const [resolutionData, summaryData, distributionData, trendData, fcrResponse, heatmapResponse] = results;
-
-        console.log("📊 Resolution Data:", resolutionData);
-        console.log("📈 Summary Data:", summaryData);
-        console.log("🥧 Issue Distribution Data:", distributionData);
-        console.log("📉 Resolution Time Trend Data:", trendData);
-        console.log("🎯 First Contact Resolution Data:", fcrResponse);
-        console.log("🔥 Call Volume Heatmap Data:", heatmapResponse);
 
         setData(resolutionData || []);
         setSummary(summaryData?.[0] || null);
@@ -188,12 +190,9 @@ function App() {
         setFcrData(fcrResponse || []);
         setHeatmapData(heatmapResponse || []);
 
-        // Admin+Manager data (index 6-7 if present)
         if (hasRole('admin') || hasRole('manager')) {
           const vanPerformanceData = results[6];
           const handoffData = results[7];
-          console.log("🚐 Van Performance Data:", vanPerformanceData);
-          console.log("🔄 Handoff Patterns Data:", handoffData);
           setVanPerformance(vanPerformanceData || []);
           setHandoffPatterns(handoffData || []);
         } else {
@@ -201,10 +200,8 @@ function App() {
           setHandoffPatterns([]);
         }
 
-        // Admin only data (index 8 if admin, index 6 if no admin+manager data)
         if (hasRole('admin')) {
           const chronicVansData = results[8];
-          console.log("⚠️ Chronic Problem Vans Data:", chronicVansData);
           setChronicProblemVans(chronicVansData || []);
         } else {
           setChronicProblemVans([]);
@@ -223,27 +220,24 @@ function App() {
   const sequences = [...new Set(data.map((d) => d.sequence_key))];
   const filteredData = data.filter((d) => d.sequence_key === selectedSequence);
 
-  // Show loading during auth check
   if (authLoading) {
     return (
       <div
         style={{
-          padding: "2rem",
-          fontFamily: "Arial",
-          backgroundColor: "#1e293b",
-          color: "#f1f5f9",
-          minHeight: "100vh",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
+          minHeight: "100vh",
+          backgroundColor: theme.colors.background.primary,
+          color: theme.colors.text.primary,
+          fontSize: theme.fontSize['2xl'],
         }}
       >
-        <p style={{ fontSize: "1.5rem" }}>Loading...</p>
+        Loading...
       </div>
     );
   }
 
-  // Show login page if not authenticated
   if (!isAuthenticated) {
     return <Login />;
   }
@@ -252,1197 +246,671 @@ function App() {
     return (
       <div
         style={{
-          padding: "2rem",
-          fontFamily: "Arial",
-          backgroundColor: "#1e293b",
-          color: "#f1f5f9",
-          minHeight: "100vh",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
+          minHeight: "100vh",
+          backgroundColor: theme.colors.background.primary,
+          color: theme.colors.text.primary,
+          fontSize: theme.fontSize['2xl'],
         }}
       >
-        <p style={{ fontSize: "1.5rem" }}>Loading dashboard...</p>
+        Loading dashboard...
       </div>
     );
   }
 
   return (
-    <div
-      style={{
-        padding: "2rem",
-        fontFamily: "Arial",
-        backgroundColor: "#1e293b",
-        color: "#f1f5f9",
-        minHeight: "100vh",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: "2rem",
-        }}
-      >
-        <h1 style={{ color: "#f1f5f9", margin: 0 }}>VanSupport Dashboard</h1>
-        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-          {hasRole('admin') && (
-            <a
-              href="/admin/users"
-              style={{
-                padding: "0.5rem 1rem",
-                backgroundColor: "#7c3aed",
-                color: "#f1f5f9",
-                border: "1px solid #8b5cf6",
-                borderRadius: "4px",
-                fontSize: "0.875rem",
-                fontWeight: "500",
-                textDecoration: "none",
-                display: "inline-block",
-                transition: "background-color 0.2s",
-              }}
-              onMouseEnter={(e) => {
-                e.target.style.backgroundColor = "#6d28d9";
-              }}
-              onMouseLeave={(e) => {
-                e.target.style.backgroundColor = "#7c3aed";
-              }}
-            >
-              Manage Users
-            </a>
-          )}
-          <div style={{ textAlign: "right" }}>
-            <div style={{ color: "#f1f5f9", fontSize: "0.875rem" }}>
-              {user?.email}
+    <div style={{ display: "flex", minHeight: "100vh", backgroundColor: theme.colors.background.primary }}>
+      <Sidebar user={user} onLogout={logout} hasRole={hasRole} />
+
+      <div style={{ marginLeft: "260px", flex: 1, padding: theme.spacing['2xl'] }}>
+        {/* Header */}
+        <div style={{ marginBottom: theme.spacing['2xl'] }}>
+          <h1
+            style={{
+              fontSize: theme.fontSize['4xl'],
+              fontWeight: theme.fontWeight.bold,
+              color: theme.colors.text.primary,
+              marginBottom: theme.spacing.xs,
+            }}
+          >
+            Analytics Dashboard
+          </h1>
+          <p style={{ color: theme.colors.text.secondary, fontSize: theme.fontSize.base }}>
+            Welcome back, {user?.email?.split('@')[0] || 'User'}
+          </p>
+        </div>
+
+        {/* Date Range Controls */}
+        <Card style={{ marginBottom: theme.spacing['2xl'] }}>
+          <div style={{ display: "flex", alignItems: "center", gap: theme.spacing.lg, flexWrap: "wrap" }}>
+            <div>
+              <label
+                style={{
+                  color: theme.colors.text.secondary,
+                  fontSize: theme.fontSize.sm,
+                  fontWeight: theme.fontWeight.medium,
+                  marginBottom: theme.spacing.xs,
+                  display: "block",
+                }}
+              >
+                Date Range
+              </label>
+              <select
+                value={rangeType}
+                onChange={(e) => setRangeType(e.target.value)}
+                style={{
+                  padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                  backgroundColor: theme.colors.background.tertiary,
+                  color: theme.colors.text.primary,
+                  border: `1px solid ${theme.colors.border.medium}`,
+                  borderRadius: theme.radius.md,
+                  fontSize: theme.fontSize.sm,
+                  fontWeight: theme.fontWeight.medium,
+                  cursor: "pointer",
+                  outline: "none",
+                }}
+              >
+                <option value="7">Last 7 days</option>
+                <option value="30">Last 30 days</option>
+                <option value="custom">Custom range</option>
+              </select>
             </div>
-            {user?.roles && user.roles.length > 0 && (
-              <div style={{ color: "#94a3b8", fontSize: "0.75rem" }}>
-                {user.roles.map(role => role.name).join(", ")}
-              </div>
+
+            {rangeType === "custom" && (
+              <>
+                <div>
+                  <label
+                    style={{
+                      color: theme.colors.text.secondary,
+                      fontSize: theme.fontSize.sm,
+                      fontWeight: theme.fontWeight.medium,
+                      marginBottom: theme.spacing.xs,
+                      display: "block",
+                    }}
+                  >
+                    From
+                  </label>
+                  <input
+                    type="date"
+                    value={customFrom}
+                    onChange={(e) => setCustomFrom(e.target.value)}
+                    style={{
+                      padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                      backgroundColor: theme.colors.background.tertiary,
+                      color: theme.colors.text.primary,
+                      border: `1px solid ${theme.colors.border.medium}`,
+                      borderRadius: theme.radius.md,
+                      fontSize: theme.fontSize.sm,
+                      outline: "none",
+                    }}
+                  />
+                </div>
+                <div>
+                  <label
+                    style={{
+                      color: theme.colors.text.secondary,
+                      fontSize: theme.fontSize.sm,
+                      fontWeight: theme.fontWeight.medium,
+                      marginBottom: theme.spacing.xs,
+                      display: "block",
+                    }}
+                  >
+                    To
+                  </label>
+                  <input
+                    type="date"
+                    value={customTo}
+                    onChange={(e) => setCustomTo(e.target.value)}
+                    style={{
+                      padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                      backgroundColor: theme.colors.background.tertiary,
+                      color: theme.colors.text.primary,
+                      border: `1px solid ${theme.colors.border.medium}`,
+                      borderRadius: theme.radius.md,
+                      fontSize: theme.fontSize.sm,
+                      outline: "none",
+                    }}
+                  />
+                </div>
+              </>
             )}
           </div>
-          <button
-            onClick={logout}
+        </Card>
+
+        {/* Summary Stats */}
+        {summary && (
+          <div
             style={{
-              padding: "0.5rem 1rem",
-              backgroundColor: "#475569",
-              color: "#f1f5f9",
-              border: "1px solid #64748b",
-              borderRadius: "4px",
-              fontSize: "0.875rem",
-              fontWeight: "500",
-              cursor: "pointer",
-              transition: "background-color 0.2s",
-            }}
-            onMouseEnter={(e) => {
-              e.target.style.backgroundColor = "#334155";
-            }}
-            onMouseLeave={(e) => {
-              e.target.style.backgroundColor = "#475569";
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
+              gap: theme.spacing.lg,
+              marginBottom: theme.spacing['2xl'],
             }}
           >
-            Logout
-          </button>
-        </div>
-      </div>
-
-      {/* --- Date Range Controls --- */}
-      <div style={{ marginBottom: "1.5rem" }}>
-        <label style={{ color: "#f1f5f9" }}>
-          <strong>Date Range:</strong>{" "}
-          <select
-            value={rangeType}
-            onChange={(e) => setRangeType(e.target.value)}
-            style={{
-              marginRight: "1rem",
-              padding: "0.5rem",
-              backgroundColor: "#334155",
-              color: "#f1f5f9",
-              border: "1px solid #475569",
-              borderRadius: "4px",
-            }}
-          >
-            <option value="7">Last 7 days</option>
-            <option value="30">Last 30 days</option>
-            <option value="custom">Custom range</option>
-          </select>
-        </label>
-
-        {rangeType === "custom" && (
-          <>
-            <input
-              type="date"
-              value={customFrom}
-              onChange={(e) => setCustomFrom(e.target.value)}
-              style={{
-                marginRight: "0.5rem",
-                padding: "0.5rem",
-                backgroundColor: "#334155",
-                color: "#f1f5f9",
-                border: "1px solid #475569",
-                borderRadius: "4px",
-              }}
+            <StatCard
+              title="Total Calls"
+              value={summary.total_calls || 0}
+              icon="📞"
+              color={theme.colors.accent.primary}
             />
-            <input
-              type="date"
-              value={customTo}
-              onChange={(e) => setCustomTo(e.target.value)}
-              style={{
-                padding: "0.5rem",
-                backgroundColor: "#334155",
-                color: "#f1f5f9",
-                border: "1px solid #475569",
-                borderRadius: "4px",
-              }}
+            <StatCard
+              title="Completion Rate"
+              value={summary.completion_rate ? `${summary.completion_rate}%` : "0%"}
+              icon="✅"
+              color={theme.colors.accent.success}
             />
-          </>
+            <StatCard
+              title="Avg Resolution Time"
+              value={
+                summary.avg_resolution_minutes
+                  ? `${Math.round(summary.avg_resolution_minutes)}m`
+                  : "N/A"
+              }
+              icon="⏱️"
+              color={theme.colors.accent.warning}
+            />
+          </div>
         )}
-      </div>
 
-      {/* --- Summary Stat Cards --- */}
-      {summary && (
+        {/* Charts Grid */}
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-            gap: "1rem",
-            marginBottom: "2rem",
+            gridTemplateColumns: "repeat(auto-fit, minmax(500px, 1fr))",
+            gap: theme.spacing.lg,
+            marginBottom: theme.spacing['2xl'],
           }}
         >
-          <div
-            style={{
-              padding: "1.5rem",
-              backgroundColor: "#1e40af",
-              borderRadius: "8px",
-              border: "1px solid #3b82f6",
-            }}
+          {/* Issue Distribution */}
+          <Card
+            title="Issue Distribution"
+            description="Breakdown of issue types"
+            action={
+              <button
+                style={{
+                  padding: `${theme.spacing.xs} ${theme.spacing.md}`,
+                  backgroundColor: theme.colors.background.tertiary,
+                  color: theme.colors.text.primary,
+                  border: `1px solid ${theme.colors.border.medium}`,
+                  borderRadius: theme.radius.md,
+                  fontSize: theme.fontSize.sm,
+                  fontWeight: theme.fontWeight.medium,
+                }}
+              >
+                View Details
+              </button>
+            }
           >
-            <div style={{ fontSize: "0.875rem", color: "#bfdbfe" }}>
-              Total Calls
-            </div>
-            <div style={{ fontSize: "2rem", fontWeight: "bold", marginTop: "0.5rem", color: "#f1f5f9" }}>
-              {summary.total_calls || 0}
-            </div>
-          </div>
+            {issueDistribution.length === 0 ? (
+              <div style={{ padding: theme.spacing['2xl'], textAlign: "center", color: theme.colors.text.secondary }}>
+                No data available
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <PieChart>
+                  <Pie
+                    data={issueDistribution}
+                    dataKey="total_count"
+                    nameKey="issue_type"
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={100}
+                    label={({ issue_type, total_count }) => `${issue_type}: ${total_count}`}
+                    labelLine={{ stroke: theme.colors.text.secondary }}
+                  >
+                    {issueDistribution.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: theme.colors.background.tertiary,
+                      border: `1px solid ${theme.colors.border.medium}`,
+                      borderRadius: theme.radius.md,
+                      color: theme.colors.text.primary,
+                    }}
+                  />
+                  <Legend wrapperStyle={{ color: theme.colors.text.primary }} />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
+          </Card>
 
-          <div
-            style={{
-              padding: "1.5rem",
-              backgroundColor: "#166534",
-              borderRadius: "8px",
-              border: "1px solid #22c55e",
-            }}
+          {/* Resolution Time Trend */}
+          <Card
+            title="Resolution Time Trend"
+            description="Average resolution time over the last 30 days"
           >
-            <div style={{ fontSize: "0.875rem", color: "#bbf7d0" }}>
-              Completion Rate
-            </div>
-            <div style={{ fontSize: "2rem", fontWeight: "bold", marginTop: "0.5rem", color: "#f1f5f9" }}>
-              {summary.completion_rate ? `${summary.completion_rate}%` : "0%"}
-            </div>
-          </div>
-
-          <div
-            style={{
-              padding: "1.5rem",
-              backgroundColor: "#b45309",
-              borderRadius: "8px",
-              border: "1px solid #f59e0b",
-            }}
-          >
-            <div style={{ fontSize: "0.875rem", color: "#fef3c7" }}>
-              Avg Resolution Time
-            </div>
-            <div style={{ fontSize: "2rem", fontWeight: "bold", marginTop: "0.5rem", color: "#f1f5f9" }}>
-              {summary.avg_resolution_minutes
-                ? `${Math.round(summary.avg_resolution_minutes)} min`
-                : "N/A"}
-            </div>
-          </div>
+            {resolutionTimeTrend.length === 0 ? (
+              <div style={{ padding: theme.spacing['2xl'], textAlign: "center", color: theme.colors.text.secondary }}>
+                No data available
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={resolutionTimeTrend}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={theme.colors.border.medium} />
+                  <XAxis dataKey="time_bucket" stroke={theme.colors.text.secondary} />
+                  <YAxis stroke={theme.colors.text.secondary} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: theme.colors.background.tertiary,
+                      border: `1px solid ${theme.colors.border.medium}`,
+                      borderRadius: theme.radius.md,
+                      color: theme.colors.text.primary,
+                    }}
+                  />
+                  <Legend />
+                  <Line
+                    type="monotone"
+                    dataKey="avg_minutes"
+                    stroke={theme.colors.chart.blue}
+                    strokeWidth={3}
+                    dot={{ fill: theme.colors.chart.blue, r: 5 }}
+                    activeDot={{ r: 7 }}
+                    name="Avg Resolution Time (min)"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+          </Card>
         </div>
-      )}
 
-      {/* --- Issue Distribution Pie Chart --- */}
-      <div style={{ marginBottom: "2rem" }}>
-        <h2 style={{ color: "#f1f5f9" }}>Issue Distribution</h2>
-        {issueDistribution.length === 0 ? (
-          <div
-            style={{
-              padding: "3rem",
-              textAlign: "center",
-              backgroundColor: "#334155",
-              borderRadius: "8px",
-              border: "1px solid #475569",
-            }}
-          >
-            <p style={{ color: "#94a3b8", fontSize: "1.125rem" }}>
+        {/* First Contact Resolution */}
+        <Card
+          title="First Contact Resolution Rate"
+          description="Resolution rate by troubleshooting sequence"
+          style={{ marginBottom: theme.spacing['2xl'] }}
+        >
+          {fcrData.length === 0 ? (
+            <div style={{ padding: theme.spacing['2xl'], textAlign: "center", color: theme.colors.text.secondary }}>
               No data available
-            </p>
-          </div>
-        ) : (
-          <div
-            style={{
-              width: "400px",
-              height: "400px",
-              margin: "0 auto",
-              backgroundColor: "#334155",
-              borderRadius: "8px",
-              padding: "1rem",
-            }}
-          >
-            <PieChart width={400} height={400}>
-              <Pie
-                data={issueDistribution}
-                dataKey="total_count"
-                nameKey="issue_type"
-                cx={200}
-                cy={180}
-                outerRadius={100}
-                label={({ issue_type, total_count }) =>
-                  `${issue_type}: ${total_count}`
-                }
-                labelLine={{ stroke: "#e2e8f0" }}
-              >
-                {issueDistribution.map((entry, index) => (
-                  <Cell
-                    key={`cell-${index}`}
-                    fill={COLORS[index % COLORS.length]}
-                  />
-                ))}
-              </Pie>
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "#1e293b",
-                  border: "2px solid #64748b",
-                  borderRadius: "6px",
-                  color: "#f1f5f9",
-                }}
-                itemStyle={{ color: "#f1f5f9" }}
-              />
-              <Legend
-                wrapperStyle={{ color: "#f1f5f9" }}
-                iconType="circle"
-              />
-            </PieChart>
-          </div>
-        )}
-      </div>
-
-      {/* --- Resolution Time Trend Line Chart --- */}
-      <div style={{ marginBottom: "2rem" }}>
-        <h2 style={{ color: "#f1f5f9" }}>Resolution Time Trend (Last 30 Days)</h2>
-        {resolutionTimeTrend.length === 0 ? (
-          <div
-            style={{
-              padding: "3rem",
-              textAlign: "center",
-              backgroundColor: "#334155",
-              borderRadius: "8px",
-              border: "1px solid #475569",
-            }}
-          >
-            <p style={{ color: "#94a3b8", fontSize: "1.125rem" }}>
-              No data available
-            </p>
-          </div>
-        ) : (
-          <ResponsiveContainer width="100%" height={400}>
-            <LineChart
-              data={resolutionTimeTrend}
-              margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
-              <XAxis
-                dataKey="time_bucket"
-                stroke="#94a3b8"
-                label={{
-                  value: "Date",
-                  position: "insideBottom",
-                  offset: -5,
-                  fill: "#f1f5f9",
-                }}
-              />
-              <YAxis
-                stroke="#94a3b8"
-                label={{
-                  value: "Avg Resolution Time (min)",
-                  angle: -90,
-                  position: "insideLeft",
-                  fill: "#f1f5f9",
-                }}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "#334155",
-                  border: "1px solid #475569",
-                  color: "#f1f5f9",
-                }}
-              />
-              <Legend wrapperStyle={{ color: "#f1f5f9" }} />
-              <Line
-                type="monotone"
-                dataKey="avg_minutes"
-                stroke="#60A5FA"
-                strokeWidth={2}
-                dot={{ fill: "#60A5FA", r: 4 }}
-                activeDot={{ r: 6 }}
-                name="Avg Resolution Time (min)"
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        )}
-      </div>
-
-      {/* --- First Contact Resolution Chart --- */}
-      <div style={{ marginBottom: "2rem" }}>
-        <h2 style={{ color: "#f1f5f9" }}>First Contact Resolution Rate by Sequence</h2>
-        {fcrData.length === 0 ? (
-          <div
-            style={{
-              padding: "3rem",
-              textAlign: "center",
-              backgroundColor: "#334155",
-              borderRadius: "8px",
-              border: "1px solid #475569",
-            }}
-          >
-            <p style={{ color: "#94a3b8", fontSize: "1.125rem" }}>
-              No data available
-            </p>
-          </div>
-        ) : (
-          <ResponsiveContainer width="100%" height={400}>
-            <BarChart
-              data={fcrData}
-              layout="vertical"
-              margin={{ top: 20, right: 30, left: 100, bottom: 20 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
-              <XAxis
-                type="number"
-                stroke="#94a3b8"
-                domain={[0, 100]}
-                label={{
-                  value: "FCR Rate (%)",
-                  position: "insideBottom",
-                  offset: -5,
-                  fill: "#f1f5f9",
-                }}
-              />
-              <YAxis
-                type="category"
-                dataKey="sequence_key"
-                stroke="#94a3b8"
-                width={90}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "#334155",
-                  border: "1px solid #475569",
-                  color: "#f1f5f9",
-                }}
-                formatter={(value) => `${value}%`}
-              />
-              <Legend wrapperStyle={{ color: "#f1f5f9" }} />
-              <Bar
-                dataKey="fcr_rate"
-                name="FCR Rate (%)"
-                radius={[0, 4, 4, 0]}
-              >
-                {fcrData.map((entry, index) => (
-                  <Cell
-                    key={`cell-${index}`}
-                    fill={
-                      entry.fcr_rate >= 80
-                        ? "#22c55e"
-                        : entry.fcr_rate >= 60
-                        ? "#eab308"
-                        : entry.fcr_rate >= 40
-                        ? "#f59e0b"
-                        : "#ef4444"
-                    }
-                  />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        )}
-      </div>
-
-      {/* --- Van Performance Table --- */}
-      {(hasRole('admin') || hasRole('manager')) && (
-      <div style={{ marginBottom: "2rem" }}>
-        <h2 style={{ color: "#f1f5f9" }}>Van Performance</h2>
-        {vanPerformance.length === 0 ? (
-          <div
-            style={{
-              padding: "3rem",
-              textAlign: "center",
-              backgroundColor: "#334155",
-              borderRadius: "8px",
-              border: "1px solid #475569",
-            }}
-          >
-            <p style={{ color: "#94a3b8", fontSize: "1.125rem" }}>
-              No data available
-            </p>
-          </div>
-        ) : (
-          <div
-            style={{
-              backgroundColor: "#334155",
-              borderRadius: "8px",
-              border: "1px solid #475569",
-              overflow: "hidden",
-            }}
-          >
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                color: "#f1f5f9",
-              }}
-            >
-              <thead>
-                <tr
-                  style={{
-                    backgroundColor: "#1e293b",
-                    borderBottom: "2px solid #475569",
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={400}>
+              <BarChart data={fcrData} layout="vertical" margin={{ left: 100 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={theme.colors.border.medium} />
+                <XAxis type="number" stroke={theme.colors.text.secondary} domain={[0, 100]} />
+                <YAxis type="category" dataKey="sequence_key" stroke={theme.colors.text.secondary} width={90} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: theme.colors.background.tertiary,
+                    border: `1px solid ${theme.colors.border.medium}`,
+                    borderRadius: theme.radius.md,
+                    color: theme.colors.text.primary,
                   }}
-                >
-                  <th
-                    style={{
-                      padding: "1rem",
-                      textAlign: "left",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    Make
-                  </th>
-                  <th
-                    style={{
-                      padding: "1rem",
-                      textAlign: "left",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    Version
-                  </th>
-                  <th
-                    style={{
-                      padding: "1rem",
-                      textAlign: "left",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    Year
-                  </th>
-                  <th
-                    style={{
-                      padding: "1rem",
-                      textAlign: "center",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    Total Issues
-                  </th>
-                  <th
-                    style={{
-                      padding: "1rem",
-                      textAlign: "center",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    Avg Resolution Time
-                  </th>
-                  <th
-                    style={{
-                      padding: "1rem",
-                      textAlign: "center",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    Escalation Rate
-                  </th>
-                  <th
-                    style={{
-                      padding: "1rem",
-                      textAlign: "center",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    Reliability Score
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {[...vanPerformance]
-                  .sort((a, b) => b.total_issues - a.total_issues)
-                  .map((van, index) => (
-                    <tr
-                      key={index}
-                      style={{
-                        backgroundColor:
-                          index % 2 === 0 ? "#334155" : "#1e293b",
-                        borderBottom: "1px solid #475569",
-                      }}
-                    >
-                      <td style={{ padding: "1rem" }}>{van.make}</td>
-                      <td style={{ padding: "1rem" }}>{van.version}</td>
-                      <td style={{ padding: "1rem" }}>{van.year}</td>
-                      <td
-                        style={{
-                          padding: "1rem",
-                          textAlign: "center",
-                          fontWeight: "bold",
-                        }}
-                      >
-                        {van.total_issues}
-                      </td>
-                      <td style={{ padding: "1rem", textAlign: "center" }}>
-                        {van.avg_resolution_time
-                          ? `${Math.round(van.avg_resolution_time)} min`
-                          : "N/A"}
-                      </td>
-                      <td style={{ padding: "1rem", textAlign: "center" }}>
-                        {van.escalation_rate
-                          ? `${van.escalation_rate}%`
-                          : "0%"}
-                      </td>
-                      <td
-                        style={{
-                          padding: "1rem",
-                          textAlign: "center",
-                          fontWeight: "bold",
-                          color:
-                            van.reliability_score >= 80
-                              ? "#22c55e"
-                              : van.reliability_score >= 60
-                              ? "#eab308"
-                              : van.reliability_score >= 40
-                              ? "#f59e0b"
-                              : "#ef4444",
-                        }}
-                      >
-                        {van.reliability_score || "N/A"}
-                      </td>
-                    </tr>
+                  formatter={(value) => `${value}%`}
+                />
+                <Legend />
+                <Bar dataKey="fcr_rate" name="FCR Rate (%)" radius={[0, 8, 8, 0]}>
+                  {fcrData.map((entry, index) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={
+                        entry.fcr_rate >= 80
+                          ? theme.colors.accent.success
+                          : entry.fcr_rate >= 60
+                          ? theme.colors.chart.yellow
+                          : entry.fcr_rate >= 40
+                          ? theme.colors.accent.warning
+                          : theme.colors.accent.danger
+                      }
+                    />
                   ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-      )}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </Card>
 
-      {/* --- Chronic Problem Vans Table --- */}
-      {hasRole('admin') && (
-      <div style={{ marginBottom: "2rem" }}>
-        <h2 style={{ color: "#f1f5f9" }}>Chronic Problem Vans</h2>
-        {chronicProblemVans.length === 0 ? (
-          <div
-            style={{
-              padding: "3rem",
-              textAlign: "center",
-              backgroundColor: "#334155",
-              borderRadius: "8px",
-              border: "1px solid #475569",
-            }}
+        {/* Van Performance Table */}
+        {(hasRole('admin') || hasRole('manager')) && vanPerformance.length > 0 && (
+          <Card
+            title="Van Performance"
+            description="Performance metrics by van make, model, and year"
+            style={{ marginBottom: theme.spacing['2xl'] }}
+            noPadding
           >
-            <p style={{ color: "#94a3b8", fontSize: "1.125rem" }}>
-              No data available
-            </p>
-          </div>
-        ) : (
-          <div
-            style={{
-              backgroundColor: "#334155",
-              borderRadius: "8px",
-              border: "1px solid #475569",
-              overflow: "hidden",
-            }}
-          >
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                color: "#f1f5f9",
-              }}
-            >
-              <thead>
-                <tr
-                  style={{
-                    backgroundColor: "#1e293b",
-                    borderBottom: "2px solid #475569",
-                  }}
-                >
-                  <th
-                    style={{
-                      padding: "1rem",
-                      textAlign: "left",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    Van Number
-                  </th>
-                  <th
-                    style={{
-                      padding: "1rem",
-                      textAlign: "left",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    Make
-                  </th>
-                  <th
-                    style={{
-                      padding: "1rem",
-                      textAlign: "left",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    Version
-                  </th>
-                  <th
-                    style={{
-                      padding: "1rem",
-                      textAlign: "left",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    Year
-                  </th>
-                  <th
-                    style={{
-                      padding: "1rem",
-                      textAlign: "center",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    Issue Count
-                  </th>
-                  <th
-                    style={{
-                      padding: "1rem",
-                      textAlign: "left",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    Most Common Issue
-                  </th>
-                  <th
-                    style={{
-                      padding: "1rem",
-                      textAlign: "center",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    Issue Frequency
-                  </th>
-                  <th
-                    style={{
-                      padding: "1rem",
-                      textAlign: "center",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    Last Issue Date
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {[...chronicProblemVans]
-                  .sort((a, b) => b.issue_count - a.issue_count)
-                  .map((van, index) => (
-                    <tr
-                      key={index}
-                      style={{
-                        backgroundColor:
-                          index % 2 === 0 ? "#334155" : "#1e293b",
-                        borderBottom: "1px solid #475569",
-                      }}
-                    >
-                      <td style={{ padding: "1rem" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                          {van.van_number}
-                          {van.issue_count >= 5 && (
-                            <span
-                              style={{
-                                backgroundColor: "#ef4444",
-                                color: "#fff",
-                                padding: "0.25rem 0.5rem",
-                                borderRadius: "4px",
-                                fontSize: "0.75rem",
-                                fontWeight: "bold",
-                              }}
-                            >
-                              CRITICAL
-                            </span>
-                          )}
-                          {van.issue_count >= 3 && van.issue_count < 5 && (
-                            <span
-                              style={{
-                                backgroundColor: "#f59e0b",
-                                color: "#fff",
-                                padding: "0.25rem 0.5rem",
-                                borderRadius: "4px",
-                                fontSize: "0.75rem",
-                                fontWeight: "bold",
-                              }}
-                            >
-                              WARNING
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td style={{ padding: "1rem" }}>{van.make}</td>
-                      <td style={{ padding: "1rem" }}>{van.version}</td>
-                      <td style={{ padding: "1rem" }}>{van.year}</td>
-                      <td
-                        style={{
-                          padding: "1rem",
-                          textAlign: "center",
-                          fontWeight: "bold",
-                          color:
-                            van.issue_count >= 5
-                              ? "#ef4444"
-                              : van.issue_count >= 3
-                              ? "#f59e0b"
-                              : "#f1f5f9",
-                        }}
-                      >
-                        {van.issue_count}
-                      </td>
-                      <td style={{ padding: "1rem" }}>
-                        {van.most_common_issue || "N/A"}
-                      </td>
-                      <td style={{ padding: "1rem", textAlign: "center" }}>
-                        {van.issue_frequency || "N/A"}
-                      </td>
-                      <td style={{ padding: "1rem", textAlign: "center" }}>
-                        {van.last_issue_date
-                          ? new Date(van.last_issue_date).toLocaleDateString()
-                          : "N/A"}
-                      </td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-      )}
-
-      {/* --- Handoff Patterns Table --- */}
-      {(hasRole('admin') || hasRole('manager')) && (
-      <div style={{ marginBottom: "2rem" }}>
-        <h2 style={{ color: "#f1f5f9" }}>Handoff Patterns</h2>
-        <p style={{ color: "#94a3b8", marginBottom: "1rem", fontSize: "0.875rem" }}>
-          Shows which troubleshooting sequences commonly lead to other sequences being started
-        </p>
-        {handoffPatterns.length === 0 ? (
-          <div
-            style={{
-              padding: "3rem",
-              textAlign: "center",
-              backgroundColor: "#334155",
-              borderRadius: "8px",
-              border: "1px solid #475569",
-            }}
-          >
-            <p style={{ color: "#94a3b8", fontSize: "1.125rem" }}>
-              No data available
-            </p>
-          </div>
-        ) : (
-          <div
-            style={{
-              backgroundColor: "#334155",
-              borderRadius: "8px",
-              border: "1px solid #475569",
-              overflow: "hidden",
-            }}
-          >
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                color: "#f1f5f9",
-              }}
-            >
-              <thead>
-                <tr
-                  style={{
-                    backgroundColor: "#1e293b",
-                    borderBottom: "2px solid #475569",
-                  }}
-                >
-                  <th
-                    style={{
-                      padding: "1rem",
-                      textAlign: "left",
-                      fontWeight: "bold",
-                      width: "45%",
-                    }}
-                  >
-                    Sequence Flow
-                  </th>
-                  <th
-                    style={{
-                      padding: "1rem",
-                      textAlign: "center",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    Handoff Count
-                  </th>
-                  <th
-                    style={{
-                      padding: "1rem",
-                      textAlign: "center",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    Avg Handoff Count
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {[...handoffPatterns]
-                  .sort((a, b) => b.handoff_count - a.handoff_count)
-                  .map((pattern, index) => {
-                    const isHighFrequency = pattern.handoff_count >= 10;
-                    const isMediumFrequency = pattern.handoff_count >= 5 && pattern.handoff_count < 10;
-
-                    return (
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr style={{ backgroundColor: theme.colors.background.tertiary, borderBottom: `2px solid ${theme.colors.border.light}` }}>
+                    <th style={{ padding: theme.spacing.md, textAlign: "left", color: theme.colors.text.primary, fontWeight: theme.fontWeight.semibold }}>Make</th>
+                    <th style={{ padding: theme.spacing.md, textAlign: "left", color: theme.colors.text.primary, fontWeight: theme.fontWeight.semibold }}>Version</th>
+                    <th style={{ padding: theme.spacing.md, textAlign: "left", color: theme.colors.text.primary, fontWeight: theme.fontWeight.semibold }}>Year</th>
+                    <th style={{ padding: theme.spacing.md, textAlign: "center", color: theme.colors.text.primary, fontWeight: theme.fontWeight.semibold }}>Total Issues</th>
+                    <th style={{ padding: theme.spacing.md, textAlign: "center", color: theme.colors.text.primary, fontWeight: theme.fontWeight.semibold }}>Avg Time</th>
+                    <th style={{ padding: theme.spacing.md, textAlign: "center", color: theme.colors.text.primary, fontWeight: theme.fontWeight.semibold }}>Reliability</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...vanPerformance]
+                    .sort((a, b) => b.total_issues - a.total_issues)
+                    .map((van, index) => (
                       <tr
                         key={index}
                         style={{
-                          backgroundColor:
-                            index % 2 === 0 ? "#334155" : "#1e293b",
-                          borderBottom: "1px solid #475569",
+                          borderBottom: `1px solid ${theme.colors.border.light}`,
                         }}
                       >
-                        <td style={{ padding: "1rem" }}>
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "0.75rem",
-                            }}
+                        <td style={{ padding: theme.spacing.md, color: theme.colors.text.primary }}>{van.make}</td>
+                        <td style={{ padding: theme.spacing.md, color: theme.colors.text.primary }}>{van.version}</td>
+                        <td style={{ padding: theme.spacing.md, color: theme.colors.text.primary }}>{van.year}</td>
+                        <td style={{ padding: theme.spacing.md, textAlign: "center", fontWeight: theme.fontWeight.semibold, color: theme.colors.text.primary }}>
+                          {van.total_issues}
+                        </td>
+                        <td style={{ padding: theme.spacing.md, textAlign: "center", color: theme.colors.text.secondary }}>
+                          {van.avg_resolution_time ? `${Math.round(van.avg_resolution_time)}m` : "N/A"}
+                        </td>
+                        <td style={{ padding: theme.spacing.md, textAlign: "center" }}>
+                          <Badge
+                            variant={
+                              van.reliability_score >= 80
+                                ? "success"
+                                : van.reliability_score >= 60
+                                ? "warning"
+                                : "danger"
+                            }
                           >
-                            <span
-                              style={{
-                                padding: "0.5rem 0.75rem",
-                                backgroundColor: "#475569",
-                                borderRadius: "4px",
-                                fontSize: "0.875rem",
-                              }}
-                            >
-                              {pattern.from_sequence}
-                            </span>
-                            <span
-                              style={{
-                                fontSize: "1.25rem",
-                                color: isHighFrequency
-                                  ? "#60A5FA"
-                                  : isMediumFrequency
-                                  ? "#FBBF24"
-                                  : "#94a3b8",
-                                fontWeight: "bold",
-                              }}
-                            >
-                              →
-                            </span>
-                            <span
-                              style={{
-                                padding: "0.5rem 0.75rem",
-                                backgroundColor: "#475569",
-                                borderRadius: "4px",
-                                fontSize: "0.875rem",
-                              }}
-                            >
-                              {pattern.to_sequence}
-                            </span>
-                          </div>
-                        </td>
-                        <td
-                          style={{
-                            padding: "1rem",
-                            textAlign: "center",
-                            fontWeight: "bold",
-                            fontSize: "1.125rem",
-                            color: isHighFrequency
-                              ? "#60A5FA"
-                              : isMediumFrequency
-                              ? "#FBBF24"
-                              : "#f1f5f9",
-                          }}
-                        >
-                          {pattern.handoff_count}
-                        </td>
-                        <td
-                          style={{
-                            padding: "1rem",
-                            textAlign: "center",
-                          }}
-                        >
-                          {pattern.avg_handoff_count
-                            ? pattern.avg_handoff_count.toFixed(1)
-                            : "N/A"}
+                            {van.reliability_score || "N/A"}
+                          </Badge>
                         </td>
                       </tr>
-                    );
-                  })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-      )}
-
-      {/* --- Call Volume Heatmap --- */}
-      <div style={{ marginBottom: "2rem" }}>
-        <h2 style={{ color: "#f1f5f9" }}>Call Volume Heatmap</h2>
-        <p style={{ color: "#94a3b8", marginBottom: "1rem", fontSize: "0.875rem" }}>
-          Shows when support calls come in - by day of week and hour of day
-        </p>
-        {heatmapData.length === 0 ? (
-          <div
-            style={{
-              padding: "3rem",
-              textAlign: "center",
-              backgroundColor: "#334155",
-              borderRadius: "8px",
-              border: "1px solid #475569",
-            }}
-          >
-            <p style={{ color: "#94a3b8", fontSize: "1.125rem" }}>
-              No data available
-            </p>
-          </div>
-        ) : (
-          <div
-            style={{
-              backgroundColor: "#334155",
-              borderRadius: "8px",
-              border: "1px solid #475569",
-              padding: "1.5rem",
-              overflow: "auto",
-            }}
-          >
-            {(() => {
-              // Create a map for quick lookup: "day_hour" -> call_count
-              const heatmapMap = {};
-              heatmapData.forEach((item) => {
-                const key = `${item.day_of_week}_${item.hour_of_day}`;
-                heatmapMap[key] = item.call_count || 0;
-              });
-
-              // Find min and max for color scaling
-              const callCounts = heatmapData.map((d) => d.call_count || 0);
-              const minCount = Math.min(...callCounts, 0);
-              const maxCount = Math.max(...callCounts, 1);
-
-              // Color scale function: light blue (few calls) to dark red (many calls)
-              const getColor = (count) => {
-                if (count === 0) return "#1e293b"; // Dark background for no calls
-                const intensity = (count - minCount) / (maxCount - minCount);
-
-                if (intensity < 0.25) return "#3b82f6"; // Light blue
-                if (intensity < 0.5) return "#8b5cf6"; // Purple
-                if (intensity < 0.75) return "#f59e0b"; // Orange
-                return "#ef4444"; // Dark red
-              };
-
-              const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-              const hours = Array.from({ length: 24 }, (_, i) => {
-                if (i === 0) return "12am";
-                if (i < 12) return `${i}am`;
-                if (i === 12) return "12pm";
-                return `${i - 12}pm`;
-              });
-
-              return (
-                <div style={{ display: "inline-block" }}>
-                  {/* Grid container */}
-                  <div style={{ display: "grid", gridTemplateColumns: `100px repeat(24, 40px)`, gap: "2px" }}>
-                    {/* Header row - hours */}
-                    <div></div>
-                    {hours.map((hour, i) => (
-                      <div
-                        key={i}
-                        style={{
-                          fontSize: "0.7rem",
-                          color: "#94a3b8",
-                          textAlign: "center",
-                          padding: "0.25rem",
-                          transform: "rotate(-45deg)",
-                          transformOrigin: "center",
-                          height: "60px",
-                          display: "flex",
-                          alignItems: "flex-end",
-                          justifyContent: "center",
-                        }}
-                      >
-                        {hour}
-                      </div>
                     ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        )}
 
-                    {/* Data rows - one per day */}
-                    {days.map((day, dayIndex) => (
-                      <React.Fragment key={`day-${dayIndex}`}>
-                        {/* Day label */}
+        {/* Chronic Problem Vans */}
+        {hasRole('admin') && chronicProblemVans.length > 0 && (
+          <Card
+            title="Chronic Problem Vans"
+            description="Vans with recurring issues requiring attention"
+            style={{ marginBottom: theme.spacing['2xl'] }}
+            noPadding
+          >
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr style={{ backgroundColor: theme.colors.background.tertiary, borderBottom: `2px solid ${theme.colors.border.light}` }}>
+                    <th style={{ padding: theme.spacing.md, textAlign: "left", color: theme.colors.text.primary, fontWeight: theme.fontWeight.semibold }}>Van Number</th>
+                    <th style={{ padding: theme.spacing.md, textAlign: "left", color: theme.colors.text.primary, fontWeight: theme.fontWeight.semibold }}>Make/Model</th>
+                    <th style={{ padding: theme.spacing.md, textAlign: "center", color: theme.colors.text.primary, fontWeight: theme.fontWeight.semibold }}>Issue Count</th>
+                    <th style={{ padding: theme.spacing.md, textAlign: "left", color: theme.colors.text.primary, fontWeight: theme.fontWeight.semibold }}>Most Common</th>
+                    <th style={{ padding: theme.spacing.md, textAlign: "center", color: theme.colors.text.primary, fontWeight: theme.fontWeight.semibold }}>Last Issue</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...chronicProblemVans]
+                    .sort((a, b) => b.issue_count - a.issue_count)
+                    .map((van, index) => (
+                      <tr key={index} style={{ borderBottom: `1px solid ${theme.colors.border.light}` }}>
+                        <td style={{ padding: theme.spacing.md }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: theme.spacing.sm }}>
+                            <Avatar name={van.van_number} size="sm" />
+                            <span style={{ color: theme.colors.text.primary, fontWeight: theme.fontWeight.medium }}>
+                              {van.van_number}
+                            </span>
+                            {van.issue_count >= 5 && <Badge variant="danger" size="sm">CRITICAL</Badge>}
+                            {van.issue_count >= 3 && van.issue_count < 5 && <Badge variant="warning" size="sm">WARNING</Badge>}
+                          </div>
+                        </td>
+                        <td style={{ padding: theme.spacing.md, color: theme.colors.text.primary }}>
+                          {van.make} {van.version} ({van.year})
+                        </td>
+                        <td style={{ padding: theme.spacing.md, textAlign: "center", fontWeight: theme.fontWeight.bold, color: van.issue_count >= 5 ? theme.colors.accent.danger : van.issue_count >= 3 ? theme.colors.accent.warning : theme.colors.text.primary }}>
+                          {van.issue_count}
+                        </td>
+                        <td style={{ padding: theme.spacing.md, color: theme.colors.text.secondary }}>
+                          {van.most_common_issue || "N/A"}
+                        </td>
+                        <td style={{ padding: theme.spacing.md, textAlign: "center", color: theme.colors.text.secondary }}>
+                          {van.last_issue_date ? new Date(van.last_issue_date).toLocaleDateString() : "N/A"}
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        )}
+
+        {/* Handoff Patterns */}
+        {(hasRole('admin') || hasRole('manager')) && handoffPatterns.length > 0 && (
+          <Card
+            title="Handoff Patterns"
+            description="Common troubleshooting sequence transitions"
+            style={{ marginBottom: theme.spacing['2xl'] }}
+            noPadding
+          >
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr style={{ backgroundColor: theme.colors.background.tertiary, borderBottom: `2px solid ${theme.colors.border.light}` }}>
+                    <th style={{ padding: theme.spacing.md, textAlign: "left", color: theme.colors.text.primary, fontWeight: theme.fontWeight.semibold }}>Sequence Flow</th>
+                    <th style={{ padding: theme.spacing.md, textAlign: "center", color: theme.colors.text.primary, fontWeight: theme.fontWeight.semibold }}>Handoff Count</th>
+                    <th style={{ padding: theme.spacing.md, textAlign: "center", color: theme.colors.text.primary, fontWeight: theme.fontWeight.semibold }}>Avg Handoffs</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...handoffPatterns]
+                    .sort((a, b) => b.handoff_count - a.handoff_count)
+                    .map((pattern, index) => {
+                      const isHighFrequency = pattern.handoff_count >= 10;
+                      return (
+                        <tr key={index} style={{ borderBottom: `1px solid ${theme.colors.border.light}` }}>
+                          <td style={{ padding: theme.spacing.md }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: theme.spacing.md }}>
+                              <Badge variant="default">{pattern.from_sequence}</Badge>
+                              <span style={{ color: isHighFrequency ? theme.colors.chart.blue : theme.colors.text.tertiary, fontSize: theme.fontSize.xl }}>→</span>
+                              <Badge variant="default">{pattern.to_sequence}</Badge>
+                            </div>
+                          </td>
+                          <td style={{ padding: theme.spacing.md, textAlign: "center", fontWeight: theme.fontWeight.bold, color: isHighFrequency ? theme.colors.chart.blue : theme.colors.text.primary }}>
+                            {pattern.handoff_count}
+                          </td>
+                          <td style={{ padding: theme.spacing.md, textAlign: "center", color: theme.colors.text.secondary }}>
+                            {pattern.avg_handoff_count ? pattern.avg_handoff_count.toFixed(1) : "N/A"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        )}
+
+        {/* Call Volume Heatmap */}
+        <Card
+          title="Call Volume Heatmap"
+          description="Support call patterns by day and hour"
+          style={{ marginBottom: theme.spacing['2xl'] }}
+        >
+          {heatmapData.length === 0 ? (
+            <div style={{ padding: theme.spacing['2xl'], textAlign: "center", color: theme.colors.text.secondary }}>
+              No data available
+            </div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              {(() => {
+                const heatmapMap = {};
+                heatmapData.forEach((item) => {
+                  const key = `${item.day_of_week}_${item.hour_of_day}`;
+                  heatmapMap[key] = item.call_count || 0;
+                });
+
+                const callCounts = heatmapData.map((d) => d.call_count || 0);
+                const minCount = Math.min(...callCounts, 0);
+                const maxCount = Math.max(...callCounts, 1);
+
+                const getColor = (count) => {
+                  if (count === 0) return theme.colors.background.primary;
+                  const intensity = (count - minCount) / (maxCount - minCount);
+                  if (intensity < 0.25) return theme.colors.chart.blue;
+                  if (intensity < 0.5) return theme.colors.chart.purple;
+                  if (intensity < 0.75) return theme.colors.chart.orange;
+                  return theme.colors.accent.danger;
+                };
+
+                const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+                const hours = Array.from({ length: 24 }, (_, i) => {
+                  if (i === 0) return "12am";
+                  if (i < 12) return `${i}am`;
+                  if (i === 12) return "12pm";
+                  return `${i - 12}pm`;
+                });
+
+                return (
+                  <>
+                    <div style={{ display: "grid", gridTemplateColumns: `100px repeat(24, 40px)`, gap: "2px", marginBottom: theme.spacing.lg }}>
+                      <div></div>
+                      {hours.map((hour, i) => (
                         <div
+                          key={i}
                           style={{
-                            fontSize: "0.875rem",
-                            color: "#f1f5f9",
+                            fontSize: theme.fontSize.xs,
+                            color: theme.colors.text.tertiary,
+                            textAlign: "center",
+                            transform: "rotate(-45deg)",
+                            height: "60px",
                             display: "flex",
-                            alignItems: "center",
-                            paddingRight: "0.5rem",
-                            fontWeight: "500",
+                            alignItems: "flex-end",
+                            justifyContent: "center",
                           }}
                         >
-                          {day}
+                          {hour}
                         </div>
+                      ))}
 
-                        {/* Hourly cells for this day */}
-                        {hours.map((_, hourIndex) => {
-                          const key = `${dayIndex}_${hourIndex}`;
-                          const count = heatmapMap[key] || 0;
-                          const color = getColor(count);
+                      {days.map((day, dayIndex) => (
+                        <React.Fragment key={`day-${dayIndex}`}>
+                          <div style={{ fontSize: theme.fontSize.sm, color: theme.colors.text.primary, display: "flex", alignItems: "center", fontWeight: theme.fontWeight.medium }}>
+                            {day}
+                          </div>
 
-                          return (
-                            <div
-                              key={`${dayIndex}-${hourIndex}`}
-                              style={{
-                                backgroundColor: color,
-                                height: "40px",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                borderRadius: "2px",
-                                fontSize: "0.75rem",
-                                color: count > 0 ? "#fff" : "#475569",
-                                fontWeight: count > 0 ? "bold" : "normal",
-                                cursor: "pointer",
-                                border: "1px solid #1e293b",
-                                transition: "transform 0.2s",
-                              }}
-                              title={`${day} ${hours[hourIndex]}: ${count} calls`}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.transform = "scale(1.1)";
-                                e.currentTarget.style.zIndex = "10";
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.transform = "scale(1)";
-                                e.currentTarget.style.zIndex = "1";
-                              }}
-                            >
-                              {count > 0 ? count : ""}
-                            </div>
-                          );
-                        })}
-                      </React.Fragment>
-                    ))}
-                  </div>
+                          {hours.map((_, hourIndex) => {
+                            const key = `${dayIndex}_${hourIndex}`;
+                            const count = heatmapMap[key] || 0;
+                            const color = getColor(count);
 
-                  {/* Legend */}
-                  <div style={{ marginTop: "2rem", display: "flex", alignItems: "center", gap: "1rem" }}>
-                    <span style={{ color: "#94a3b8", fontSize: "0.875rem" }}>Call Volume:</span>
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                      <div style={{ width: "30px", height: "20px", backgroundColor: "#1e293b", border: "1px solid #475569", borderRadius: "2px" }}></div>
-                      <span style={{ color: "#94a3b8", fontSize: "0.75rem" }}>None</span>
+                            return (
+                              <div
+                                key={`${dayIndex}-${hourIndex}`}
+                                style={{
+                                  backgroundColor: color,
+                                  height: "40px",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  borderRadius: theme.radius.sm,
+                                  fontSize: theme.fontSize.xs,
+                                  color: count > 0 ? theme.colors.text.primary : theme.colors.text.tertiary,
+                                  fontWeight: count > 0 ? theme.fontWeight.semibold : theme.fontWeight.normal,
+                                  cursor: "pointer",
+                                  transition: "transform 0.2s",
+                                }}
+                                title={`${day} ${hours[hourIndex]}: ${count} calls`}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.transform = "scale(1.1)";
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.transform = "scale(1)";
+                                }}
+                              >
+                                {count > 0 ? count : ""}
+                              </div>
+                            );
+                          })}
+                        </React.Fragment>
+                      ))}
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                      <div style={{ width: "30px", height: "20px", backgroundColor: "#3b82f6", borderRadius: "2px" }}></div>
-                      <span style={{ color: "#94a3b8", fontSize: "0.75rem" }}>Low</span>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: theme.spacing.lg, flexWrap: "wrap" }}>
+                      <span style={{ color: theme.colors.text.secondary, fontSize: theme.fontSize.sm }}>Call Volume:</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: theme.spacing.xs }}>
+                        <div style={{ width: "30px", height: "20px", backgroundColor: theme.colors.background.primary, border: `1px solid ${theme.colors.border.light}`, borderRadius: theme.radius.sm }}></div>
+                        <span style={{ color: theme.colors.text.tertiary, fontSize: theme.fontSize.sm }}>None</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: theme.spacing.xs }}>
+                        <div style={{ width: "30px", height: "20px", backgroundColor: theme.colors.chart.blue, borderRadius: theme.radius.sm }}></div>
+                        <span style={{ color: theme.colors.text.tertiary, fontSize: theme.fontSize.sm }}>Low</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: theme.spacing.xs }}>
+                        <div style={{ width: "30px", height: "20px", backgroundColor: theme.colors.chart.purple, borderRadius: theme.radius.sm }}></div>
+                        <span style={{ color: theme.colors.text.tertiary, fontSize: theme.fontSize.sm }}>Medium</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: theme.spacing.xs }}>
+                        <div style={{ width: "30px", height: "20px", backgroundColor: theme.colors.chart.orange, borderRadius: theme.radius.sm }}></div>
+                        <span style={{ color: theme.colors.text.tertiary, fontSize: theme.fontSize.sm }}>High</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: theme.spacing.xs }}>
+                        <div style={{ width: "30px", height: "20px", backgroundColor: theme.colors.accent.danger, borderRadius: theme.radius.sm }}></div>
+                        <span style={{ color: theme.colors.text.tertiary, fontSize: theme.fontSize.sm }}>Very High</span>
+                      </div>
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                      <div style={{ width: "30px", height: "20px", backgroundColor: "#8b5cf6", borderRadius: "2px" }}></div>
-                      <span style={{ color: "#94a3b8", fontSize: "0.75rem" }}>Medium</span>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                      <div style={{ width: "30px", height: "20px", backgroundColor: "#f59e0b", borderRadius: "2px" }}></div>
-                      <span style={{ color: "#94a3b8", fontSize: "0.75rem" }}>High</span>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                      <div style={{ width: "30px", height: "20px", backgroundColor: "#ef4444", borderRadius: "2px" }}></div>
-                      <span style={{ color: "#94a3b8", fontSize: "0.75rem" }}>Very High</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
-        )}
+                  </>
+                );
+              })()}
+            </div>
+          )}
+        </Card>
+
+        {/* Resolution by Step */}
+        <Card
+          title="Resolution by Step"
+          description="Percentage of issues resolved at each troubleshooting step"
+          action={
+            <select
+              value={selectedSequence}
+              onChange={(e) => setSelectedSequence(e.target.value)}
+              style={{
+                padding: `${theme.spacing.xs} ${theme.spacing.md}`,
+                backgroundColor: theme.colors.background.tertiary,
+                color: theme.colors.text.primary,
+                border: `1px solid ${theme.colors.border.medium}`,
+                borderRadius: theme.radius.md,
+                fontSize: theme.fontSize.sm,
+                fontWeight: theme.fontWeight.medium,
+                cursor: "pointer",
+              }}
+            >
+              {sequences.map((seq) => (
+                <option key={seq} value={seq}>
+                  {seq}
+                </option>
+              ))}
+            </select>
+          }
+        >
+          {filteredData.length === 0 ? (
+            <div style={{ padding: theme.spacing['2xl'], textAlign: "center", color: theme.colors.text.secondary }}>
+              No data available
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={400}>
+              <BarChart data={filteredData}>
+                <CartesianGrid strokeDasharray="3 3" stroke={theme.colors.border.medium} />
+                <XAxis dataKey="step_num" stroke={theme.colors.text.secondary} />
+                <YAxis stroke={theme.colors.text.secondary} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: theme.colors.background.tertiary,
+                    border: `1px solid ${theme.colors.border.medium}`,
+                    borderRadius: theme.radius.md,
+                    color: theme.colors.text.primary,
+                  }}
+                />
+                <Legend />
+                <Bar dataKey="percentage" fill={theme.colors.chart.green} name="Resolved %" radius={[8, 8, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </Card>
       </div>
-
-      {/* --- Resolution by Step Bar Chart --- */}
-      <h2 style={{ color: "#f1f5f9" }}>Resolution by Step</h2>
-      <div style={{ marginBottom: "1rem" }}>
-        <label style={{ color: "#f1f5f9" }}>
-          <strong>Select Sequence:</strong>{" "}
-          <select
-            value={selectedSequence}
-            onChange={(e) => setSelectedSequence(e.target.value)}
-            style={{
-              padding: "0.5rem",
-              backgroundColor: "#334155",
-              color: "#f1f5f9",
-              border: "1px solid #475569",
-              borderRadius: "4px",
-            }}
-          >
-            {sequences.map((seq) => (
-              <option key={seq} value={seq}>
-                {seq}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      {filteredData.length === 0 ? (
-        <p style={{ color: "#f1f5f9" }}>Loading...</p>
-      ) : (
-        <ResponsiveContainer width="100%" height={400}>
-          <BarChart
-            data={filteredData}
-            margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
-          >
-            <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
-            <XAxis
-              dataKey="step_num"
-              stroke="#94a3b8"
-              label={{
-                value: "Step",
-                position: "insideBottom",
-                offset: -5,
-                fill: "#f1f5f9",
-              }}
-            />
-            <YAxis
-              stroke="#94a3b8"
-              label={{
-                value: "% Resolved",
-                angle: -90,
-                position: "insideLeft",
-                fill: "#f1f5f9",
-              }}
-            />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: "#334155",
-                border: "1px solid #475569",
-                color: "#f1f5f9",
-              }}
-            />
-            <Legend wrapperStyle={{ color: "#f1f5f9" }} />
-            <Bar dataKey="percentage" fill="#34D399" name="Resolved %" />
-          </BarChart>
-        </ResponsiveContainer>
-      )}
     </div>
   );
 }

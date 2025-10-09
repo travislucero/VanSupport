@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "./hooks/useAuth.jsx";
+import { theme } from "./styles/theme";
 
 function Login() {
   const [email, setEmail] = useState("");
@@ -29,160 +30,206 @@ function Login() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        backgroundColor: "#1e293b",
-        fontFamily: "Arial, sans-serif",
+        backgroundColor: theme.colors.background.primary,
+        padding: theme.spacing.lg,
       }}
     >
       <div
         style={{
           width: "100%",
-          maxWidth: "400px",
-          padding: "2rem",
-          backgroundColor: "#334155",
-          borderRadius: "8px",
-          border: "1px solid #475569",
+          maxWidth: "440px",
         }}
       >
-        <h1
-          style={{
-            color: "#f1f5f9",
-            marginBottom: "0.5rem",
-            fontSize: "1.875rem",
-            textAlign: "center",
-          }}
-        >
-          VanSupport Dashboard
-        </h1>
-        <p
-          style={{
-            color: "#94a3b8",
-            marginBottom: "2rem",
-            textAlign: "center",
-          }}
-        >
-          Sign in to continue
-        </p>
-
-        <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: "1rem" }}>
-            <label
-              htmlFor="email"
-              style={{
-                display: "block",
-                color: "#f1f5f9",
-                marginBottom: "0.5rem",
-                fontSize: "0.875rem",
-                fontWeight: "500",
-              }}
-            >
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              autoComplete="email"
-              style={{
-                width: "100%",
-                padding: "0.75rem",
-                backgroundColor: "#1e293b",
-                color: "#f1f5f9",
-                border: "1px solid #475569",
-                borderRadius: "4px",
-                fontSize: "1rem",
-                outline: "none",
-              }}
-              onFocus={(e) => {
-                e.target.style.borderColor = "#60A5FA";
-              }}
-              onBlur={(e) => {
-                e.target.style.borderColor = "#475569";
-              }}
-            />
-          </div>
-
-          <div style={{ marginBottom: "1.5rem" }}>
-            <label
-              htmlFor="password"
-              style={{
-                display: "block",
-                color: "#f1f5f9",
-                marginBottom: "0.5rem",
-                fontSize: "0.875rem",
-                fontWeight: "500",
-              }}
-            >
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              autoComplete="current-password"
-              style={{
-                width: "100%",
-                padding: "0.75rem",
-                backgroundColor: "#1e293b",
-                color: "#f1f5f9",
-                border: "1px solid #475569",
-                borderRadius: "4px",
-                fontSize: "1rem",
-                outline: "none",
-              }}
-              onFocus={(e) => {
-                e.target.style.borderColor = "#60A5FA";
-              }}
-              onBlur={(e) => {
-                e.target.style.borderColor = "#475569";
-              }}
-            />
-          </div>
-
-          {error && (
-            <div
-              style={{
-                padding: "0.75rem",
-                marginBottom: "1rem",
-                backgroundColor: "#7f1d1d",
-                border: "1px solid #ef4444",
-                borderRadius: "4px",
-                color: "#fecaca",
-                fontSize: "0.875rem",
-              }}
-            >
-              {error}
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
+        {/* Logo */}
+        <div style={{ textAlign: "center", marginBottom: theme.spacing['2xl'] }}>
+          <div
             style={{
-              width: "100%",
-              padding: "0.75rem",
-              backgroundColor: loading ? "#475569" : "#2563eb",
-              color: "#f1f5f9",
-              border: "none",
-              borderRadius: "4px",
-              fontSize: "1rem",
-              fontWeight: "500",
-              cursor: loading ? "not-allowed" : "pointer",
-              transition: "background-color 0.2s",
-            }}
-            onMouseEnter={(e) => {
-              if (!loading) e.target.style.backgroundColor = "#1d4ed8";
-            }}
-            onMouseLeave={(e) => {
-              if (!loading) e.target.style.backgroundColor = "#2563eb";
+              width: "80px",
+              height: "80px",
+              backgroundColor: theme.colors.accent.primary,
+              borderRadius: theme.radius.xl,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "3rem",
+              marginBottom: theme.spacing.md,
             }}
           >
-            {loading ? "Signing in..." : "Sign In"}
-          </button>
-        </form>
+            🚐
+          </div>
+          <h1
+            style={{
+              color: theme.colors.text.primary,
+              marginBottom: theme.spacing.xs,
+              fontSize: theme.fontSize['3xl'],
+              fontWeight: theme.fontWeight.bold,
+            }}
+          >
+            VanSupport
+          </h1>
+          <p
+            style={{
+              color: theme.colors.text.secondary,
+              fontSize: theme.fontSize.base,
+            }}
+          >
+            Sign in to access your dashboard
+          </p>
+        </div>
+
+        {/* Login Card */}
+        <div
+          style={{
+            padding: theme.spacing['2xl'],
+            backgroundColor: theme.colors.background.secondary,
+            borderRadius: theme.radius.xl,
+            border: `1px solid ${theme.colors.border.light}`,
+            boxShadow: theme.shadows.lg,
+          }}
+        >
+
+          <form onSubmit={handleSubmit}>
+            <div style={{ marginBottom: theme.spacing.lg }}>
+              <label
+                htmlFor="email"
+                style={{
+                  display: "block",
+                  color: theme.colors.text.primary,
+                  marginBottom: theme.spacing.sm,
+                  fontSize: theme.fontSize.sm,
+                  fontWeight: theme.fontWeight.medium,
+                }}
+              >
+                Email Address
+              </label>
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoComplete="email"
+                placeholder="you@example.com"
+                style={{
+                  width: "100%",
+                  padding: `${theme.spacing.md} ${theme.spacing.lg}`,
+                  backgroundColor: theme.colors.background.tertiary,
+                  color: theme.colors.text.primary,
+                  border: `1px solid ${theme.colors.border.medium}`,
+                  borderRadius: theme.radius.lg,
+                  fontSize: theme.fontSize.base,
+                  outline: "none",
+                  transition: "border-color 0.2s, box-shadow 0.2s",
+                }}
+                onFocus={(e) => {
+                  e.target.style.borderColor = theme.colors.accent.primary;
+                  e.target.style.boxShadow = `0 0 0 3px ${theme.colors.accent.primary}20`;
+                }}
+                onBlur={(e) => {
+                  e.target.style.borderColor = theme.colors.border.medium;
+                  e.target.style.boxShadow = "none";
+                }}
+              />
+            </div>
+
+            <div style={{ marginBottom: theme.spacing.xl }}>
+              <label
+                htmlFor="password"
+                style={{
+                  display: "block",
+                  color: theme.colors.text.primary,
+                  marginBottom: theme.spacing.sm,
+                  fontSize: theme.fontSize.sm,
+                  fontWeight: theme.fontWeight.medium,
+                }}
+              >
+                Password
+              </label>
+              <input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                autoComplete="current-password"
+                placeholder="Enter your password"
+                style={{
+                  width: "100%",
+                  padding: `${theme.spacing.md} ${theme.spacing.lg}`,
+                  backgroundColor: theme.colors.background.tertiary,
+                  color: theme.colors.text.primary,
+                  border: `1px solid ${theme.colors.border.medium}`,
+                  borderRadius: theme.radius.lg,
+                  fontSize: theme.fontSize.base,
+                  outline: "none",
+                  transition: "border-color 0.2s, box-shadow 0.2s",
+                }}
+                onFocus={(e) => {
+                  e.target.style.borderColor = theme.colors.accent.primary;
+                  e.target.style.boxShadow = `0 0 0 3px ${theme.colors.accent.primary}20`;
+                }}
+                onBlur={(e) => {
+                  e.target.style.borderColor = theme.colors.border.medium;
+                  e.target.style.boxShadow = "none";
+                }}
+              />
+            </div>
+
+            {error && (
+              <div
+                style={{
+                  padding: theme.spacing.md,
+                  marginBottom: theme.spacing.lg,
+                  backgroundColor: `${theme.colors.accent.danger}20`,
+                  border: `1px solid ${theme.colors.accent.danger}`,
+                  borderRadius: theme.radius.lg,
+                  color: theme.colors.accent.danger,
+                  fontSize: theme.fontSize.sm,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: theme.spacing.sm,
+                }}
+              >
+                <span>⚠️</span>
+                <span>{error}</span>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              style={{
+                width: "100%",
+                padding: `${theme.spacing.md} ${theme.spacing.lg}`,
+                backgroundColor: loading ? theme.colors.background.hover : theme.colors.accent.primary,
+                color: theme.colors.text.primary,
+                border: "none",
+                borderRadius: theme.radius.lg,
+                fontSize: theme.fontSize.base,
+                fontWeight: theme.fontWeight.semibold,
+                cursor: loading ? "not-allowed" : "pointer",
+                transition: "all 0.2s",
+                boxShadow: loading ? "none" : theme.shadows.md,
+              }}
+              onMouseEnter={(e) => {
+                if (!loading) {
+                  e.target.style.backgroundColor = theme.colors.accent.primaryHover;
+                  e.target.style.transform = "translateY(-1px)";
+                  e.target.style.boxShadow = theme.shadows.lg;
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!loading) {
+                  e.target.style.backgroundColor = theme.colors.accent.primary;
+                  e.target.style.transform = "translateY(0)";
+                  e.target.style.boxShadow = theme.shadows.md;
+                }
+              }}
+            >
+              {loading ? "Signing in..." : "Sign In"}
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   );
