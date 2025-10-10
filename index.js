@@ -5,7 +5,7 @@ const PORT = process.env.PORT || 3000;
 
 // Root route
 app.get("/", (req, res) => {
-  res.send("🚐 Hello from VanSupport server!");
+  res.send("🚚 Hello from MAX - Mobile AI Xpress Support server!");
 });
 
 // Status route (returns JSON)

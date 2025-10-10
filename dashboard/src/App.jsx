@@ -14,6 +14,7 @@ import {
   ResponsiveContainer,
   CartesianGrid,
 } from "recharts";
+import { Phone, CheckCircle, Clock } from "lucide-react";
 import Login from "./Login";
 import { useAuth } from "./hooks/useAuth.jsx";
 import Sidebar from "./components/Sidebar";
@@ -392,13 +393,13 @@ function App() {
             <StatCard
               title="Total Calls"
               value={summary.total_calls || 0}
-              icon="📞"
+              icon={<Phone size={24} />}
               color={theme.colors.accent.primary}
             />
             <StatCard
               title="Completion Rate"
               value={summary.completion_rate ? `${summary.completion_rate}%` : "0%"}
-              icon="✅"
+              icon={<CheckCircle size={24} />}
               color={theme.colors.accent.success}
             />
             <StatCard
@@ -408,7 +409,7 @@ function App() {
                   ? `${Math.round(summary.avg_resolution_minutes)}m`
                   : "N/A"
               }
-              icon="⏱️"
+              icon={<Clock size={24} />}
               color={theme.colors.accent.warning}
             />
           </div>

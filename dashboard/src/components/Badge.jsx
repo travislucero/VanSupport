@@ -9,23 +9,23 @@ const Badge = ({ children, variant = 'default', size = 'md' }) => {
     },
     primary: {
       background: theme.colors.accent.primary,
-      color: theme.colors.text.primary,
+      color: '#ffffff',
     },
     success: {
       background: theme.colors.accent.success,
-      color: theme.colors.text.primary,
+      color: '#ffffff',
     },
     warning: {
       background: theme.colors.accent.warning,
-      color: theme.colors.text.primary,
+      color: '#ffffff',
     },
     danger: {
       background: theme.colors.accent.danger,
-      color: theme.colors.text.primary,
+      color: '#ffffff',
     },
     secondary: {
       background: theme.colors.accent.secondary,
-      color: theme.colors.text.primary,
+      color: '#ffffff',
     },
   };
 
