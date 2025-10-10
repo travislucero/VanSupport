@@ -1,7 +1,35 @@
 import React from 'react';
 import { theme } from '../styles/theme';
 
-const StatCard = ({ title, value, icon, trend, color = theme.colors.accent.primary }) => {
+const StatCard = ({ title, value, icon, trend, color = theme.colors.accent.primary, iconColor, iconBackground }) => {
+  // Define default icon styling based on the card type (by title)
+  let defaultIconColor = iconColor;
+  let defaultIconBackground = iconBackground;
+
+  if (!iconColor || !iconBackground) {
+    if (title === 'Total Calls') {
+      defaultIconColor = '#1e3a5f'; // Navy blue
+      defaultIconBackground = 'rgba(59, 130, 246, 0.1)'; // Light blue background
+    } else if (title === 'Completion Rate') {
+      defaultIconColor = '#10b981'; // Green
+      defaultIconBackground = 'rgba(16, 185, 129, 0.1)'; // Light green background
+    } else if (title === 'Avg Resolution Time') {
+      defaultIconColor = '#f59e0b'; // Orange
+      defaultIconBackground = 'rgba(245, 158, 11, 0.1)'; // Light orange background
+    } else {
+      // Fallback to prop-based color
+      defaultIconColor = color;
+      defaultIconBackground = color + '20';
+    }
+  }
+
+  // Clone the icon element and apply color styling
+  const styledIcon = icon ? React.cloneElement(icon, {
+    size: 32,
+    color: defaultIconColor,
+    style: { opacity: 1 }
+  }) : null;
+
   return (
     <div
       style={{
@@ -54,20 +82,19 @@ const StatCard = ({ title, value, icon, trend, color = theme.colors.accent.prima
             {value}
           </div>
         </div>
-        {icon && (
+        {styledIcon && (
           <div
             style={{
-              width: '48px',
-              height: '48px',
-              backgroundColor: color + '20',
+              width: '56px',
+              height: '56px',
+              backgroundColor: defaultIconBackground,
               borderRadius: theme.radius.lg,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: '1.5rem',
             }}
           >
-            {icon}
+            {styledIcon}
           </div>
         )}
       </div>
