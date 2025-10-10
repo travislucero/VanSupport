@@ -1,19 +1,60 @@
 import React from 'react';
+import { useLocation, Link } from 'react-router-dom';
+import { LayoutDashboard, List, Edit, Users, LogOut } from 'lucide-react';
 import { theme } from '../styles/theme';
 
 const Sidebar = ({ user, onLogout, hasRole }) => {
-  const menuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: '📊', active: true },
-    { id: 'analytics', label: 'Analytics', icon: '📈', active: false },
-    { id: 'reports', label: 'Reports', icon: '📄', active: false },
-    { id: 'settings', label: 'Settings', icon: '⚙️', active: false },
-  ];
+  const location = useLocation();
 
-  const departmentItems = [
-    { id: 'performance', label: 'Performance', color: theme.colors.accent.primary },
-    { id: 'issues', label: 'Issues', color: theme.colors.accent.success },
-    { id: 'handoffs', label: 'Handoffs', color: theme.colors.accent.warning },
-  ];
+  // Build menu items based on user role
+  const getMenuItems = () => {
+    const items = [
+      {
+        id: 'dashboard',
+        label: 'Dashboard',
+        Icon: LayoutDashboard,
+        path: '/',
+        roles: ['viewer', 'manager', 'admin'] // All roles
+      },
+    ];
+
+    // Add Sequences for viewer and above
+    if (hasRole('viewer') || hasRole('manager') || hasRole('admin')) {
+      items.push({
+        id: 'sequences',
+        label: 'Sequences',
+        Icon: List,
+        path: '/sequences',
+        roles: ['viewer', 'manager', 'admin']
+      });
+    }
+
+    // Add Edit Sequences for manager and admin
+    if (hasRole('manager') || hasRole('admin')) {
+      items.push({
+        id: 'edit-sequences',
+        label: 'Edit Sequences',
+        Icon: Edit,
+        path: '/sequences/edit',
+        roles: ['manager', 'admin']
+      });
+    }
+
+    // Add Manage Users for admin
+    if (hasRole('admin')) {
+      items.push({
+        id: 'manage-users',
+        label: 'Manage Users',
+        Icon: Users,
+        path: '/admin/users',
+        roles: ['admin']
+      });
+    }
+
+    return items;
+  };
+
+  const menuItems = getMenuItems();
 
   return (
     <div
@@ -35,34 +76,41 @@ const Sidebar = ({ user, onLogout, hasRole }) => {
         style={{
           padding: theme.spacing.xl,
           borderBottom: `1px solid ${theme.colors.border.light}`,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
-          <div
-            style={{
-              width: '40px',
-              height: '40px',
-              backgroundColor: theme.colors.accent.primary,
-              borderRadius: theme.radius.lg,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '1.5rem',
-            }}
-          >
-            🚐
-          </div>
-          <div>
-            <div
-              style={{
-                color: theme.colors.text.primary,
-                fontSize: theme.fontSize.lg,
-                fontWeight: theme.fontWeight.bold,
-              }}
-            >
-              VanSupport
-            </div>
-          </div>
+        <img
+          src="/max-logo-small.png"
+          alt="MAX Logo"
+          style={{
+            height: '48px',
+            width: 'auto',
+            marginBottom: theme.spacing.sm,
+          }}
+        />
+        <h1
+          style={{
+            margin: 0,
+            fontSize: theme.fontSize['2xl'],
+            fontWeight: theme.fontWeight.bold,
+            color: theme.colors.accent.primary,
+            letterSpacing: '0.05em',
+          }}
+        >
+          MAX
+        </h1>
+        <div
+          style={{
+            color: theme.colors.text.tertiary,
+            fontSize: theme.fontSize.xs,
+            marginTop: theme.spacing.xs,
+            fontWeight: theme.fontWeight.medium,
+            textAlign: 'center',
+          }}
+        >
+          Mobile AI Xpress Support
         </div>
       </div>
 
@@ -84,7 +132,7 @@ const Sidebar = ({ user, onLogout, hasRole }) => {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                color: theme.colors.text.primary,
+                color: '#ffffff',
                 fontWeight: theme.fontWeight.semibold,
                 fontSize: theme.fontSize.lg,
               }}
@@ -120,8 +168,8 @@ const Sidebar = ({ user, onLogout, hasRole }) => {
         </div>
       )}
 
-      {/* Main Menu */}
-      <div style={{ padding: theme.spacing.lg }}>
+      {/* Navigation Menu */}
+      <div style={{ padding: theme.spacing.lg, flex: 1 }}>
         <div
           style={{
             color: theme.colors.text.tertiary,
@@ -132,138 +180,66 @@ const Sidebar = ({ user, onLogout, hasRole }) => {
             marginBottom: theme.spacing.md,
           }}
         >
-          Main Menu
+          Navigation
         </div>
-        {menuItems.map((item) => (
-          <button
-            key={item.id}
-            style={{
-              width: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              gap: theme.spacing.md,
-              padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-              backgroundColor: item.active
-                ? theme.colors.background.tertiary
-                : 'transparent',
-              color: item.active
-                ? theme.colors.text.primary
-                : theme.colors.text.secondary,
-              border: 'none',
-              borderRadius: theme.radius.md,
-              cursor: 'pointer',
-              fontSize: theme.fontSize.sm,
-              fontWeight: theme.fontWeight.medium,
-              marginBottom: theme.spacing.xs,
-              transition: 'all 0.2s',
-              textAlign: 'left',
-            }}
-            onMouseEnter={(e) => {
-              if (!item.active) {
-                e.currentTarget.style.backgroundColor = theme.colors.background.tertiary;
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!item.active) {
-                e.currentTarget.style.backgroundColor = 'transparent';
-              }
-            }}
-          >
-            <span style={{ fontSize: '1.25rem' }}>{item.icon}</span>
-            {item.label}
-          </button>
-        ))}
-      </div>
+        {menuItems.map((item) => {
+          const Icon = item.Icon;
+          const isActive = location.pathname === item.path;
 
-      {/* Department/Categories */}
-      <div style={{ padding: `0 ${theme.spacing.lg} ${theme.spacing.lg}` }}>
-        <div
-          style={{
-            color: theme.colors.text.tertiary,
-            fontSize: theme.fontSize.xs,
-            fontWeight: theme.fontWeight.semibold,
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em',
-            marginBottom: theme.spacing.md,
-          }}
-        >
-          Categories
-        </div>
-        {departmentItems.map((item) => (
-          <button
-            key={item.id}
-            style={{
-              width: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              gap: theme.spacing.md,
-              padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-              backgroundColor: 'transparent',
-              color: theme.colors.text.secondary,
-              border: 'none',
-              borderRadius: theme.radius.md,
-              cursor: 'pointer',
-              fontSize: theme.fontSize.sm,
-              fontWeight: theme.fontWeight.medium,
-              marginBottom: theme.spacing.xs,
-              transition: 'all 0.2s',
-              textAlign: 'left',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = theme.colors.background.tertiary;
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = 'transparent';
-            }}
-          >
-            <span
+          return (
+            <Link
+              key={item.id}
+              to={item.path}
               style={{
-                width: '8px',
-                height: '8px',
-                borderRadius: theme.radius.full,
-                backgroundColor: item.color,
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                gap: theme.spacing.md,
+                padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                backgroundColor: isActive
+                  ? theme.colors.accent.primary
+                  : 'transparent',
+                color: isActive
+                  ? '#ffffff'
+                  : theme.colors.text.secondary,
+                border: 'none',
+                borderRadius: theme.radius.md,
+                cursor: 'pointer',
+                fontSize: theme.fontSize.sm,
+                fontWeight: theme.fontWeight.medium,
+                marginBottom: theme.spacing.xs,
+                transition: 'all 0.2s',
+                textAlign: 'left',
+                textDecoration: 'none',
               }}
-            />
-            {item.label}
-          </button>
-        ))}
+              onMouseEnter={(e) => {
+                if (!isActive) {
+                  e.currentTarget.style.backgroundColor = theme.colors.background.tertiary;
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isActive) {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }
+              }}
+            >
+              <Icon size={20} />
+              {item.label}
+            </Link>
+          );
+        })}
       </div>
 
-      {/* Footer Actions */}
-      <div style={{ marginTop: 'auto', padding: theme.spacing.lg, borderTop: `1px solid ${theme.colors.border.light}` }}>
-        {hasRole('admin') && (
-          <a
-            href="/admin/users"
-            style={{
-              display: 'block',
-              width: '100%',
-              padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-              backgroundColor: theme.colors.accent.secondary,
-              color: theme.colors.text.primary,
-              border: 'none',
-              borderRadius: theme.radius.md,
-              cursor: 'pointer',
-              fontSize: theme.fontSize.sm,
-              fontWeight: theme.fontWeight.medium,
-              marginBottom: theme.spacing.sm,
-              textAlign: 'center',
-              textDecoration: 'none',
-              transition: 'all 0.2s',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = theme.colors.accent.secondaryHover;
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = theme.colors.accent.secondary;
-            }}
-          >
-            👥 Manage Users
-          </a>
-        )}
+      {/* Logout Button */}
+      <div style={{ padding: theme.spacing.lg, borderTop: `1px solid ${theme.colors.border.light}` }}>
         <button
           onClick={onLogout}
           style={{
             width: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: theme.spacing.sm,
             padding: `${theme.spacing.sm} ${theme.spacing.md}`,
             backgroundColor: 'transparent',
             color: theme.colors.text.secondary,
@@ -276,14 +252,15 @@ const Sidebar = ({ user, onLogout, hasRole }) => {
           }}
           onMouseEnter={(e) => {
             e.currentTarget.style.backgroundColor = theme.colors.background.tertiary;
-            e.currentTarget.style.borderColor = theme.colors.border.light;
+            e.currentTarget.style.borderColor = theme.colors.border.dark;
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.backgroundColor = 'transparent';
             e.currentTarget.style.borderColor = theme.colors.border.medium;
           }}
         >
-          🚪 Logout
+          <LogOut size={16} />
+          Logout
         </button>
       </div>
     </div>

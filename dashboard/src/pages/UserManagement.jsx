@@ -1,8 +1,13 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../hooks/useAuth.jsx";
+import Sidebar from "../components/Sidebar";
+import Card from "../components/Card";
+import Badge from "../components/Badge";
+import { theme } from "../styles/theme";
+import { Users, UserPlus, Edit, Key, Trash2 } from "lucide-react";
 
 function UserManagement() {
-  const { hasRole, logout } = useAuth();
+  const { user, hasRole, logout } = useAuth();
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -20,9 +25,22 @@ function UserManagement() {
   // Redirect if not admin
   if (!hasRole('admin')) {
     return (
-      <div style={{ padding: "2rem", textAlign: "center", color: "#f1f5f9" }}>
-        <h1>Access Denied</h1>
-        <p>You do not have permission to access this page.</p>
+      <div style={{
+        display: 'flex',
+        minHeight: '100vh',
+        backgroundColor: theme.colors.background.primary
+      }}>
+        <Sidebar user={user} onLogout={logout} hasRole={hasRole} />
+        <div style={{ marginLeft: '260px', flex: 1, padding: theme.spacing['2xl'] }}>
+          <Card>
+            <div style={{ textAlign: 'center', padding: theme.spacing['2xl'] }}>
+              <h1 style={{ color: theme.colors.text.primary }}>Access Denied</h1>
+              <p style={{ color: theme.colors.text.secondary }}>
+                You do not have permission to access this page.
+              </p>
+            </div>
+          </Card>
+        </div>
       </div>
     );
   }
@@ -170,188 +188,310 @@ function UserManagement() {
 
   if (loading) {
     return (
-      <div style={{ padding: "2rem", color: "#f1f5f9", backgroundColor: "#1e293b", minHeight: "100vh" }}>
-        <p>Loading...</p>
+      <div style={{
+        display: 'flex',
+        minHeight: '100vh',
+        backgroundColor: theme.colors.background.primary
+      }}>
+        <Sidebar user={user} onLogout={logout} hasRole={hasRole} />
+        <div style={{
+          marginLeft: '260px',
+          flex: 1,
+          padding: theme.spacing['2xl'],
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}>
+          <p style={{ color: theme.colors.text.primary, fontSize: theme.fontSize['2xl'] }}>
+            Loading...
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div style={{ padding: "2rem", backgroundColor: "#1e293b", minHeight: "100vh", color: "#f1f5f9" }}>
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "2rem" }}>
-        <div>
-          <h1 style={{ margin: 0, marginBottom: "0.5rem" }}>User Management</h1>
-          <p style={{ margin: 0, color: "#94a3b8" }}>Manage users and their roles</p>
-        </div>
-        <div style={{ display: "flex", gap: "1rem" }}>
+    <div style={{
+      display: 'flex',
+      minHeight: '100vh',
+      backgroundColor: theme.colors.background.primary
+    }}>
+      <Sidebar user={user} onLogout={logout} hasRole={hasRole} />
+
+      <div style={{ marginLeft: '260px', flex: 1, padding: theme.spacing['2xl'] }}>
+        {/* Header */}
+        <div style={{ marginBottom: theme.spacing['2xl'] }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: theme.spacing.md,
+            marginBottom: theme.spacing.xs
+          }}>
+            <Users size={32} color={theme.colors.accent.primary} strokeWidth={2} />
+            <h1
+              style={{
+                fontSize: theme.fontSize['4xl'],
+                fontWeight: theme.fontWeight.bold,
+                color: theme.colors.text.primary,
+                margin: 0,
+              }}
+            >
+              User Management
+            </h1>
+          </div>
+          <p style={{
+            color: theme.colors.text.secondary,
+            fontSize: theme.fontSize.base,
+            margin: 0,
+            marginBottom: theme.spacing.lg,
+          }}>
+            Manage users and their role assignments
+          </p>
+
           <button
             onClick={() => setShowCreateModal(true)}
             style={{
-              padding: "0.75rem 1.5rem",
-              backgroundColor: "#2563eb",
-              color: "#f1f5f9",
-              border: "none",
-              borderRadius: "4px",
-              cursor: "pointer",
-              fontWeight: "500",
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: theme.spacing.sm,
+              padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
+              backgroundColor: theme.colors.accent.primary,
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: theme.radius.md,
+              cursor: 'pointer',
+              fontSize: theme.fontSize.sm,
+              fontWeight: theme.fontWeight.semibold,
+              transition: 'all 0.2s',
+              boxShadow: theme.shadows.sm,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = theme.colors.accent.primaryHover;
+              e.currentTarget.style.boxShadow = theme.shadows.md;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = theme.colors.accent.primary;
+              e.currentTarget.style.boxShadow = theme.shadows.sm;
             }}
           >
-            + Create User
+            <UserPlus size={16} />
+            Create User
           </button>
-          <a
-            href="/"
-            style={{
-              padding: "0.75rem 1.5rem",
-              backgroundColor: "#475569",
-              color: "#f1f5f9",
-              border: "none",
-              borderRadius: "4px",
-              textDecoration: "none",
-              fontWeight: "500",
-              display: "inline-block",
-            }}
-          >
-            Back to Dashboard
-          </a>
         </div>
-      </div>
 
-      {/* Success/Error Messages */}
-      {success && (
-        <div style={{
-          padding: "1rem",
-          marginBottom: "1rem",
-          backgroundColor: "#166534",
-          border: "1px solid #22c55e",
-          borderRadius: "4px",
-          color: "#bbf7d0",
-        }}>
-          {success}
-        </div>
-      )}
+        {/* Success/Error Messages */}
+        {success && (
+          <div style={{
+            padding: theme.spacing.md,
+            marginBottom: theme.spacing.lg,
+            backgroundColor: `${theme.colors.accent.success}15`,
+            border: `1px solid ${theme.colors.accent.success}`,
+            borderRadius: theme.radius.md,
+            color: theme.colors.accent.success,
+            fontSize: theme.fontSize.sm,
+            fontWeight: theme.fontWeight.medium,
+          }}>
+            ✓ {success}
+          </div>
+        )}
 
-      {error && (
-        <div style={{
-          padding: "1rem",
-          marginBottom: "1rem",
-          backgroundColor: "#7f1d1d",
-          border: "1px solid #ef4444",
-          borderRadius: "4px",
-          color: "#fecaca",
-        }}>
-          {error}
-        </div>
-      )}
+        {error && (
+          <div style={{
+            padding: theme.spacing.md,
+            marginBottom: theme.spacing.lg,
+            backgroundColor: `${theme.colors.accent.danger}15`,
+            border: `1px solid ${theme.colors.accent.danger}`,
+            borderRadius: theme.radius.md,
+            color: theme.colors.accent.danger,
+            fontSize: theme.fontSize.sm,
+            fontWeight: theme.fontWeight.medium,
+          }}>
+            ⚠ {error}
+          </div>
+        )}
 
-      {/* Users Table */}
-      <div style={{
-        backgroundColor: "#334155",
-        borderRadius: "8px",
-        border: "1px solid #475569",
-        overflow: "hidden",
-      }}>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ backgroundColor: "#1e293b", borderBottom: "2px solid #475569" }}>
-              <th style={{ padding: "1rem", textAlign: "left", fontWeight: "bold" }}>Email</th>
-              <th style={{ padding: "1rem", textAlign: "left", fontWeight: "bold" }}>Roles</th>
-              <th style={{ padding: "1rem", textAlign: "left", fontWeight: "bold" }}>Last Login</th>
-              <th style={{ padding: "1rem", textAlign: "center", fontWeight: "bold" }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((user, index) => (
-              <tr
-                key={user.id}
-                style={{
-                  backgroundColor: index % 2 === 0 ? "#334155" : "#1e293b",
-                  borderBottom: "1px solid #475569",
-                }}
-              >
-                <td style={{ padding: "1rem" }}>{user.email}</td>
-                <td style={{ padding: "1rem" }}>
-                  {user.roles.length > 0 ? (
-                    <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                      {user.roles.map((role) => (
-                        <span
-                          key={role.name}
-                          style={{
-                            padding: "0.25rem 0.5rem",
-                            backgroundColor: role.name === 'admin' ? '#ef4444' : role.name === 'manager' ? '#f59e0b' : '#3b82f6',
-                            borderRadius: "4px",
-                            fontSize: "0.75rem",
-                            fontWeight: "bold",
-                            textTransform: "uppercase",
-                          }}
-                        >
-                          {role.name}
+        {/* Users Table */}
+        <Card title="All Users" description={`${users.length} total users`} noPadding>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{
+                  backgroundColor: theme.colors.background.tertiary,
+                  borderBottom: `2px solid ${theme.colors.border.light}`
+                }}>
+                  <th style={{
+                    padding: theme.spacing.md,
+                    textAlign: 'left',
+                    color: theme.colors.text.primary,
+                    fontWeight: theme.fontWeight.semibold,
+                    fontSize: theme.fontSize.sm,
+                  }}>
+                    Email
+                  </th>
+                  <th style={{
+                    padding: theme.spacing.md,
+                    textAlign: 'left',
+                    color: theme.colors.text.primary,
+                    fontWeight: theme.fontWeight.semibold,
+                    fontSize: theme.fontSize.sm,
+                  }}>
+                    Roles
+                  </th>
+                  <th style={{
+                    padding: theme.spacing.md,
+                    textAlign: 'left',
+                    color: theme.colors.text.primary,
+                    fontWeight: theme.fontWeight.semibold,
+                    fontSize: theme.fontSize.sm,
+                  }}>
+                    Last Login
+                  </th>
+                  <th style={{
+                    padding: theme.spacing.md,
+                    textAlign: 'center',
+                    color: theme.colors.text.primary,
+                    fontWeight: theme.fontWeight.semibold,
+                    fontSize: theme.fontSize.sm,
+                  }}>
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((user, index) => (
+                  <tr
+                    key={user.id}
+                    style={{
+                      borderBottom: `1px solid ${theme.colors.border.light}`,
+                    }}
+                  >
+                    <td style={{ padding: theme.spacing.md, color: theme.colors.text.primary }}>
+                      {user.email}
+                    </td>
+                    <td style={{ padding: theme.spacing.md }}>
+                      {user.roles.length > 0 ? (
+                        <div style={{ display: 'flex', gap: theme.spacing.xs, flexWrap: 'wrap' }}>
+                          {user.roles.map((role) => {
+                            const variant = role.name === 'admin' ? 'danger' :
+                                          role.name === 'manager' ? 'warning' :
+                                          role.name === 'viewer' ? 'success' : 'default';
+                            return (
+                              <Badge key={role.name} variant={variant} size="sm">
+                                {role.name}
+                              </Badge>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <span style={{ color: theme.colors.text.tertiary, fontSize: theme.fontSize.sm }}>
+                          No roles
                         </span>
-                      ))}
-                    </div>
-                  ) : (
-                    <span style={{ color: "#94a3b8" }}>No roles</span>
-                  )}
-                </td>
-                <td style={{ padding: "1rem", color: "#94a3b8" }}>
-                  {user.last_login ? new Date(user.last_login).toLocaleString() : "Never"}
-                </td>
-                <td style={{ padding: "1rem", textAlign: "center" }}>
-                  <div style={{ display: "flex", gap: "0.5rem", justifyContent: "center" }}>
-                    <button
-                      onClick={() => {
-                        setSelectedUser(user);
-                        setShowEditModal(true);
-                      }}
-                      style={{
-                        padding: "0.5rem 1rem",
-                        backgroundColor: "#2563eb",
-                        color: "#f1f5f9",
-                        border: "none",
-                        borderRadius: "4px",
-                        cursor: "pointer",
-                        fontSize: "0.875rem",
-                      }}
-                    >
-                      Edit Roles
-                    </button>
-                    <button
-                      onClick={() => {
-                        setSelectedUser(user);
-                        setShowPasswordModal(true);
-                      }}
-                      style={{
-                        padding: "0.5rem 1rem",
-                        backgroundColor: "#f59e0b",
-                        color: "#f1f5f9",
-                        border: "none",
-                        borderRadius: "4px",
-                        cursor: "pointer",
-                        fontSize: "0.875rem",
-                      }}
-                    >
-                      Reset Password
-                    </button>
-                    <button
-                      onClick={() => handleDeleteUser(user.id)}
-                      style={{
-                        padding: "0.5rem 1rem",
-                        backgroundColor: "#ef4444",
-                        color: "#f1f5f9",
-                        border: "none",
-                        borderRadius: "4px",
-                        cursor: "pointer",
-                        fontSize: "0.875rem",
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                      )}
+                    </td>
+                    <td style={{
+                      padding: theme.spacing.md,
+                      color: theme.colors.text.secondary,
+                      fontSize: theme.fontSize.sm,
+                    }}>
+                      {user.last_login ? new Date(user.last_login).toLocaleString() : "Never"}
+                    </td>
+                    <td style={{ padding: theme.spacing.md, textAlign: 'center' }}>
+                      <div style={{ display: 'flex', gap: theme.spacing.xs, justifyContent: 'center' }}>
+                        <button
+                          onClick={() => {
+                            setSelectedUser(user);
+                            setShowEditModal(true);
+                          }}
+                          style={{
+                            padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
+                            backgroundColor: theme.colors.accent.primary,
+                            color: '#ffffff',
+                            border: 'none',
+                            borderRadius: theme.radius.sm,
+                            cursor: 'pointer',
+                            fontSize: theme.fontSize.xs,
+                            fontWeight: theme.fontWeight.medium,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            transition: 'all 0.2s',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = theme.colors.accent.primaryHover;
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = theme.colors.accent.primary;
+                          }}
+                          title="Edit Roles"
+                        >
+                          <Edit size={14} />
+                          Roles
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedUser(user);
+                            setShowPasswordModal(true);
+                          }}
+                          style={{
+                            padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
+                            backgroundColor: theme.colors.accent.warning,
+                            color: '#ffffff',
+                            border: 'none',
+                            borderRadius: theme.radius.sm,
+                            cursor: 'pointer',
+                            fontSize: theme.fontSize.xs,
+                            fontWeight: theme.fontWeight.medium,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            transition: 'all 0.2s',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.opacity = '0.9';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.opacity = '1';
+                          }}
+                          title="Reset Password"
+                        >
+                          <Key size={14} />
+                          Password
+                        </button>
+                        <button
+                          onClick={() => handleDeleteUser(user.id)}
+                          style={{
+                            padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
+                            backgroundColor: theme.colors.accent.danger,
+                            color: '#ffffff',
+                            border: 'none',
+                            borderRadius: theme.radius.sm,
+                            cursor: 'pointer',
+                            fontSize: theme.fontSize.xs,
+                            fontWeight: theme.fontWeight.medium,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            transition: 'all 0.2s',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.opacity = '0.9';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.opacity = '1';
+                          }}
+                          title="Delete User"
+                        >
+                          <Trash2 size={14} />
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       </div>
 
       {/* Create User Modal */}
@@ -412,30 +552,46 @@ function CreateUserModal({ roles, onClose, onCreate }) {
 
   return (
     <div style={{
-      position: "fixed",
+      position: 'fixed',
       top: 0,
       left: 0,
       right: 0,
       bottom: 0,
-      backgroundColor: "rgba(0, 0, 0, 0.7)",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
       zIndex: 1000,
     }}>
       <div style={{
-        backgroundColor: "#334155",
-        padding: "2rem",
-        borderRadius: "8px",
-        border: "1px solid #475569",
-        maxWidth: "500px",
-        width: "100%",
+        backgroundColor: theme.colors.background.secondary,
+        padding: theme.spacing['2xl'],
+        borderRadius: theme.radius.xl,
+        border: `1px solid ${theme.colors.border.light}`,
+        boxShadow: theme.shadows.xl,
+        maxWidth: '500px',
+        width: '100%',
+        margin: theme.spacing.lg,
       }}>
-        <h2 style={{ marginTop: 0, color: "#f1f5f9" }}>Create New User</h2>
+        <h2 style={{
+          marginTop: 0,
+          marginBottom: theme.spacing.lg,
+          color: theme.colors.text.primary,
+          fontSize: theme.fontSize['2xl'],
+          fontWeight: theme.fontWeight.bold,
+        }}>
+          Create New User
+        </h2>
         <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: "1rem" }}>
-            <label style={{ display: "block", marginBottom: "0.5rem", color: "#f1f5f9" }}>
-              Email
+          <div style={{ marginBottom: theme.spacing.lg }}>
+            <label style={{
+              display: 'block',
+              marginBottom: theme.spacing.sm,
+              color: theme.colors.text.primary,
+              fontSize: theme.fontSize.sm,
+              fontWeight: theme.fontWeight.medium,
+            }}>
+              Email Address
             </label>
             <input
               type="email"
@@ -443,18 +599,32 @@ function CreateUserModal({ roles, onClose, onCreate }) {
               onChange={(e) => setEmail(e.target.value)}
               required
               style={{
-                width: "100%",
-                padding: "0.75rem",
-                backgroundColor: "#1e293b",
-                color: "#f1f5f9",
-                border: "1px solid #475569",
-                borderRadius: "4px",
+                width: '100%',
+                padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                backgroundColor: theme.colors.background.tertiary,
+                color: theme.colors.text.primary,
+                border: `1px solid ${theme.colors.border.medium}`,
+                borderRadius: theme.radius.md,
+                fontSize: theme.fontSize.base,
+                outline: 'none',
+              }}
+              onFocus={(e) => {
+                e.target.style.borderColor = theme.colors.accent.primary;
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = theme.colors.border.medium;
               }}
             />
           </div>
 
-          <div style={{ marginBottom: "1rem" }}>
-            <label style={{ display: "block", marginBottom: "0.5rem", color: "#f1f5f9" }}>
+          <div style={{ marginBottom: theme.spacing.lg }}>
+            <label style={{
+              display: 'block',
+              marginBottom: theme.spacing.sm,
+              color: theme.colors.text.primary,
+              fontSize: theme.fontSize.sm,
+              fontWeight: theme.fontWeight.medium,
+            }}>
               Password
             </label>
             <input
@@ -464,46 +634,91 @@ function CreateUserModal({ roles, onClose, onCreate }) {
               required
               minLength={8}
               style={{
-                width: "100%",
-                padding: "0.75rem",
-                backgroundColor: "#1e293b",
-                color: "#f1f5f9",
-                border: "1px solid #475569",
-                borderRadius: "4px",
+                width: '100%',
+                padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                backgroundColor: theme.colors.background.tertiary,
+                color: theme.colors.text.primary,
+                border: `1px solid ${theme.colors.border.medium}`,
+                borderRadius: theme.radius.md,
+                fontSize: theme.fontSize.base,
+                outline: 'none',
+              }}
+              onFocus={(e) => {
+                e.target.style.borderColor = theme.colors.accent.primary;
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = theme.colors.border.medium;
               }}
             />
           </div>
 
-          <div style={{ marginBottom: "1.5rem" }}>
-            <label style={{ display: "block", marginBottom: "0.5rem", color: "#f1f5f9" }}>
-              Roles
+          <div style={{ marginBottom: theme.spacing.xl }}>
+            <label style={{
+              display: 'block',
+              marginBottom: theme.spacing.sm,
+              color: theme.colors.text.primary,
+              fontSize: theme.fontSize.sm,
+              fontWeight: theme.fontWeight.medium,
+            }}>
+              Assign Roles
             </label>
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: theme.spacing.sm,
+              padding: theme.spacing.md,
+              backgroundColor: theme.colors.background.tertiary,
+              borderRadius: theme.radius.md,
+            }}>
               {roles.map((role) => (
-                <label key={role.name} style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#f1f5f9" }}>
+                <label
+                  key={role.name}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: theme.spacing.sm,
+                    color: theme.colors.text.primary,
+                    cursor: 'pointer',
+                  }}
+                >
                   <input
                     type="checkbox"
                     checked={selectedRoles.includes(role.name)}
                     onChange={() => toggleRole(role.name)}
+                    style={{ cursor: 'pointer' }}
                   />
-                  <span style={{ fontWeight: "500" }}>{role.name}</span>
-                  <span style={{ color: "#94a3b8", fontSize: "0.875rem" }}>- {role.description}</span>
+                  <span style={{ fontWeight: theme.fontWeight.medium }}>{role.name}</span>
+                  <span style={{
+                    color: theme.colors.text.tertiary,
+                    fontSize: theme.fontSize.sm
+                  }}>
+                    - {role.description}
+                  </span>
                 </label>
               ))}
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: "1rem", justifyContent: "flex-end" }}>
+          <div style={{ display: 'flex', gap: theme.spacing.md, justifyContent: 'flex-end' }}>
             <button
               type="button"
               onClick={onClose}
               style={{
-                padding: "0.75rem 1.5rem",
-                backgroundColor: "#475569",
-                color: "#f1f5f9",
-                border: "none",
-                borderRadius: "4px",
-                cursor: "pointer",
+                padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
+                backgroundColor: 'transparent',
+                color: theme.colors.text.secondary,
+                border: `1px solid ${theme.colors.border.medium}`,
+                borderRadius: theme.radius.md,
+                cursor: 'pointer',
+                fontSize: theme.fontSize.sm,
+                fontWeight: theme.fontWeight.medium,
+                transition: 'all 0.2s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = theme.colors.background.tertiary;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
               }}
             >
               Cancel
@@ -511,12 +726,21 @@ function CreateUserModal({ roles, onClose, onCreate }) {
             <button
               type="submit"
               style={{
-                padding: "0.75rem 1.5rem",
-                backgroundColor: "#2563eb",
-                color: "#f1f5f9",
-                border: "none",
-                borderRadius: "4px",
-                cursor: "pointer",
+                padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
+                backgroundColor: theme.colors.accent.primary,
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: theme.radius.md,
+                cursor: 'pointer',
+                fontSize: theme.fontSize.sm,
+                fontWeight: theme.fontWeight.semibold,
+                transition: 'all 0.2s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = theme.colors.accent.primaryHover;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = theme.colors.accent.primary;
               }}
             >
               Create User
@@ -549,57 +773,112 @@ function EditRolesModal({ user, roles, onClose, onUpdate }) {
 
   return (
     <div style={{
-      position: "fixed",
+      position: 'fixed',
       top: 0,
       left: 0,
       right: 0,
       bottom: 0,
-      backgroundColor: "rgba(0, 0, 0, 0.7)",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
       zIndex: 1000,
     }}>
       <div style={{
-        backgroundColor: "#334155",
-        padding: "2rem",
-        borderRadius: "8px",
-        border: "1px solid #475569",
-        maxWidth: "500px",
-        width: "100%",
+        backgroundColor: theme.colors.background.secondary,
+        padding: theme.spacing['2xl'],
+        borderRadius: theme.radius.xl,
+        border: `1px solid ${theme.colors.border.light}`,
+        boxShadow: theme.shadows.xl,
+        maxWidth: '500px',
+        width: '100%',
+        margin: theme.spacing.lg,
       }}>
-        <h2 style={{ marginTop: 0, color: "#f1f5f9" }}>Edit Roles: {user.email}</h2>
+        <h2 style={{
+          marginTop: 0,
+          marginBottom: theme.spacing.xs,
+          color: theme.colors.text.primary,
+          fontSize: theme.fontSize['2xl'],
+          fontWeight: theme.fontWeight.bold,
+        }}>
+          Edit User Roles
+        </h2>
+        <p style={{
+          marginTop: 0,
+          marginBottom: theme.spacing.lg,
+          color: theme.colors.text.secondary,
+          fontSize: theme.fontSize.sm,
+        }}>
+          {user.email}
+        </p>
         <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: "1.5rem" }}>
-            <label style={{ display: "block", marginBottom: "0.5rem", color: "#f1f5f9" }}>
-              Roles
+          <div style={{ marginBottom: theme.spacing.xl }}>
+            <label style={{
+              display: 'block',
+              marginBottom: theme.spacing.sm,
+              color: theme.colors.text.primary,
+              fontSize: theme.fontSize.sm,
+              fontWeight: theme.fontWeight.medium,
+            }}>
+              Assigned Roles
             </label>
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: theme.spacing.sm,
+              padding: theme.spacing.md,
+              backgroundColor: theme.colors.background.tertiary,
+              borderRadius: theme.radius.md,
+            }}>
               {roles.map((role) => (
-                <label key={role.name} style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#f1f5f9" }}>
+                <label
+                  key={role.name}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: theme.spacing.sm,
+                    color: theme.colors.text.primary,
+                    cursor: 'pointer',
+                  }}
+                >
                   <input
                     type="checkbox"
                     checked={selectedRoles.includes(role.name)}
                     onChange={() => toggleRole(role.name)}
+                    style={{ cursor: 'pointer' }}
                   />
-                  <span style={{ fontWeight: "500" }}>{role.name}</span>
-                  <span style={{ color: "#94a3b8", fontSize: "0.875rem" }}>- {role.description}</span>
+                  <span style={{ fontWeight: theme.fontWeight.medium }}>{role.name}</span>
+                  <span style={{
+                    color: theme.colors.text.tertiary,
+                    fontSize: theme.fontSize.sm
+                  }}>
+                    - {role.description}
+                  </span>
                 </label>
               ))}
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: "1rem", justifyContent: "flex-end" }}>
+          <div style={{ display: 'flex', gap: theme.spacing.md, justifyContent: 'flex-end' }}>
             <button
               type="button"
               onClick={onClose}
               style={{
-                padding: "0.75rem 1.5rem",
-                backgroundColor: "#475569",
-                color: "#f1f5f9",
-                border: "none",
-                borderRadius: "4px",
-                cursor: "pointer",
+                padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
+                backgroundColor: 'transparent',
+                color: theme.colors.text.secondary,
+                border: `1px solid ${theme.colors.border.medium}`,
+                borderRadius: theme.radius.md,
+                cursor: 'pointer',
+                fontSize: theme.fontSize.sm,
+                fontWeight: theme.fontWeight.medium,
+                transition: 'all 0.2s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = theme.colors.background.tertiary;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
               }}
             >
               Cancel
@@ -607,12 +886,21 @@ function EditRolesModal({ user, roles, onClose, onUpdate }) {
             <button
               type="submit"
               style={{
-                padding: "0.75rem 1.5rem",
-                backgroundColor: "#2563eb",
-                color: "#f1f5f9",
-                border: "none",
-                borderRadius: "4px",
-                cursor: "pointer",
+                padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
+                backgroundColor: theme.colors.accent.primary,
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: theme.radius.md,
+                cursor: 'pointer',
+                fontSize: theme.fontSize.sm,
+                fontWeight: theme.fontWeight.semibold,
+                transition: 'all 0.2s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = theme.colors.accent.primaryHover;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = theme.colors.accent.primary;
               }}
             >
               Update Roles
@@ -645,29 +933,53 @@ function ResetPasswordModal({ user, onClose, onReset }) {
 
   return (
     <div style={{
-      position: "fixed",
+      position: 'fixed',
       top: 0,
       left: 0,
       right: 0,
       bottom: 0,
-      backgroundColor: "rgba(0, 0, 0, 0.7)",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
       zIndex: 1000,
     }}>
       <div style={{
-        backgroundColor: "#334155",
-        padding: "2rem",
-        borderRadius: "8px",
-        border: "1px solid #475569",
-        maxWidth: "500px",
-        width: "100%",
+        backgroundColor: theme.colors.background.secondary,
+        padding: theme.spacing['2xl'],
+        borderRadius: theme.radius.xl,
+        border: `1px solid ${theme.colors.border.light}`,
+        boxShadow: theme.shadows.xl,
+        maxWidth: '500px',
+        width: '100%',
+        margin: theme.spacing.lg,
       }}>
-        <h2 style={{ marginTop: 0, color: "#f1f5f9" }}>Reset Password: {user.email}</h2>
+        <h2 style={{
+          marginTop: 0,
+          marginBottom: theme.spacing.xs,
+          color: theme.colors.text.primary,
+          fontSize: theme.fontSize['2xl'],
+          fontWeight: theme.fontWeight.bold,
+        }}>
+          Reset Password
+        </h2>
+        <p style={{
+          marginTop: 0,
+          marginBottom: theme.spacing.lg,
+          color: theme.colors.text.secondary,
+          fontSize: theme.fontSize.sm,
+        }}>
+          {user.email}
+        </p>
         <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: "1rem" }}>
-            <label style={{ display: "block", marginBottom: "0.5rem", color: "#f1f5f9" }}>
+          <div style={{ marginBottom: theme.spacing.lg }}>
+            <label style={{
+              display: 'block',
+              marginBottom: theme.spacing.sm,
+              color: theme.colors.text.primary,
+              fontSize: theme.fontSize.sm,
+              fontWeight: theme.fontWeight.medium,
+            }}>
               New Password
             </label>
             <input
@@ -680,18 +992,32 @@ function ResetPasswordModal({ user, onClose, onReset }) {
               required
               minLength={8}
               style={{
-                width: "100%",
-                padding: "0.75rem",
-                backgroundColor: "#1e293b",
-                color: "#f1f5f9",
-                border: "1px solid #475569",
-                borderRadius: "4px",
+                width: '100%',
+                padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                backgroundColor: theme.colors.background.tertiary,
+                color: theme.colors.text.primary,
+                border: `1px solid ${theme.colors.border.medium}`,
+                borderRadius: theme.radius.md,
+                fontSize: theme.fontSize.base,
+                outline: 'none',
+              }}
+              onFocus={(e) => {
+                e.target.style.borderColor = theme.colors.accent.primary;
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = theme.colors.border.medium;
               }}
             />
           </div>
 
-          <div style={{ marginBottom: "1rem" }}>
-            <label style={{ display: "block", marginBottom: "0.5rem", color: "#f1f5f9" }}>
+          <div style={{ marginBottom: theme.spacing.lg }}>
+            <label style={{
+              display: 'block',
+              marginBottom: theme.spacing.sm,
+              color: theme.colors.text.primary,
+              fontSize: theme.fontSize.sm,
+              fontWeight: theme.fontWeight.medium,
+            }}>
               Confirm Password
             </label>
             <input
@@ -704,41 +1030,58 @@ function ResetPasswordModal({ user, onClose, onReset }) {
               required
               minLength={8}
               style={{
-                width: "100%",
-                padding: "0.75rem",
-                backgroundColor: "#1e293b",
-                color: "#f1f5f9",
-                border: "1px solid #475569",
-                borderRadius: "4px",
+                width: '100%',
+                padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                backgroundColor: theme.colors.background.tertiary,
+                color: theme.colors.text.primary,
+                border: `1px solid ${theme.colors.border.medium}`,
+                borderRadius: theme.radius.md,
+                fontSize: theme.fontSize.base,
+                outline: 'none',
+              }}
+              onFocus={(e) => {
+                e.target.style.borderColor = theme.colors.accent.primary;
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = theme.colors.border.medium;
               }}
             />
           </div>
 
           {error && (
             <div style={{
-              padding: "0.75rem",
-              marginBottom: "1rem",
-              backgroundColor: "#7f1d1d",
-              border: "1px solid #ef4444",
-              borderRadius: "4px",
-              color: "#fecaca",
-              fontSize: "0.875rem",
+              padding: theme.spacing.sm,
+              marginBottom: theme.spacing.lg,
+              backgroundColor: `${theme.colors.accent.danger}15`,
+              border: `1px solid ${theme.colors.accent.danger}`,
+              borderRadius: theme.radius.md,
+              color: theme.colors.accent.danger,
+              fontSize: theme.fontSize.sm,
             }}>
               {error}
             </div>
           )}
 
-          <div style={{ display: "flex", gap: "1rem", justifyContent: "flex-end" }}>
+          <div style={{ display: 'flex', gap: theme.spacing.md, justifyContent: 'flex-end' }}>
             <button
               type="button"
               onClick={onClose}
               style={{
-                padding: "0.75rem 1.5rem",
-                backgroundColor: "#475569",
-                color: "#f1f5f9",
-                border: "none",
-                borderRadius: "4px",
-                cursor: "pointer",
+                padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
+                backgroundColor: 'transparent',
+                color: theme.colors.text.secondary,
+                border: `1px solid ${theme.colors.border.medium}`,
+                borderRadius: theme.radius.md,
+                cursor: 'pointer',
+                fontSize: theme.fontSize.sm,
+                fontWeight: theme.fontWeight.medium,
+                transition: 'all 0.2s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = theme.colors.background.tertiary;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
               }}
             >
               Cancel
@@ -746,12 +1089,21 @@ function ResetPasswordModal({ user, onClose, onReset }) {
             <button
               type="submit"
               style={{
-                padding: "0.75rem 1.5rem",
-                backgroundColor: "#f59e0b",
-                color: "#f1f5f9",
-                border: "none",
-                borderRadius: "4px",
-                cursor: "pointer",
+                padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
+                backgroundColor: theme.colors.accent.warning,
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: theme.radius.md,
+                cursor: 'pointer',
+                fontSize: theme.fontSize.sm,
+                fontWeight: theme.fontWeight.semibold,
+                transition: 'all 0.2s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.opacity = '0.9';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.opacity = '1';
               }}
             >
               Reset Password

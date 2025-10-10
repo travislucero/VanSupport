@@ -42,31 +42,16 @@ function Login() {
       >
         {/* Logo */}
         <div style={{ textAlign: "center", marginBottom: theme.spacing['2xl'] }}>
-          <div
+          <img
+            src="/max-logo.png"
+            alt="MAX - Mobile AI Xpress Support"
             style={{
-              width: "80px",
-              height: "80px",
-              backgroundColor: theme.colors.accent.primary,
-              borderRadius: theme.radius.xl,
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: "3rem",
-              marginBottom: theme.spacing.md,
+              maxWidth: "280px",
+              width: "100%",
+              height: "auto",
+              marginBottom: theme.spacing.lg,
             }}
-          >
-            🚐
-          </div>
-          <h1
-            style={{
-              color: theme.colors.text.primary,
-              marginBottom: theme.spacing.xs,
-              fontSize: theme.fontSize['3xl'],
-              fontWeight: theme.fontWeight.bold,
-            }}
-          >
-            VanSupport
-          </h1>
+          />
           <p
             style={{
               color: theme.colors.text.secondary,
@@ -202,7 +187,7 @@ function Login() {
                 width: "100%",
                 padding: `${theme.spacing.md} ${theme.spacing.lg}`,
                 backgroundColor: loading ? theme.colors.background.hover : theme.colors.accent.primary,
-                color: theme.colors.text.primary,
+                color: loading ? theme.colors.text.primary : '#ffffff',
                 border: "none",
                 borderRadius: theme.radius.lg,
                 fontSize: theme.fontSize.base,
