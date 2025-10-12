@@ -1,6 +1,6 @@
 import React from 'react';
 import { useLocation, Link } from 'react-router-dom';
-import { LayoutDashboard, List, Edit, Users, LogOut } from 'lucide-react';
+import { LayoutDashboard, List, Target, Users, LogOut } from 'lucide-react';
 import { theme } from '../styles/theme';
 
 const Sidebar = ({ user, onLogout, hasRole }) => {
@@ -29,13 +29,13 @@ const Sidebar = ({ user, onLogout, hasRole }) => {
       });
     }
 
-    // Add Edit Sequences for manager and admin
+    // Add Trigger Patterns for manager and admin
     if (hasRole('manager') || hasRole('admin')) {
       items.push({
-        id: 'edit-sequences',
-        label: 'Edit Sequences',
-        Icon: Edit,
-        path: '/sequences/edit',
+        id: 'trigger-patterns',
+        label: 'Trigger Patterns',
+        Icon: Target,
+        path: '/patterns',
         roles: ['manager', 'admin']
       });
     }

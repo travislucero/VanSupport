@@ -409,30 +409,567 @@ app.get("/api/admin/roles", authenticateToken, requireRole(['admin']), async (re
   }
 });
 
-// 4. Serve static files from dashboard/dist
-app.use(express.static(path.join(__dirname, "dashboard", "dist")));
+// Sequence management endpoints (Manager+ access required)
 
-// 5. Protected API routes examples
-// Use authenticateToken for any authenticated user
-// Use requireRole(['admin', 'manager']) for role-based access
-// Use requirePermission('view_analytics') for permission-based access
+// 1. GET /api/sequences - List all sequences
+app.get("/api/sequences", authenticateToken, requireRole(['manager', 'admin']), async (req, res) => {
+  try {
+    console.log("📋 List Sequences - Fetching all sequences");
 
-// Example: Protect route for admins only
-// app.get("/api/admin/users", authenticateToken, requireRole(['admin']), async (req, res) => {
-//   // Only admins can access this
-// });
+    const { data, error } = await supabase.rpc("fn_get_all_sequences", {
+      p_include_inactive: true
+    });
 
-// Example: Protect route for admins and managers
-// app.get("/api/reports", authenticateToken, requireRole(['admin', 'manager']), async (req, res) => {
-//   // Admins and managers can access this
-// });
+    if (error) {
+      console.error("📋 List Sequences - Supabase error:", error);
+      return res.status(500).json({ error: error.message });
+    }
 
-// Example: Protect route by permission
-// app.get("/api/export", authenticateToken, requirePermission('export_data'), async (req, res) => {
-//   // Anyone with export_data permission can access this
-// });
+    console.log("📋 List Sequences - Success, returned", data?.length || 0, "sequences");
+    res.json(data || []);
+  } catch (err) {
+    console.error("📋 List Sequences - Error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
-// 6. API routes (must come before catch-all route)
+// 2. GET /api/sequences/:key - Get sequence details
+app.get("/api/sequences/:key", authenticateToken, requireRole(['manager', 'admin']), async (req, res) => {
+  try {
+    const { key } = req.params;
+    console.log("📖 Get Sequence Detail - Fetching sequence:", key);
+
+    const { data, error } = await supabase.rpc("fn_get_sequence_detail", {
+      p_sequence_key: key
+    });
+
+    if (error) {
+      console.error("📖 Get Sequence Detail - Supabase error:", error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    // Handle array response from Supabase - return first item
+    const sequenceData = Array.isArray(data) ? data[0] : data;
+
+    if (!sequenceData) {
+      console.log("📖 Get Sequence Detail - Sequence not found:", key);
+      return res.status(404).json({ error: "Sequence not found" });
+    }
+
+    // Map sequence_active to is_active if needed
+    if (sequenceData.sequence_active !== undefined && sequenceData.is_active === undefined) {
+      sequenceData.is_active = sequenceData.sequence_active;
+    }
+
+    console.log("📖 Get Sequence Detail - Success");
+    res.json(sequenceData);
+  } catch (err) {
+    console.error("📖 Get Sequence Detail - Error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// 3. GET /api/sequences/:key/validate - Validate sequence
+app.get("/api/sequences/:key/validate", authenticateToken, requireRole(['manager', 'admin']), async (req, res) => {
+  try {
+    const { key } = req.params;
+    console.log("✅ Validate Sequence - Validating:", key);
+
+    const { data, error } = await supabase.rpc("fn_validate_sequence", {
+      p_sequence_key: key
+    });
+
+    if (error) {
+      console.error("✅ Validate Sequence - Supabase error:", error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log("✅ Validate Sequence - Validation result:", data);
+    res.json(data);
+  } catch (err) {
+    console.error("✅ Validate Sequence - Error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// 4. POST /api/sequences - Create new sequence
+app.post("/api/sequences", authenticateToken, requireRole(['manager', 'admin']), async (req, res) => {
+  try {
+    const { key, name, description, category, first_step } = req.body;
+
+    if (!key || !name || !first_step) {
+      return res.status(400).json({
+        error: "Missing required fields: key, name, and first_step are required"
+      });
+    }
+
+    if (!first_step.message) {
+      return res.status(400).json({
+        error: "first_step must include a message"
+      });
+    }
+
+    console.log("➕ Create Sequence - Creating:", key);
+
+    const { data, error } = await supabase.rpc("fn_create_sequence", {
+      p_sequence_key: key,
+      p_display_name: name,
+      p_description: description || null,
+      p_category: category || null,
+      p_created_by: req.user.id,
+      p_first_step_message: first_step.message,
+      p_first_step_url: first_step.doc_url || null,
+      p_first_step_title: first_step.doc_title || null
+    });
+
+    if (error) {
+      console.error("➕ Create Sequence - Supabase error:", error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log("➕ Create Sequence - Success");
+    res.status(201).json(data);
+  } catch (err) {
+    console.error("➕ Create Sequence - Error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// 5. PUT /api/sequences/:key - Update sequence metadata
+app.put("/api/sequences/:key", authenticateToken, requireRole(['manager', 'admin']), async (req, res) => {
+  try {
+    const { key } = req.params;
+    const { name, description, category, is_active } = req.body;
+
+    console.log("✏️ Update Sequence Metadata - Updating:", key);
+
+    const { data, error } = await supabase.rpc("fn_update_sequence_metadata", {
+      p_key: key,
+      p_name: name || null,
+      p_desc: description || null,
+      p_category: category || null,
+      p_is_active: is_active !== undefined ? is_active : null
+    });
+
+    if (error) {
+      console.error("✏️ Update Sequence Metadata - Supabase error:", error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log("✏️ Update Sequence Metadata - Success");
+    res.json(data);
+  } catch (err) {
+    console.error("✏️ Update Sequence Metadata - Error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// 6. PUT /api/sequences/:key/toggle - Enable/disable sequence
+app.put("/api/sequences/:key/toggle", authenticateToken, requireRole(['manager', 'admin']), async (req, res) => {
+  try {
+    const { key } = req.params;
+    const { is_active } = req.body;
+
+    if (is_active === undefined) {
+      return res.status(400).json({ error: "is_active is required" });
+    }
+
+    console.log("🔄 Toggle Sequence - Setting", key, "to", is_active);
+
+    const { data, error } = await supabase.rpc("fn_toggle_sequence", {
+      p_sequence_key: key,
+      p_is_active: is_active
+    });
+
+    if (error) {
+      console.error("🔄 Toggle Sequence - Supabase error:", error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log("🔄 Toggle Sequence - Success");
+    res.json(data);
+  } catch (err) {
+    console.error("🔄 Toggle Sequence - Error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// 7. POST /api/sequences/:key/steps - Add new step
+app.post("/api/sequences/:key/steps", authenticateToken, requireRole(['manager', 'admin']), async (req, res) => {
+  try {
+    const { key } = req.params;
+    const { step_num, message, doc_url, doc_title, success_triggers, failure_triggers } = req.body;
+
+    if (step_num === undefined || !message) {
+      return res.status(400).json({
+        error: "Missing required fields: step_num and message are required"
+      });
+    }
+
+    console.log("➕ Add Sequence Step - Adding step", step_num, "to", key);
+
+    const { data, error } = await supabase.rpc("fn_add_sequence_step", {
+      p_sequence_key: key,
+      p_step_num: step_num,
+      p_message_template: message,
+      p_doc_url: doc_url || null,
+      p_doc_title: doc_title || null,
+      p_success_triggers: success_triggers || [],
+      p_failure_triggers: failure_triggers || []
+    });
+
+    if (error) {
+      console.error("➕ Add Sequence Step - Supabase error:", error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log("➕ Add Sequence Step - Success");
+    res.status(201).json(data);
+  } catch (err) {
+    console.error("➕ Add Sequence Step - Error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// 8. PUT /api/sequences/:key/steps/:step_num - Update step
+app.put("/api/sequences/:key/steps/:step_num", authenticateToken, requireRole(['manager', 'admin']), async (req, res) => {
+  try {
+    const { key, step_num } = req.params;
+    const {
+      message,
+      doc_url,
+      doc_title,
+      success_triggers,
+      failure_triggers,
+      handoff_trigger,
+      handoff_sequence_key,
+      is_active
+    } = req.body;
+
+    console.log("✏️ Update Sequence Step - Updating step", step_num, "in", key);
+
+    const { data, error } = await supabase.rpc("fn_update_sequence_step", {
+      p_sequence_key: key,
+      p_step_num: parseInt(step_num),
+      p_message_template: message || null,
+      p_doc_url: doc_url || null,
+      p_doc_title: doc_title || null,
+      p_success_triggers: success_triggers || null,
+      p_failure_triggers: failure_triggers || null,
+      p_handoff_trigger: handoff_trigger || null,
+      p_handoff_sequence_key: handoff_sequence_key || null,
+      p_is_active: is_active !== undefined ? is_active : null
+    });
+
+    if (error) {
+      console.error("✏️ Update Sequence Step - Supabase error:", error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log("✏️ Update Sequence Step - Success");
+    res.json(data);
+  } catch (err) {
+    console.error("✏️ Update Sequence Step - Error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// 9. DELETE /api/sequences/:key/steps/:step_num - Delete step
+app.delete("/api/sequences/:key/steps/:step_num", authenticateToken, requireRole(['manager', 'admin']), async (req, res) => {
+  try {
+    const { key, step_num } = req.params;
+
+    console.log("🗑️ Delete Sequence Step - Deleting step", step_num, "from", key);
+
+    const { error } = await supabase.rpc("fn_delete_sequence_step", {
+      p_sequence_key: key,
+      p_step_num: parseInt(step_num)
+    });
+
+    if (error) {
+      console.error("🗑️ Delete Sequence Step - Supabase error:", error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log("🗑️ Delete Sequence Step - Success");
+    res.json({ success: true, message: "Step deleted successfully" });
+  } catch (err) {
+    console.error("🗑️ Delete Sequence Step - Error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// 10. DELETE /api/sequences/:key - Delete entire sequence
+app.delete("/api/sequences/:key", authenticateToken, requireRole(['manager', 'admin']), async (req, res) => {
+  try {
+    const { key } = req.params;
+
+    console.log("🗑️ Delete Sequence - Deleting sequence:", key);
+
+    const { error } = await supabase.rpc("fn_delete_sequence", {
+      p_sequence_key: key
+    });
+
+    if (error) {
+      console.error("🗑️ Delete Sequence - Supabase error:", error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log("🗑️ Delete Sequence - Success");
+    res.json({ success: true, message: "Sequence deleted successfully" });
+  } catch (err) {
+    console.error("🗑️ Delete Sequence - Error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Trigger Pattern Management endpoints (Manager+ access required)
+
+// 1. GET /api/patterns - List all trigger patterns
+app.get("/api/patterns", authenticateToken, requireRole(['manager', 'admin']), async (req, res) => {
+  try {
+    const { sequence_key } = req.query;
+
+    console.log("🎯 List Patterns - Fetching patterns", sequence_key ? `for sequence: ${sequence_key}` : "(all)");
+
+    let query = supabase
+      .from('topic_patterns')
+      .select('*')
+      .order('priority', { ascending: true });
+
+    // Filter by sequence if provided
+    if (sequence_key) {
+      query = query.eq('action_key', sequence_key);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error("🎯 List Patterns - Supabase error:", error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log("🎯 List Patterns - Success, returned", data?.length || 0, "patterns");
+    res.json(data || []);
+  } catch (err) {
+    console.error("🎯 List Patterns - Error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// 2. GET /api/patterns/:id - Get single pattern
+app.get("/api/patterns/:id", authenticateToken, requireRole(['manager', 'admin']), async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    console.log("🎯 Get Pattern - Fetching pattern:", id);
+
+    const { data, error } = await supabase
+      .from('topic_patterns')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        console.log("🎯 Get Pattern - Pattern not found:", id);
+        return res.status(404).json({ error: "Pattern not found" });
+      }
+      console.error("🎯 Get Pattern - Supabase error:", error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log("🎯 Get Pattern - Success");
+    res.json(data);
+  } catch (err) {
+    console.error("🎯 Get Pattern - Error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// 3. POST /api/patterns - Create new pattern
+app.post("/api/patterns", authenticateToken, requireRole(['manager', 'admin']), async (req, res) => {
+  try {
+    const {
+      category_slug,
+      pattern,
+      flags,
+      priority,
+      action_type,
+      action_key,
+      entry_step_id,
+      van_makes,
+      years,
+      van_versions
+    } = req.body;
+
+    if (!category_slug || !pattern || !action_type || !action_key) {
+      return res.status(400).json({
+        error: "Missing required fields: category_slug, pattern, action_type, and action_key are required"
+      });
+    }
+
+    console.log("🎯 Create Pattern - Creating new pattern for category:", category_slug);
+
+    const newPattern = {
+      category_slug,
+      pattern,
+      flags: flags || 'i',
+      priority: priority !== undefined ? priority : 100,
+      action_type,
+      action_key,
+      entry_step_id: entry_step_id || null,
+      van_makes: van_makes || null,
+      years: years || null,
+      van_versions: van_versions || null,
+      is_active: true
+    };
+
+    const { data, error } = await supabase
+      .from('topic_patterns')
+      .insert(newPattern)
+      .select()
+      .single();
+
+    if (error) {
+      console.error("🎯 Create Pattern - Supabase error:", error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log("🎯 Create Pattern - Success, created pattern:", data.id);
+    res.status(201).json(data);
+  } catch (err) {
+    console.error("🎯 Create Pattern - Error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// 4. PUT /api/patterns/:id - Update pattern
+app.put("/api/patterns/:id", authenticateToken, requireRole(['manager', 'admin']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      category_slug,
+      pattern,
+      flags,
+      priority,
+      action_type,
+      action_key,
+      entry_step_id,
+      van_makes,
+      years,
+      van_versions,
+      is_active
+    } = req.body;
+
+    console.log("🎯 Update Pattern - Updating pattern:", id);
+
+    const updateData = {
+      updated_at: new Date().toISOString()
+    };
+
+    // Only include fields that are provided
+    if (category_slug !== undefined) updateData.category_slug = category_slug;
+    if (pattern !== undefined) updateData.pattern = pattern;
+    if (flags !== undefined) updateData.flags = flags;
+    if (priority !== undefined) updateData.priority = priority;
+    if (action_type !== undefined) updateData.action_type = action_type;
+    if (action_key !== undefined) updateData.action_key = action_key;
+    if (entry_step_id !== undefined) updateData.entry_step_id = entry_step_id;
+    if (van_makes !== undefined) updateData.van_makes = van_makes;
+    if (years !== undefined) updateData.years = years;
+    if (van_versions !== undefined) updateData.van_versions = van_versions;
+    if (is_active !== undefined) updateData.is_active = is_active;
+
+    const { data, error } = await supabase
+      .from('topic_patterns')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        console.log("🎯 Update Pattern - Pattern not found:", id);
+        return res.status(404).json({ error: "Pattern not found" });
+      }
+      console.error("🎯 Update Pattern - Supabase error:", error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log("🎯 Update Pattern - Success");
+    res.json(data);
+  } catch (err) {
+    console.error("🎯 Update Pattern - Error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// 5. PUT /api/patterns/:id/toggle - Toggle is_active
+app.put("/api/patterns/:id/toggle", authenticateToken, requireRole(['manager', 'admin']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { is_active } = req.body;
+
+    if (is_active === undefined) {
+      return res.status(400).json({ error: "is_active is required" });
+    }
+
+    console.log("🎯 Toggle Pattern - Setting pattern", id, "to", is_active);
+
+    const { data, error } = await supabase
+      .from('topic_patterns')
+      .update({
+        is_active,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        console.log("🎯 Toggle Pattern - Pattern not found:", id);
+        return res.status(404).json({ error: "Pattern not found" });
+      }
+      console.error("🎯 Toggle Pattern - Supabase error:", error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log("🎯 Toggle Pattern - Success");
+    res.json(data);
+  } catch (err) {
+    console.error("🎯 Toggle Pattern - Error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// 6. DELETE /api/patterns/:id - Delete pattern
+app.delete("/api/patterns/:id", authenticateToken, requireRole(['manager', 'admin']), async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    console.log("🎯 Delete Pattern - Deleting pattern:", id);
+
+    const { error } = await supabase
+      .from('topic_patterns')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error("🎯 Delete Pattern - Supabase error:", error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log("🎯 Delete Pattern - Success");
+    res.json({ success: true, message: "Pattern deleted successfully" });
+  } catch (err) {
+    console.error("🎯 Delete Pattern - Error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Other dashboard API routes
 app.get("/test-supabase", async (req, res) => {
   // Try to pull just one row from session_events
   const { data, error } = await supabase
@@ -789,7 +1326,11 @@ app.get("/api/call-volume-heatmap", authenticateToken, async (req, res) => {
   }
 });
 
+// Serve static files from dashboard/dist (MUST come after all API routes)
+app.use(express.static(path.join(__dirname, "dashboard", "dist")));
+
 // Fallback middleware: serve index.html for non-API routes (Express 5 compatible)
+// This MUST be the last middleware - catches all non-API routes and serves the React app
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api')) {
     res.sendFile(path.join(__dirname, 'dashboard', 'dist', 'index.html'));
@@ -798,7 +1339,7 @@ app.use((req, res, next) => {
   }
 });
 
-// 4. Start server
+// Start server
 app.listen(port, () => {
   console.log(`Server running on http://localhost:${port}`);
 });
