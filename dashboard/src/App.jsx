@@ -45,6 +45,14 @@ function App() {
     ? "http://localhost:3000"
     : "https://vansupport.onrender.com";
 
+  // Helper function to format sequence keys nicely (fallback for missing sequences)
+  const formatSequenceKey = (key) => {
+    if (!key) return 'Unknown';
+    return key.split('_').map(word =>
+      word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+    ).join(' ');
+  };
+
   const CHART_COLORS = [
     theme.colors.chart.blue,
     theme.colors.chart.green,
@@ -219,6 +227,13 @@ function App() {
   }, [rangeType, customFrom, customTo, isAuthenticated, hasRole]);
 
   const sequences = [...new Set(data.map((d) => d.sequence_key))];
+  const sequenceDisplayNames = {};
+  data.forEach((d) => {
+    if (d.sequence_key) {
+      // Use display_name if available, otherwise format the key
+      sequenceDisplayNames[d.sequence_key] = d.display_name || formatSequenceKey(d.sequence_key);
+    }
+  });
   const filteredData = data.filter((d) => d.sequence_key === selectedSequence);
 
   if (authLoading) {
@@ -454,11 +469,14 @@ function App() {
                   <Pie
                     data={issueDistribution}
                     dataKey="total_count"
-                    nameKey="issue_type"
+                    nameKey="display_name"
                     cx="50%"
                     cy="50%"
                     outerRadius={100}
-                    label={({ issue_type, total_count }) => `${issue_type}: ${total_count}`}
+                    label={({ display_name, issue_type, total_count }) => {
+                      const label = display_name || formatSequenceKey(issue_type);
+                      return `${label}: ${total_count}`;
+                    }}
                     labelLine={{ stroke: theme.colors.text.secondary }}
                   >
                     {issueDistribution.map((entry, index) => (
@@ -530,10 +548,17 @@ function App() {
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={400}>
-              <BarChart data={fcrData} layout="vertical" margin={{ left: 100 }}>
+              <BarChart
+                data={fcrData.map(item => ({
+                  ...item,
+                  display_label: item.display_name || formatSequenceKey(item.sequence_key)
+                }))}
+                layout="vertical"
+                margin={{ left: 150 }}
+              >
                 <CartesianGrid strokeDasharray="3 3" stroke={theme.colors.border.medium} />
                 <XAxis type="number" stroke={theme.colors.text.secondary} domain={[0, 100]} />
-                <YAxis type="category" dataKey="sequence_key" stroke={theme.colors.text.secondary} width={90} />
+                <YAxis type="category" dataKey="display_label" stroke={theme.colors.text.secondary} width={140} />
                 <Tooltip
                   contentStyle={{
                     backgroundColor: theme.colors.background.tertiary,
@@ -705,9 +730,9 @@ function App() {
                         <tr key={index} style={{ borderBottom: `1px solid ${theme.colors.border.light}` }}>
                           <td style={{ padding: theme.spacing.md }}>
                             <div style={{ display: "flex", alignItems: "center", gap: theme.spacing.md }}>
-                              <Badge variant="default">{pattern.from_sequence}</Badge>
+                              <Badge variant="default">{pattern.from_sequence_name || pattern.from_sequence}</Badge>
                               <span style={{ color: isHighFrequency ? theme.colors.chart.blue : theme.colors.text.tertiary, fontSize: theme.fontSize.xl }}>→</span>
-                              <Badge variant="default">{pattern.to_sequence}</Badge>
+                              <Badge variant="default">{pattern.to_sequence_name || pattern.to_sequence}</Badge>
                             </div>
                           </td>
                           <td style={{ padding: theme.spacing.md, textAlign: "center", fontWeight: theme.fontWeight.bold, color: isHighFrequency ? theme.colors.chart.blue : theme.colors.text.primary }}>
@@ -881,7 +906,7 @@ function App() {
             >
               {sequences.map((seq) => (
                 <option key={seq} value={seq}>
-                  {seq}
+                  {sequenceDisplayNames[seq] || seq}
                 </option>
               ))}
             </select>

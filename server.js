@@ -969,6 +969,87 @@ app.delete("/api/patterns/:id", authenticateToken, requireRole(['manager', 'admi
   }
 });
 
+// Helper function to format sequence keys nicely (for missing sequences)
+function formatSequenceKey(key) {
+  if (!key) return 'Unknown';
+
+  // Convert underscores to spaces and capitalize each word
+  return key.split('_').map(word =>
+    word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+  ).join(' ');
+}
+
+// Helper function to enrich data with sequence display names
+async function enrichWithDisplayNames(data, sequenceKeyField) {
+  if (!data || data.length === 0) return data;
+
+  try {
+    // Get unique sequence keys
+    const sequenceKeys = [...new Set(data.map(item => item[sequenceKeyField]).filter(Boolean))];
+
+    if (sequenceKeys.length === 0) return data;
+
+    console.log(`🔍 Enriching ${sequenceKeys.length} sequences:`, sequenceKeys);
+
+    // Use the existing fn_get_all_sequences which we know works
+    const { data: sequences, error: seqError } = await supabase.rpc("fn_get_all_sequences", {
+      p_include_inactive: true
+    });
+
+    if (seqError) {
+      console.error("⚠️ Error fetching sequences:", seqError);
+      // Fallback: format all keys nicely
+      data.forEach(item => {
+        const key = item[sequenceKeyField];
+        if (key) {
+          item.display_name = formatSequenceKey(key);
+        }
+      });
+      return data;
+    }
+
+    // Create a map of key -> display_name
+    const displayNameMap = {};
+    if (sequences && sequences.length > 0) {
+      sequences.forEach(seq => {
+        // The function returns sequence_key and sequence_name fields
+        const key = seq.sequence_key || seq.key;
+        const name = seq.sequence_name || seq.display_name || seq.name;
+        if (key && name) {
+          displayNameMap[key] = name;
+          console.log(`✅ Mapped: ${key} -> ${name}`);
+        }
+      });
+    }
+
+    // Add display_name to each data item with graceful fallback
+    data.forEach(item => {
+      const key = item[sequenceKeyField];
+      if (key) {
+        // Use mapped name if exists, otherwise format the key nicely
+        item.display_name = displayNameMap[key] || formatSequenceKey(key);
+
+        // Log when we use a fallback for missing sequences
+        if (!displayNameMap[key]) {
+          console.log(`⚠️ Sequence not found in metadata, using formatted key: ${key} -> ${item.display_name}`);
+        }
+      }
+    });
+
+    return data;
+  } catch (err) {
+    console.error("⚠️ Error in enrichWithDisplayNames:", err);
+    // Fallback: format all keys nicely
+    data.forEach(item => {
+      const key = item[sequenceKeyField];
+      if (key) {
+        item.display_name = formatSequenceKey(key);
+      }
+    });
+    return data;
+  }
+}
+
 // Other dashboard API routes
 app.get("/test-supabase", async (req, res) => {
   // Try to pull just one row from session_events
@@ -1020,7 +1101,10 @@ app.get("/api/resolution-by-step", authenticateToken, async (req, res) => {
 
     if (error) throw error;
 
-    res.json(data);
+    // Enrich data with display names
+    const enrichedData = await enrichWithDisplayNames(data, 'sequence_key');
+
+    res.json(enrichedData);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1080,7 +1164,10 @@ app.get("/api/issue-distribution", authenticateToken, async (req, res) => {
 
     if (error) throw error;
 
-    res.json(data);
+    // Enrich data with display names
+    const enrichedData = await enrichWithDisplayNames(data, 'issue_type');
+
+    res.json(enrichedData);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1167,7 +1254,10 @@ app.get("/api/first-contact-resolution", authenticateToken, async (req, res) => 
     console.log("📊 First Contact Resolution - Data returned:", data);
     console.log("📊 First Contact Resolution - Row count:", data?.length || 0);
 
-    res.json(data);
+    // Enrich data with display names
+    const enrichedData = await enrichWithDisplayNames(data, 'sequence_key');
+
+    res.json(enrichedData);
   } catch (err) {
     console.error("📊 First Contact Resolution - Error:", err.message);
     res.status(500).json({ error: err.message });
@@ -1275,6 +1365,62 @@ app.get("/api/handoff-patterns", authenticateToken, requireRole(['admin', 'manag
 
     console.log("🔄 Handoff Patterns - Data returned:", data);
     console.log("🔄 Handoff Patterns - Row count:", data?.length || 0);
+
+    // Enrich data with display names for handoff patterns (has two sequence fields)
+    if (data && data.length > 0) {
+      try {
+        // Get all unique sequence keys from both fields
+        const sequenceKeys = [...new Set([
+          ...data.map(item => item.from_sequence),
+          ...data.map(item => item.to_sequence)
+        ].filter(Boolean))];
+
+        console.log(`🔍 Handoff Patterns - Enriching ${sequenceKeys.length} sequences:`, sequenceKeys);
+
+        // Use the existing fn_get_all_sequences which we know works
+        const { data: sequences, error: seqError } = await supabase.rpc("fn_get_all_sequences", {
+          p_include_inactive: true
+        });
+
+        // Create a map of key -> display_name
+        const displayNameMap = {};
+        if (!seqError && sequences && sequences.length > 0) {
+          sequences.forEach(seq => {
+            const key = seq.sequence_key || seq.key;
+            const name = seq.sequence_name || seq.display_name || seq.name;
+            if (key && name) {
+              displayNameMap[key] = name;
+              console.log(`✅ Handoff - Mapped: ${key} -> ${name}`);
+            }
+          });
+        }
+
+        // Add display names for both from and to sequences with formatted fallback
+        data.forEach(item => {
+          const fromKey = item.from_sequence;
+          const toKey = item.to_sequence;
+
+          // Use mapped name if exists, otherwise format the key nicely
+          item.from_sequence_name = displayNameMap[fromKey] || formatSequenceKey(fromKey);
+          item.to_sequence_name = displayNameMap[toKey] || formatSequenceKey(toKey);
+
+          // Log when we use a fallback
+          if (!displayNameMap[fromKey]) {
+            console.log(`⚠️ From sequence not found, using formatted key: ${fromKey} -> ${item.from_sequence_name}`);
+          }
+          if (!displayNameMap[toKey]) {
+            console.log(`⚠️ To sequence not found, using formatted key: ${toKey} -> ${item.to_sequence_name}`);
+          }
+        });
+      } catch (err) {
+        console.error("⚠️ Handoff Patterns - Error enriching:", err);
+        // Fallback: format all keys nicely
+        data.forEach(item => {
+          item.from_sequence_name = formatSequenceKey(item.from_sequence);
+          item.to_sequence_name = formatSequenceKey(item.to_sequence);
+        });
+      }
+    }
 
     res.json(data);
   } catch (err) {
