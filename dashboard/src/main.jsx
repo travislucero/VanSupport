@@ -5,7 +5,9 @@ import './index.css'
 import App from './App.jsx'
 import UserManagement from './pages/UserManagement.jsx'
 import Sequences from './pages/Sequences.jsx'
-import EditSequences from './pages/EditSequences.jsx'
+import CreateSequence from './pages/CreateSequence.jsx'
+import SequenceDetail from './pages/SequenceDetail.jsx'
+import TriggerPatterns from './pages/TriggerPatterns.jsx'
 import { AuthProvider, useAuth } from './hooks/useAuth.jsx'
 
 // Protected Route Component
@@ -51,10 +53,26 @@ createRoot(document.getElementById('root')).render(
             }
           />
           <Route
-            path="/sequences/edit"
+            path="/sequences/create"
             element={
               <ProtectedRoute requireManager={true}>
-                <EditSequences />
+                <CreateSequence />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/sequences/:key"
+            element={
+              <ProtectedRoute requireManager={true}>
+                <SequenceDetail />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/patterns"
+            element={
+              <ProtectedRoute requireManager={true}>
+                <TriggerPatterns />
               </ProtectedRoute>
             }
           />
