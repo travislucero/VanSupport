@@ -1,6 +1,6 @@
 import React from 'react';
 import { useLocation, Link } from 'react-router-dom';
-import { LayoutDashboard, List, Target, Users, LogOut } from 'lucide-react';
+import { LayoutDashboard, List, Target, Ticket, Users, LogOut } from 'lucide-react';
 import { theme } from '../styles/theme';
 
 const Sidebar = ({ user, onLogout, hasRole }) => {
@@ -40,6 +40,17 @@ const Sidebar = ({ user, onLogout, hasRole }) => {
       });
     }
 
+    // Add Support Tickets for manager and admin
+    if (hasRole('manager') || hasRole('admin')) {
+      items.push({
+        id: 'support-tickets',
+        label: 'Support Tickets',
+        Icon: Ticket,
+        path: '/tickets',
+        roles: ['manager', 'admin']
+      });
+    }
+
     // Add Manage Users for admin
     if (hasRole('admin')) {
       items.push({
@@ -69,6 +80,7 @@ const Sidebar = ({ user, onLogout, hasRole }) => {
         left: 0,
         top: 0,
         overflowY: 'auto',
+        zIndex: 10,
       }}
     >
       {/* Logo/Brand */}

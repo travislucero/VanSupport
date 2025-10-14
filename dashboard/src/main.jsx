@@ -8,7 +8,12 @@ import Sequences from './pages/Sequences.jsx'
 import CreateSequence from './pages/CreateSequence.jsx'
 import SequenceDetail from './pages/SequenceDetail.jsx'
 import TriggerPatterns from './pages/TriggerPatterns.jsx'
+import TicketDashboard from './pages/TicketDashboard.jsx'
+import TechTicketDetail from './pages/TechTicketDetail.jsx'
+import PublicTicket from './pages/PublicTicket.jsx'
+import CreateTicket from './pages/CreateTicket.jsx'
 import { AuthProvider, useAuth } from './hooks/useAuth.jsx'
+import { ToastProvider } from './hooks/useToast.jsx'
 
 // Protected Route Component
 function ProtectedRoute({ children, requireAdmin = false, requireManager = false, requireViewer = false }) {
@@ -42,49 +47,80 @@ createRoot(document.getElementById('root')).render(
   <StrictMode>
     <BrowserRouter>
       <AuthProvider>
-        <Routes>
-          <Route path="/" element={<App />} />
-          <Route
-            path="/sequences"
-            element={
-              <ProtectedRoute requireViewer={true}>
-                <Sequences />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/sequences/create"
-            element={
-              <ProtectedRoute requireManager={true}>
-                <CreateSequence />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/sequences/:key"
-            element={
-              <ProtectedRoute requireManager={true}>
-                <SequenceDetail />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/patterns"
-            element={
-              <ProtectedRoute requireManager={true}>
-                <TriggerPatterns />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/users"
-            element={
-              <ProtectedRoute requireAdmin={true}>
-                <UserManagement />
-              </ProtectedRoute>
-            }
-          />
-        </Routes>
+        <ToastProvider>
+          <Routes>
+            <Route path="/" element={<App />} />
+            <Route
+              path="/sequences"
+              element={
+                <ProtectedRoute requireViewer={true}>
+                  <Sequences />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/sequences/create"
+              element={
+                <ProtectedRoute requireManager={true}>
+                  <CreateSequence />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/sequences/:key"
+              element={
+                <ProtectedRoute requireManager={true}>
+                  <SequenceDetail />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/patterns"
+              element={
+                <ProtectedRoute requireManager={true}>
+                  <TriggerPatterns />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/tickets"
+              element={
+                <ProtectedRoute requireManager={true}>
+                  <TicketDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/tickets/new"
+              element={
+                <ProtectedRoute requireManager={true}>
+                  <CreateTicket />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/tickets/:uuid"
+              element={
+                <ProtectedRoute requireManager={true}>
+                  <TechTicketDetail />
+                </ProtectedRoute>
+              }
+            />
+            {/* Public ticket view - no authentication required */}
+            <Route
+              path="/ticket/:uuid"
+              element={<PublicTicket />}
+            />
+            <Route
+              path="/admin/users"
+              element={
+                <ProtectedRoute requireAdmin={true}>
+                  <UserManagement />
+                </ProtectedRoute>
+              }
+            />
+          </Routes>
+        </ToastProvider>
       </AuthProvider>
     </BrowserRouter>
   </StrictMode>,

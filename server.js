@@ -969,6 +969,546 @@ app.delete("/api/patterns/:id", authenticateToken, requireRole(['manager', 'admi
   }
 });
 
+// ============================================================================
+// TICKETING SYSTEM API ENDPOINTS
+// ============================================================================
+
+// PUBLIC ENDPOINTS (No Auth Required)
+
+// 1. GET /api/tickets/public/:uuid - Get ticket detail for customer view
+app.get("/api/tickets/public/:uuid", async (req, res) => {
+  try {
+    const { uuid } = req.params;
+    console.log('🎫 Get Public Ticket Detail - Fetching ticket:', uuid, 'for viewer: customer');
+
+    const { data, error } = await supabase.rpc("fn_get_ticket_detail", {
+      p_ticket_id: uuid,
+      p_viewer_type: 'customer'
+    });
+
+    if (error) {
+      console.error('🎫 Get Public Ticket Detail - Supabase error:', error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    // Handle array response from Supabase - return first item
+    const ticketData = Array.isArray(data) ? data[0] : data;
+
+    if (!ticketData) {
+      console.log('🎫 Get Public Ticket Detail - Ticket not found:', uuid);
+      return res.status(404).json({ error: "Ticket not found" });
+    }
+
+    console.log('🎫 Get Public Ticket Detail - Success, ticket #', ticketData.ticket_number);
+    res.json(ticketData);
+  } catch (err) {
+    console.error('🎫 Get Public Ticket Detail - Error:', err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// 2. POST /api/tickets/public/:uuid/comments - Add customer comment
+app.post("/api/tickets/public/:uuid/comments", async (req, res) => {
+  try {
+    const { uuid } = req.params;
+    const { comment_text, author_name } = req.body;
+
+    if (!comment_text || !author_name) {
+      return res.status(400).json({
+        error: "Missing required fields: comment_text and author_name are required"
+      });
+    }
+
+    console.log('🎫 Add Customer Comment - Adding comment to ticket:', uuid);
+
+    const { data, error } = await supabase.rpc("fn_add_ticket_comment", {
+      p_ticket_id: uuid,
+      p_comment_text: comment_text,
+      p_author_type: 'customer',
+      p_author_user_id: null,
+      p_author_name: author_name,
+      p_is_resolution: false
+    });
+
+    if (error) {
+      console.error('🎫 Add Customer Comment - Supabase error:', error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log('🎫 Add Customer Comment - Success');
+    res.status(201).json(data);
+  } catch (err) {
+    console.error('🎫 Add Customer Comment - Error:', err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// 3. PUT /api/tickets/public/:uuid/resolve - Customer marks ticket resolved
+app.put("/api/tickets/public/:uuid/resolve", async (req, res) => {
+  try {
+    const { uuid } = req.params;
+    const { resolution } = req.body;
+
+    if (!resolution) {
+      return res.status(400).json({ error: "Resolution text is required" });
+    }
+
+    console.log('🎫 Customer Resolve Ticket - Resolving ticket:', uuid);
+
+    // First add the resolution comment
+    const { error: commentError } = await supabase.rpc("fn_add_ticket_comment", {
+      p_ticket_id: uuid,
+      p_comment_text: resolution,
+      p_author_type: 'customer',
+      p_author_user_id: null,
+      p_author_name: 'Customer',
+      p_is_resolution: true
+    });
+
+    if (commentError) {
+      console.error('🎫 Customer Resolve Ticket - Error adding resolution:', commentError);
+      return res.status(500).json({ error: commentError.message });
+    }
+
+    // Then update status to resolved
+    const { data, error } = await supabase.rpc("fn_update_ticket_status", {
+      p_ticket_id: uuid,
+      p_new_status: 'resolved',
+      p_changed_by_type: 'customer',
+      p_changed_by_user_id: null,
+      p_reason: 'Customer marked as resolved'
+    });
+
+    if (error) {
+      console.error('🎫 Customer Resolve Ticket - Supabase error:', error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log('🎫 Customer Resolve Ticket - Success');
+    res.json(data);
+  } catch (err) {
+    console.error('🎫 Customer Resolve Ticket - Error:', err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// 4. POST /api/tickets/public/:uuid/reopen - Reopen closed ticket
+app.post("/api/tickets/public/:uuid/reopen", async (req, res) => {
+  try {
+    const { uuid } = req.params;
+    const { reason, reopened_by_name } = req.body;
+
+    if (!reason || !reopened_by_name) {
+      return res.status(400).json({
+        error: "Missing required fields: reason and reopened_by_name are required"
+      });
+    }
+
+    console.log('🎫 Reopen Ticket - Reopening ticket:', uuid);
+
+    const { data, error } = await supabase.rpc("fn_reopen_ticket", {
+      p_original_ticket_id: uuid,
+      p_reason: reason,
+      p_reopened_by_name: reopened_by_name
+    });
+
+    if (error) {
+      console.error('🎫 Reopen Ticket - Supabase error:', error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log('🎫 Reopen Ticket - Success, new ticket created');
+    res.status(201).json(data);
+  } catch (err) {
+    console.error('🎫 Reopen Ticket - Error:', err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// 5. POST /api/tickets/create - Create new ticket (public or tech)
+app.post("/api/tickets/create", async (req, res) => {
+  try {
+    const {
+      phone,
+      email,
+      owner_name,
+      subject,
+      issue_summary,
+      description,
+      priority,
+      urgency,
+      van_id,
+      category_id
+    } = req.body;
+
+    if (!subject || !description) {
+      return res.status(400).json({
+        error: "Missing required fields: subject and description are required"
+      });
+    }
+
+    console.log('🎫 Create Ticket - Creating new ticket:', subject);
+
+    // Create ticket - RPC returns just the UUID
+    const { data: ticketId, error } = await supabase.rpc("fn_create_ticket", {
+      p_phone: phone || null,
+      p_email: email || null,
+      p_owner_name: owner_name || null,
+      p_subject: subject,
+      p_issue_summary: issue_summary || subject, // Legacy field - fallback to subject if not provided
+      p_description: description,
+      p_priority: priority || 'normal',
+      p_urgency: urgency || null,
+      p_van_id: van_id || null,
+      p_category_id: category_id || null
+    });
+
+    if (error) {
+      console.error('🎫 Create Ticket - Supabase error:', error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log('🎫 Create Ticket - Ticket created with ID:', ticketId);
+
+    // Fetch the full ticket details
+    const { data: ticketDetails, error: fetchError } = await supabase
+      .from('tickets')
+      .select('id, ticket_number, subject, status, priority, urgency, created_at, owner_name, phone, email')
+      .eq('id', ticketId)
+      .single();
+
+    if (fetchError) {
+      console.error('🎫 Create Ticket - Error fetching ticket details:', fetchError);
+      return res.status(500).json({ error: fetchError.message });
+    }
+
+    // Map id to ticket_id for frontend compatibility
+    const ticketResponse = {
+      ticket_id: ticketDetails.id,
+      ticket_number: ticketDetails.ticket_number,
+      subject: ticketDetails.subject,
+      status: ticketDetails.status,
+      priority: ticketDetails.priority,
+      urgency: ticketDetails.urgency,
+      created_at: ticketDetails.created_at,
+      owner_name: ticketDetails.owner_name,
+      phone: ticketDetails.phone,
+      email: ticketDetails.email
+    };
+
+    console.log('🎫 Create Ticket - Success, ticket #', ticketResponse.ticket_number);
+
+    // Return full ticket object with ticket_id
+    res.status(201).json(ticketResponse);
+  } catch (err) {
+    console.error('🎫 Create Ticket - Error:', err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// TECH ENDPOINTS (Manager+ Auth Required)
+
+// 6. GET /api/tickets/unassigned - Get unassigned ticket queue
+app.get("/api/tickets/unassigned", authenticateToken, requireRole(['manager', 'admin']), async (req, res) => {
+  try {
+    console.log('🎫 Get Unassigned Tickets - Fetching unassigned queue');
+
+    const { data, error } = await supabase.rpc("fn_get_tech_tickets", {
+      p_tech_user_id: null
+    });
+
+    if (error) {
+      console.error('🎫 Get Unassigned Tickets - Supabase error:', error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    // Sort by priority (urgent first), then created_at
+    const priorityOrder = { urgent: 0, high: 1, normal: 2, low: 3 };
+    const sortedData = (data || []).sort((a, b) => {
+      const priorityDiff = (priorityOrder[a.priority] || 999) - (priorityOrder[b.priority] || 999);
+      if (priorityDiff !== 0) return priorityDiff;
+      return new Date(a.created_at) - new Date(b.created_at);
+    });
+
+    console.log('🎫 Get Unassigned Tickets - Success, returned', sortedData.length, 'tickets');
+    res.json(sortedData);
+  } catch (err) {
+    console.error('🎫 Get Unassigned Tickets - Error:', err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// 7. GET /api/tickets/my-tickets - Get current user's assigned tickets
+app.get("/api/tickets/my-tickets", authenticateToken, requireRole(['manager', 'admin']), async (req, res) => {
+  try {
+    console.log('🎫 Get My Tickets - Fetching tickets for user:', req.user.id);
+
+    const { data, error } = await supabase.rpc("fn_get_tech_tickets", {
+      p_tech_user_id: req.user.id
+    });
+
+    if (error) {
+      console.error('🎫 Get My Tickets - Supabase error:', error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log('🎫 Get My Tickets - Success, returned', (data || []).length, 'tickets');
+    res.json(data || []);
+  } catch (err) {
+    console.error('🎫 Get My Tickets - Error:', err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// 8. GET /api/tickets/:uuid - Get ticket detail for tech view
+app.get("/api/tickets/:uuid", authenticateToken, requireRole(['manager', 'admin']), async (req, res) => {
+  try {
+    const { uuid } = req.params;
+    console.log('🎫 Get Tech Ticket Detail - Fetching ticket:', uuid, 'for viewer: tech');
+
+    const { data, error } = await supabase.rpc("fn_get_ticket_detail", {
+      p_ticket_id: uuid,
+      p_viewer_type: 'tech'
+    });
+
+    if (error) {
+      console.error('🎫 Get Tech Ticket Detail - Supabase error:', error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    // Handle array response from Supabase - return first item
+    const ticketData = Array.isArray(data) ? data[0] : data;
+
+    if (!ticketData) {
+      console.log('🎫 Get Tech Ticket Detail - Ticket not found:', uuid);
+      return res.status(404).json({ error: "Ticket not found" });
+    }
+
+    console.log('🎫 Get Tech Ticket Detail - Success, ticket #', ticketData.ticket_number);
+    res.json(ticketData);
+  } catch (err) {
+    console.error('🎫 Get Tech Ticket Detail - Error:', err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// 9. POST /api/tickets/:uuid/assign - Assign ticket to tech
+app.post("/api/tickets/:uuid/assign", authenticateToken, requireRole(['manager', 'admin']), async (req, res) => {
+  try {
+    const { uuid } = req.params;
+    const { tech_user_id } = req.body;
+
+    // Use provided tech_user_id or assign to self if not provided
+    const assignToUserId = tech_user_id || req.user.id;
+
+    console.log('🎫 Assign Ticket - Assigning', uuid, 'to user', assignToUserId);
+
+    const { data, error } = await supabase.rpc("fn_assign_ticket", {
+      p_ticket_id: uuid,
+      p_tech_user_id: assignToUserId,
+      p_assigned_by_user_id: req.user.id
+    });
+
+    if (error) {
+      console.error('🎫 Assign Ticket - Supabase error:', error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log('🎫 Assign Ticket - Success');
+    res.json(data);
+  } catch (err) {
+    console.error('🎫 Assign Ticket - Error:', err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// 10. PUT /api/tickets/:uuid/status - Update ticket status
+app.put("/api/tickets/:uuid/status", authenticateToken, requireRole(['manager', 'admin']), async (req, res) => {
+  try {
+    const { uuid } = req.params;
+    const { status, reason } = req.body;
+
+    if (!status) {
+      return res.status(400).json({ error: "Status is required" });
+    }
+
+    const validStatuses = ['open', 'assigned', 'in_progress', 'waiting_customer', 'resolved', 'closed', 'cancelled'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        error: `Invalid status. Must be one of: ${validStatuses.join(', ')}`
+      });
+    }
+
+    console.log('🎫 Update Ticket Status - Updating ticket', uuid, 'to status:', status);
+
+    const { data, error } = await supabase.rpc("fn_update_ticket_status", {
+      p_ticket_id: uuid,
+      p_new_status: status,
+      p_changed_by_type: 'tech',
+      p_changed_by_user_id: req.user.id,
+      p_reason: reason || null
+    });
+
+    if (error) {
+      console.error('🎫 Update Ticket Status - Supabase error:', error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log('🎫 Update Ticket Status - Success');
+    res.json(data);
+  } catch (err) {
+    console.error('🎫 Update Ticket Status - Error:', err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// 11. POST /api/tickets/:uuid/comments - Add tech comment
+app.post("/api/tickets/:uuid/comments", authenticateToken, requireRole(['manager', 'admin']), async (req, res) => {
+  try {
+    const { uuid } = req.params;
+    const { comment_text, is_resolution } = req.body;
+
+    if (!comment_text) {
+      return res.status(400).json({ error: "comment_text is required" });
+    }
+
+    console.log('🎫 Add Tech Comment - Adding comment to ticket:', uuid);
+
+    // Get user full name from database if not in JWT
+    let userName = req.user.full_name;
+    if (!userName) {
+      const { data: userData } = await supabase
+        .from("users")
+        .select("email")
+        .eq("id", req.user.id)
+        .single();
+      userName = userData?.email || 'Tech User';
+    }
+
+    const { data, error } = await supabase.rpc("fn_add_ticket_comment", {
+      p_ticket_id: uuid,
+      p_comment_text: comment_text,
+      p_author_type: 'tech',
+      p_author_user_id: req.user.id,
+      p_author_name: userName,
+      p_is_resolution: is_resolution || false
+    });
+
+    if (error) {
+      console.error('🎫 Add Tech Comment - Supabase error:', error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log('🎫 Add Tech Comment - Success');
+    res.status(201).json(data);
+  } catch (err) {
+    console.error('🎫 Add Tech Comment - Error:', err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// 12. PUT /api/tickets/:uuid/priority - Update ticket priority
+app.put("/api/tickets/:uuid/priority", authenticateToken, requireRole(['manager', 'admin']), async (req, res) => {
+  try {
+    const { uuid } = req.params;
+    const { priority } = req.body;
+
+    if (!priority) {
+      return res.status(400).json({ error: "Priority is required" });
+    }
+
+    const validPriorities = ['low', 'normal', 'high', 'urgent'];
+    if (!validPriorities.includes(priority)) {
+      return res.status(400).json({
+        error: `Invalid priority. Must be one of: ${validPriorities.join(', ')}`
+      });
+    }
+
+    console.log('🎫 Update Ticket Priority - Updating ticket', uuid, 'to priority:', priority);
+
+    const { data, error } = await supabase
+      .from('tickets')
+      .update({
+        priority: priority,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', uuid)
+      .select()
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        console.log('🎫 Update Ticket Priority - Ticket not found:', uuid);
+        return res.status(404).json({ error: "Ticket not found" });
+      }
+      console.error('🎫 Update Ticket Priority - Supabase error:', error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log('🎫 Update Ticket Priority - Success');
+    res.json(data);
+  } catch (err) {
+    console.error('🎫 Update Ticket Priority - Error:', err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ADMIN ENDPOINTS (Admin Only)
+
+// 13. GET /api/tickets/all - Get all tickets (with filters)
+app.get("/api/tickets/all", authenticateToken, requireRole(['admin']), async (req, res) => {
+  try {
+    const { status, priority, assigned_to } = req.query;
+
+    console.log('🎫 Get All Tickets - Fetching with filters:', { status, priority, assigned_to });
+
+    let query = supabase
+      .from('tickets')
+      .select(`
+        *,
+        assigned_to_user:users!tickets_assigned_to_fkey(id, email),
+        van:vans(id, owner_name, phone)
+      `)
+      .order('created_at', { ascending: false });
+
+    // Apply filters if provided
+    if (status) {
+      query = query.eq('status', status);
+    }
+    if (priority) {
+      query = query.eq('priority', priority);
+    }
+    if (assigned_to) {
+      query = query.eq('assigned_to', assigned_to);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('🎫 Get All Tickets - Supabase error:', error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    // Flatten the response
+    const tickets = (data || []).map(ticket => ({
+      ...ticket,
+      assigned_to_name: ticket.assigned_to_user?.email || null,
+      customer_name: ticket.van?.owner_name || null,
+      customer_phone: ticket.van?.phone || null
+    }));
+
+    console.log('🎫 Get All Tickets - Success, returned', tickets.length, 'tickets');
+    res.json(tickets);
+  } catch (err) {
+    console.error('�� Get All Tickets - Error:', err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ============================================================================
+// END TICKETING SYSTEM API ENDPOINTS
+// ============================================================================
+
 // Helper function to format sequence keys nicely (for missing sequences)
 function formatSequenceKey(key) {
   if (!key) return 'Unknown';
