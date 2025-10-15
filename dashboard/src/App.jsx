@@ -41,9 +41,7 @@ function App() {
   const [customTo, setCustomTo] = useState("");
   const [loading, setLoading] = useState(true);
 
-  const API_BASE = import.meta.env.DEV
-    ? "http://localhost:3000"
-    : "https://vansupport.onrender.com";
+  const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
 
   // Helper function to format sequence keys nicely (fallback for missing sequences)
   const formatSequenceKey = (key) => {
