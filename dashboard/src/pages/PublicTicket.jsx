@@ -22,7 +22,7 @@ import Card from '../components/Card';
 import Badge from '../components/Badge';
 import { theme } from '../styles/theme';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 // Auto-refresh interval (10 seconds)
 const COMMENT_REFRESH_INTERVAL = 10000;

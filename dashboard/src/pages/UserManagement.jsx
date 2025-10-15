@@ -18,9 +18,7 @@ function UserManagement() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  const API_BASE = import.meta.env.DEV
-    ? "http://localhost:3000"
-    : "https://vansupport.onrender.com";
+  const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
 
   // Redirect if not admin
   if (!hasRole('admin')) {

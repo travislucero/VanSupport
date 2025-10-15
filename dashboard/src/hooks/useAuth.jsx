@@ -7,9 +7,7 @@ export const AuthProvider = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
 
-  const API_BASE = import.meta.env.DEV
-    ? "http://localhost:3000"
-    : "https://vansupport.onrender.com";
+  const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
 
   // Check authentication on mount
   useEffect(() => {
