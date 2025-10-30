@@ -149,20 +149,30 @@ function TriggerPatterns() {
 
   // Auto-fix double-escaping issues
   const handleAutoFix = useCallback(() => {
-    const fixedPattern = patternValidator.fixDoubleEscaping(patternForm.pattern);
-    setPatternForm(prev => ({ ...prev, pattern: fixedPattern }));
-    validatePattern(fixedPattern, patternForm.flags);
-  }, [patternForm.pattern, patternForm.flags]);
+    setPatternForm(prev => {
+      const fixedPattern = patternValidator.fixDoubleEscaping(prev.pattern);
+      validatePattern(fixedPattern, prev.flags);
+      return { ...prev, pattern: fixedPattern };
+    });
+  }, []);
 
   const handlePatternChange = useCallback((newPattern) => {
-    setPatternForm(prev => ({ ...prev, pattern: newPattern }));
-    validatePattern(newPattern, patternForm.flags);
-  }, [patternForm.flags]);
+    setPatternForm(prev => {
+      validatePattern(newPattern, prev.flags);
+      return { ...prev, pattern: newPattern };
+    });
+  }, []);
 
   const handleFlagsChange = useCallback((newFlags) => {
-    setPatternForm(prev => ({ ...prev, flags: newFlags }));
-    validatePattern(patternForm.pattern, newFlags);
-  }, [patternForm.pattern]);
+    setPatternForm(prev => {
+      validatePattern(prev.pattern, newFlags);
+      return { ...prev, flags: newFlags };
+    });
+  }, []);
+
+  const handleFormFieldChange = useCallback((field, value) => {
+    setPatternForm(prev => ({ ...prev, [field]: value }));
+  }, []);
 
   const showSuccess = (message) => {
     setSuccess(message);
@@ -403,7 +413,7 @@ function TriggerPatterns() {
           key="priority-field"
           type="number"
           value={patternForm.priority}
-          onChange={(e) => setPatternForm({ ...patternForm, priority: e.target.value })}
+          onChange={(e) => handleFormFieldChange('priority', e.target.value)}
           style={{
             width: '100%',
             padding: theme.spacing.sm,
@@ -438,7 +448,7 @@ function TriggerPatterns() {
         <input
           type="text"
           value={patternForm.category_slug}
-          onChange={(e) => setPatternForm({ ...patternForm, category_slug: e.target.value })}
+          onChange={(e) => handleFormFieldChange('category_slug', e.target.value)}
           placeholder="e.g., water, generator, grooming_equipment"
           style={{
             width: '100%',
@@ -591,7 +601,7 @@ function TriggerPatterns() {
         </label>
         <select
           value={patternForm.action_key}
-          onChange={(e) => setPatternForm({ ...patternForm, action_key: e.target.value })}
+          onChange={(e) => handleFormFieldChange('action_key', e.target.value)}
           style={{
             width: '100%',
             padding: theme.spacing.sm,
@@ -622,7 +632,7 @@ function TriggerPatterns() {
         <input
           type="text"
           value={patternForm.entry_step_id}
-          onChange={(e) => setPatternForm({ ...patternForm, entry_step_id: e.target.value })}
+          onChange={(e) => handleFormFieldChange('entry_step_id', e.target.value)}
           placeholder="Leave empty to start at step 1"
           style={{
             width: '100%',
@@ -647,7 +657,7 @@ function TriggerPatterns() {
         <input
           type="text"
           value={patternForm.van_makes}
-          onChange={(e) => setPatternForm({ ...patternForm, van_makes: e.target.value })}
+          onChange={(e) => handleFormFieldChange('van_makes', e.target.value)}
           placeholder="e.g., Ford, Mercedes, Dodge"
           style={{
             width: '100%',
@@ -679,7 +689,7 @@ function TriggerPatterns() {
         <input
           type="text"
           value={patternForm.van_versions}
-          onChange={(e) => setPatternForm({ ...patternForm, van_versions: e.target.value })}
+          onChange={(e) => handleFormFieldChange('van_versions', e.target.value)}
           placeholder="e.g., Transit, Sprinter, ProMaster"
           style={{
             width: '100%',
@@ -711,7 +721,7 @@ function TriggerPatterns() {
         <input
           type="text"
           value={patternForm.years}
-          onChange={(e) => setPatternForm({ ...patternForm, years: e.target.value })}
+          onChange={(e) => handleFormFieldChange('years', e.target.value)}
           placeholder="e.g., 2020, 2021, 2022"
           style={{
             width: '100%',
@@ -735,7 +745,7 @@ function TriggerPatterns() {
           type="checkbox"
           id="is_active"
           checked={patternForm.is_active}
-          onChange={(e) => setPatternForm({ ...patternForm, is_active: e.target.checked })}
+          onChange={(e) => handleFormFieldChange('is_active', e.target.checked)}
           style={{ width: '16px', height: '16px' }}
         />
         <label htmlFor="is_active" style={{
@@ -747,7 +757,7 @@ function TriggerPatterns() {
         </label>
       </div>
     </div>
-  ), [patternForm, patternValidation, sequences, handlePatternChange, handleFlagsChange, handleAutoFix]);
+  ), [patternForm, patternValidation, sequences, handlePatternChange, handleFlagsChange, handleAutoFix, handleFormFieldChange]);
 
   if (loading) {
     return (
