@@ -7,6 +7,7 @@ import { createClient } from "@supabase/supabase-js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import cookieParser from "cookie-parser";
+import patternValidator from './utils/patternValidator.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -811,9 +812,20 @@ app.post("/api/patterns", authenticateToken, requireRole(['manager', 'admin']), 
 
     console.log("🎯 Create Pattern - Creating new pattern for category:", category_slug);
 
+    // Validate and auto-fix pattern before saving to database
+    let processedPattern = pattern;
+    const validation = patternValidator.validatePattern(pattern);
+    if (validation.hasDoubleEscaping) {
+      console.log("🎯 Create Pattern - Auto-fixing double-escaped pattern");
+      console.log("🎯 Create Pattern - Original:", pattern);
+      processedPattern = patternValidator.fixDoubleEscaping(pattern);
+      console.log("🎯 Create Pattern - Fixed:", processedPattern);
+    }
+    const preparedPattern = patternValidator.prepareForDatabase(processedPattern);
+
     const newPattern = {
       category_slug,
-      pattern,
+      pattern: preparedPattern,
       flags: flags || 'i',
       priority: priority !== undefined ? priority : 100,
       action_type,
@@ -868,9 +880,22 @@ app.put("/api/patterns/:id", authenticateToken, requireRole(['manager', 'admin']
       updated_at: new Date().toISOString()
     };
 
+    // Validate and auto-fix pattern if it's being updated
+    if (pattern !== undefined) {
+      let processedPattern = pattern;
+      const validation = patternValidator.validatePattern(pattern);
+      if (validation.hasDoubleEscaping) {
+        console.log("🎯 Update Pattern - Auto-fixing double-escaped pattern");
+        console.log("🎯 Update Pattern - Original:", pattern);
+        processedPattern = patternValidator.fixDoubleEscaping(pattern);
+        console.log("🎯 Update Pattern - Fixed:", processedPattern);
+      }
+      const preparedPattern = patternValidator.prepareForDatabase(processedPattern);
+      updateData.pattern = preparedPattern;
+    }
+
     // Only include fields that are provided
     if (category_slug !== undefined) updateData.category_slug = category_slug;
-    if (pattern !== undefined) updateData.pattern = pattern;
     if (flags !== undefined) updateData.flags = flags;
     if (priority !== undefined) updateData.priority = priority;
     if (action_type !== undefined) updateData.action_type = action_type;
