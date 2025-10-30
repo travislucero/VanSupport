@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth.jsx';
 import Sidebar from '../components/Sidebar';
 import Card from '../components/Card';
@@ -14,7 +14,9 @@ import {
   Search,
   ArrowUp,
   ArrowDown,
+  Wrench,
 } from 'lucide-react';
+import patternValidator from '../../../utils/patternValidator.js';
 
 function TriggerPatterns() {
   const { user, logout, hasRole } = useAuth();
@@ -49,6 +51,9 @@ function TriggerPatterns() {
     van_versions: '',
     is_active: true,
   });
+
+  // Pattern validation state
+  const [patternValidation, setPatternValidation] = useState({ valid: true, error: null, warning: null });
 
   useEffect(() => {
     fetchPatterns();
@@ -108,7 +113,56 @@ function TriggerPatterns() {
       van_versions: '',
       is_active: true,
     });
+    setPatternValidation({ valid: true, error: null, warning: null });
   };
+
+  // Validate pattern whenever it changes
+  const validatePattern = (pattern, flags) => {
+    if (!pattern) {
+      setPatternValidation({ valid: true, error: null, warning: null });
+      return;
+    }
+
+    try {
+      // Test if pattern is valid regex
+      new RegExp(pattern, flags);
+
+      // Check for double-escaped sequences using imported validator
+      const validation = patternValidator.validatePattern(pattern);
+      if (validation.hasDoubleEscaping) {
+        setPatternValidation({
+          valid: true,
+          error: null,
+          warning: 'Pattern contains double-escaped sequences (e.g., \\\\b instead of \\b). This may not match as expected in PostgreSQL regex.'
+        });
+      } else {
+        setPatternValidation({ valid: true, error: null, warning: null });
+      }
+    } catch (e) {
+      setPatternValidation({
+        valid: false,
+        error: `Invalid regex pattern: ${e.message}`,
+        warning: null
+      });
+    }
+  };
+
+  // Auto-fix double-escaping issues
+  const handleAutoFix = useCallback(() => {
+    const fixedPattern = patternValidator.fixDoubleEscaping(patternForm.pattern);
+    setPatternForm(prev => ({ ...prev, pattern: fixedPattern }));
+    validatePattern(fixedPattern, patternForm.flags);
+  }, [patternForm.pattern, patternForm.flags]);
+
+  const handlePatternChange = useCallback((newPattern) => {
+    setPatternForm(prev => ({ ...prev, pattern: newPattern }));
+    validatePattern(newPattern, patternForm.flags);
+  }, [patternForm.flags]);
+
+  const handleFlagsChange = useCallback((newFlags) => {
+    setPatternForm(prev => ({ ...prev, flags: newFlags }));
+    validatePattern(patternForm.pattern, newFlags);
+  }, [patternForm.pattern]);
 
   const showSuccess = (message) => {
     setSuccess(message);
@@ -116,6 +170,12 @@ function TriggerPatterns() {
   };
 
   const handleCreatePattern = async () => {
+    // Validate pattern before submitting
+    if (!patternValidation.valid) {
+      setError('Please fix the pattern validation errors before saving');
+      return;
+    }
+
     try {
       const response = await fetch('/api/patterns', {
         method: 'POST',
@@ -146,6 +206,12 @@ function TriggerPatterns() {
   };
 
   const handleUpdatePattern = async () => {
+    // Validate pattern before submitting
+    if (!patternValidation.valid) {
+      setError('Please fix the pattern validation errors before saving');
+      return;
+    }
+
     try {
       const response = await fetch(`/api/patterns/${editingPattern.id}`, {
         method: 'PUT',
@@ -220,10 +286,13 @@ function TriggerPatterns() {
 
   const openEditModal = (pattern) => {
     setEditingPattern(pattern);
+    const patternValue = pattern.pattern || '';
+    const flagsValue = pattern.flags || 'i';
+
     setPatternForm({
       category_slug: pattern.category_slug || '',
-      pattern: pattern.pattern || '',
-      flags: pattern.flags || 'i',
+      pattern: patternValue,
+      flags: flagsValue,
       priority: pattern.priority || 100,
       action_type: pattern.action_type || 'sequence',
       action_key: pattern.action_key || '',
@@ -233,6 +302,9 @@ function TriggerPatterns() {
       van_versions: pattern.van_versions ? pattern.van_versions.join(', ') : '',
       is_active: pattern.is_active,
     });
+
+    // Validate the existing pattern
+    validatePattern(patternValue, flagsValue);
     setEditModalOpen(true);
   };
 
@@ -315,7 +387,7 @@ function TriggerPatterns() {
     return filtered;
   };
 
-  const PatternFormFields = () => (
+  const PatternFormFields = useMemo(() => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.lg }}>
       <div>
         <label style={{
@@ -328,6 +400,7 @@ function TriggerPatterns() {
           Priority <span style={{ color: theme.colors.accent.danger }}>*</span>
         </label>
         <input
+          key="priority-field"
           type="number"
           value={patternForm.priority}
           onChange={(e) => setPatternForm({ ...patternForm, priority: e.target.value })}
@@ -388,30 +461,86 @@ function TriggerPatterns() {
           Pattern <span style={{ color: theme.colors.accent.danger }}>*</span>
         </label>
         <textarea
+          key="pattern-field"
           value={patternForm.pattern}
-          onChange={(e) => setPatternForm({ ...patternForm, pattern: e.target.value })}
-          placeholder="e.g., dryer.*(not|won't).*work"
+          onChange={(e) => handlePatternChange(e.target.value)}
+          placeholder="e.g., (?i)\bdryer\b.*(not|won't).*work"
           rows={3}
           style={{
             width: '100%',
             padding: theme.spacing.sm,
-            border: `1px solid ${theme.colors.border.medium}`,
+            border: `1px solid ${patternValidation.valid ? theme.colors.border.medium : theme.colors.accent.danger}`,
             borderRadius: theme.radius.md,
             fontSize: theme.fontSize.sm,
             fontFamily: 'monospace',
           }}
         />
-        <div style={{
-          fontSize: theme.fontSize.xs,
-          color: theme.colors.text.tertiary,
-          marginTop: theme.spacing.xs,
-          display: 'flex',
-          alignItems: 'center',
-          gap: theme.spacing.xs,
-        }}>
-          <AlertCircle size={12} />
-          Regex pattern (e.g., dryer.*(not|won't).*work)
-        </div>
+        {patternValidation.error && (
+          <div style={{
+            fontSize: theme.fontSize.xs,
+            color: theme.colors.accent.danger,
+            marginTop: theme.spacing.xs,
+            display: 'flex',
+            alignItems: 'center',
+            gap: theme.spacing.xs,
+          }}>
+            <AlertCircle size={12} />
+            {patternValidation.error}
+          </div>
+        )}
+        {patternValidation.warning && (
+          <div style={{
+            marginTop: theme.spacing.xs,
+            padding: theme.spacing.sm,
+            backgroundColor: theme.colors.accent.warning + '10',
+            borderRadius: theme.radius.md,
+            border: `1px solid ${theme.colors.accent.warning}40`,
+          }}>
+            <div style={{
+              fontSize: theme.fontSize.xs,
+              color: theme.colors.accent.warning,
+              display: 'flex',
+              alignItems: 'center',
+              gap: theme.spacing.xs,
+              marginBottom: theme.spacing.xs,
+            }}>
+              <AlertCircle size={12} />
+              {patternValidation.warning}
+            </div>
+            <button
+              onClick={handleAutoFix}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: theme.spacing.xs,
+                padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
+                backgroundColor: theme.colors.accent.warning,
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: theme.radius.sm,
+                fontSize: theme.fontSize.xs,
+                fontWeight: theme.fontWeight.medium,
+                cursor: 'pointer',
+              }}
+            >
+              <Wrench size={12} />
+              Auto-Fix Pattern
+            </button>
+          </div>
+        )}
+        {!patternValidation.error && !patternValidation.warning && (
+          <div style={{
+            fontSize: theme.fontSize.xs,
+            color: theme.colors.text.tertiary,
+            marginTop: theme.spacing.xs,
+            display: 'flex',
+            alignItems: 'center',
+            gap: theme.spacing.xs,
+          }}>
+            <AlertCircle size={12} />
+            PostgreSQL regex pattern. Use \b for word boundaries, \d for digits, \s for whitespace.
+          </div>
+        )}
       </div>
 
       <div>
@@ -427,7 +556,7 @@ function TriggerPatterns() {
         <input
           type="text"
           value={patternForm.flags}
-          onChange={(e) => setPatternForm({ ...patternForm, flags: e.target.value })}
+          onChange={(e) => handleFlagsChange(e.target.value)}
           placeholder="i"
           style={{
             width: '100%',
@@ -446,7 +575,7 @@ function TriggerPatterns() {
           gap: theme.spacing.xs,
         }}>
           <AlertCircle size={12} />
-          Regex flags (i = case-insensitive)
+          PostgreSQL regex flags. Use 'i' for case-insensitive matching.
         </div>
       </div>
 
@@ -618,7 +747,7 @@ function TriggerPatterns() {
         </label>
       </div>
     </div>
-  );
+  ), [patternForm, patternValidation, sequences, handlePatternChange, handleFlagsChange, handleAutoFix]);
 
   if (loading) {
     return (
@@ -1050,7 +1179,7 @@ function TriggerPatterns() {
               </div>
 
               <div style={{ padding: theme.spacing.xl }}>
-                <PatternFormFields />
+                {PatternFormFields}
 
                 <div style={{
                   display: 'flex',
@@ -1147,7 +1276,7 @@ function TriggerPatterns() {
               </div>
 
               <div style={{ padding: theme.spacing.xl }}>
-                <PatternFormFields />
+                {PatternFormFields}
 
                 <div style={{
                   display: 'flex',
