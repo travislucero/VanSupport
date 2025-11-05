@@ -1,22 +1,54 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useLocation, Link } from 'react-router-dom';
-import { LayoutDashboard, List, Target, Ticket, Users, LogOut } from 'lucide-react';
+import {
+  LayoutDashboard,
+  List,
+  Target,
+  Ticket,
+  Users,
+  LogOut,
+  Truck,
+  User,
+  Shield,
+  ChevronDown,
+  ChevronRight,
+  Settings
+} from 'lucide-react';
 import { theme } from '../styles/theme';
 
 const Sidebar = ({ user, onLogout, hasRole }) => {
   const location = useLocation();
+  const [adminExpanded, setAdminExpanded] = useState(true);
 
-  // Build menu items based on user role
-  const getMenuItems = () => {
+  // Top-level menu items (always visible based on role)
+  const getTopLevelItems = () => {
     const items = [
       {
         id: 'dashboard',
         label: 'Dashboard',
         Icon: LayoutDashboard,
         path: '/',
-        roles: ['viewer', 'manager', 'admin'] // All roles
+        show: true // Always show dashboard
       },
     ];
+
+    // Add Support Tickets for manager and admin
+    if (hasRole('manager') || hasRole('admin')) {
+      items.push({
+        id: 'support-tickets',
+        label: 'Support Tickets',
+        Icon: Ticket,
+        path: '/tickets',
+        show: true
+      });
+    }
+
+    return items.filter(item => item.show);
+  };
+
+  // Admin submenu items
+  const getAdminItems = () => {
+    const items = [];
 
     // Add Sequences for viewer and above
     if (hasRole('viewer') || hasRole('manager') || hasRole('admin')) {
@@ -25,7 +57,7 @@ const Sidebar = ({ user, onLogout, hasRole }) => {
         label: 'Sequences',
         Icon: List,
         path: '/sequences',
-        roles: ['viewer', 'manager', 'admin']
+        show: true
       });
     }
 
@@ -36,36 +68,49 @@ const Sidebar = ({ user, onLogout, hasRole }) => {
         label: 'Trigger Patterns',
         Icon: Target,
         path: '/patterns',
-        roles: ['manager', 'admin']
+        show: true
       });
     }
 
-    // Add Support Tickets for manager and admin
+    // Add Vans for viewer and above
+    if (hasRole('viewer') || hasRole('manager') || hasRole('admin')) {
+      items.push({
+        id: 'vans',
+        label: 'Vans',
+        Icon: Truck,
+        path: '/vans',
+        show: true
+      });
+    }
+
+    // Add Owners for viewer and above
+    if (hasRole('viewer') || hasRole('manager') || hasRole('admin')) {
+      items.push({
+        id: 'owners',
+        label: 'Owners',
+        Icon: User,
+        path: '/owners',
+        show: true
+      });
+    }
+
+    // Add Users for manager and admin
     if (hasRole('manager') || hasRole('admin')) {
       items.push({
-        id: 'support-tickets',
-        label: 'Support Tickets',
-        Icon: Ticket,
-        path: '/tickets',
-        roles: ['manager', 'admin']
+        id: 'users',
+        label: 'Users',
+        Icon: Shield,
+        path: '/users',
+        show: true
       });
     }
 
-    // Add Manage Users for admin
-    if (hasRole('admin')) {
-      items.push({
-        id: 'manage-users',
-        label: 'Manage Users',
-        Icon: Users,
-        path: '/admin/users',
-        roles: ['admin']
-      });
-    }
-
-    return items;
+    return items.filter(item => item.show);
   };
 
-  const menuItems = getMenuItems();
+  const topLevelItems = getTopLevelItems();
+  const adminItems = getAdminItems();
+  const shouldShowAdmin = adminItems.length > 0;
 
   return (
     <div
@@ -194,7 +239,9 @@ const Sidebar = ({ user, onLogout, hasRole }) => {
         >
           Navigation
         </div>
-        {menuItems.map((item) => {
+
+        {/* Top-Level Menu Items */}
+        {topLevelItems.map((item) => {
           const Icon = item.Icon;
           const isActive = location.pathname === item.path;
 
@@ -240,6 +287,101 @@ const Sidebar = ({ user, onLogout, hasRole }) => {
             </Link>
           );
         })}
+
+        {/* Admin Submenu */}
+        {shouldShowAdmin && (
+          <div style={{ marginTop: theme.spacing.sm }}>
+            {/* Admin Header - Clickable to expand/collapse */}
+            <button
+              onClick={() => setAdminExpanded(!adminExpanded)}
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                backgroundColor: 'transparent',
+                color: theme.colors.text.secondary,
+                border: 'none',
+                borderRadius: theme.radius.md,
+                cursor: 'pointer',
+                fontSize: theme.fontSize.sm,
+                fontWeight: theme.fontWeight.medium,
+                marginBottom: theme.spacing.xs,
+                transition: 'all 0.2s',
+                textAlign: 'left',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = theme.colors.background.tertiary;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.md }}>
+                <Settings size={20} />
+                <span>Admin</span>
+              </div>
+              {adminExpanded ? (
+                <ChevronDown size={16} />
+              ) : (
+                <ChevronRight size={16} />
+              )}
+            </button>
+
+            {/* Admin Submenu Items - Only show when expanded */}
+            {adminExpanded && (
+              <div style={{ marginLeft: theme.spacing.md, marginTop: theme.spacing.xs }}>
+                {adminItems.map((item) => {
+                  const Icon = item.Icon;
+                  const isActive = location.pathname === item.path;
+
+                  return (
+                    <Link
+                      key={item.id}
+                      to={item.path}
+                      style={{
+                        width: '100%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: theme.spacing.md,
+                        padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                        backgroundColor: isActive
+                          ? theme.colors.accent.primaryLight
+                          : 'transparent',
+                        color: isActive
+                          ? theme.colors.accent.primary
+                          : theme.colors.text.secondary,
+                        border: 'none',
+                        borderRadius: theme.radius.md,
+                        cursor: 'pointer',
+                        fontSize: theme.fontSize.sm,
+                        fontWeight: isActive ? theme.fontWeight.medium : theme.fontWeight.normal,
+                        marginBottom: theme.spacing.xs,
+                        transition: 'all 0.2s',
+                        textAlign: 'left',
+                        textDecoration: 'none',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isActive) {
+                          e.currentTarget.style.backgroundColor = theme.colors.background.tertiary;
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isActive) {
+                          e.currentTarget.style.backgroundColor = 'transparent';
+                        }
+                      }}
+                    >
+                      <Icon size={16} />
+                      {item.label}
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Logout Button */}

@@ -3,7 +3,6 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import './index.css'
 import App from './App.jsx'
-import UserManagement from './pages/UserManagement.jsx'
 import Sequences from './pages/Sequences.jsx'
 import CreateSequence from './pages/CreateSequence.jsx'
 import SequenceDetail from './pages/SequenceDetail.jsx'
@@ -12,6 +11,9 @@ import TicketDashboard from './pages/TicketDashboard.jsx'
 import TechTicketDetail from './pages/TechTicketDetail.jsx'
 import PublicTicket from './pages/PublicTicket.jsx'
 import CreateTicket from './pages/CreateTicket.jsx'
+import Vans from './pages/Vans.jsx'
+import Owners from './pages/Owners.jsx'
+import Users from './pages/Users.jsx'
 import { AuthProvider, useAuth } from './hooks/useAuth.jsx'
 import { ToastProvider } from './hooks/useToast.jsx'
 
@@ -112,10 +114,26 @@ createRoot(document.getElementById('root')).render(
               element={<PublicTicket />}
             />
             <Route
-              path="/admin/users"
+              path="/vans"
               element={
-                <ProtectedRoute requireAdmin={true}>
-                  <UserManagement />
+                <ProtectedRoute requireViewer={true}>
+                  <Vans />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/owners"
+              element={
+                <ProtectedRoute requireViewer={true}>
+                  <Owners />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/users"
+              element={
+                <ProtectedRoute requireManager={true}>
+                  <Users />
                 </ProtectedRoute>
               }
             />

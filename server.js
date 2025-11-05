@@ -27,6 +27,18 @@ const supabase = createClient(
   process.env.SUPABASE_ANON_KEY
 );
 
+// Admin client for admin operations (user creation with elevated privileges)
+const supabaseAdmin = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  }
+);
+
 // 2. Authentication middleware
 const authenticateToken = (req, res, next) => {
   const token = req.cookies.token;
@@ -101,57 +113,69 @@ app.post("/api/auth/login", async (req, res) => {
   }
 
   try {
-    // Query the users table
-    const { data: users, error } = await supabase
-      .from("users")
-      .select("*")
-      .eq("email", email)
-      .limit(1);
+    console.log('🔐 Login attempt for:', email);
 
-    if (error) {
-      console.error("Database error:", error);
-      return res.status(500).json({ error: "Database error" });
+    // Authenticate with Supabase Auth
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
+
+    if (authError) {
+      console.log('❌ Authentication failed:', authError.message);
+      return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    if (!users || users.length === 0) {
-      return res.status(401).json({ error: "Invalid credentials" });
+    console.log('✅ Authentication successful');
+
+    // Get user details from users table with roles
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select(`
+        id,
+        email,
+        full_name,
+        phone,
+        is_active,
+        user_roles (
+          role_id,
+          roles (
+            id,
+            name,
+            description,
+            permissions
+          )
+        )
+      `)
+      .eq('id', authData.user.id)
+      .single();
+
+    if (userError) {
+      console.error('Error fetching user data:', userError);
+      return res.status(500).json({ error: 'Error fetching user data' });
     }
 
-    const user = users[0];
-
-    // Verify password
-    const isValidPassword = await bcrypt.compare(password, user.password_hash);
-
-    if (!isValidPassword) {
-      return res.status(401).json({ error: "Invalid credentials" });
+    // Check if user is active
+    if (!userData.is_active) {
+      console.log('❌ Account is deactivated:', email);
+      return res.status(403).json({ error: 'Account is deactivated' });
     }
 
-    // Fetch user roles and permissions using the view
-    const { data: userRoles, error: rolesError } = await supabase
-      .from("user_roles_view")
-      .select("role_name, role_description, permissions")
-      .eq("user_id", user.id);
-
-    if (rolesError) {
-      console.error("Error fetching user roles:", rolesError);
-      return res.status(500).json({ error: "Error fetching user roles" });
-    }
-
-    // Aggregate all permissions from all roles
-    const allPermissions = new Set();
+    // Format roles and permissions
     const roles = [];
+    const allPermissions = new Set();
 
-    if (userRoles && userRoles.length > 0) {
-      userRoles.forEach(roleInfo => {
-        if (roleInfo.role_name) {
+    if (userData.user_roles && userData.user_roles.length > 0) {
+      userData.user_roles.forEach(userRole => {
+        if (userRole.roles) {
           roles.push({
-            name: roleInfo.role_name,
-            description: roleInfo.role_description
+            name: userRole.roles.name,
+            description: userRole.roles.description
           });
 
           // Add permissions from this role
-          if (roleInfo.permissions && Array.isArray(roleInfo.permissions)) {
-            roleInfo.permissions.forEach(perm => allPermissions.add(perm));
+          if (userRole.roles.permissions && Array.isArray(userRole.roles.permissions)) {
+            userRole.roles.permissions.forEach(perm => allPermissions.add(perm));
           }
         }
       });
@@ -161,15 +185,15 @@ app.post("/api/auth/login", async (req, res) => {
 
     // Update last_login
     await supabase
-      .from("users")
+      .from('users')
       .update({ last_login: new Date().toISOString() })
-      .eq("id", user.id);
+      .eq('id', userData.id);
 
     // Create JWT token with roles and permissions
     const token = jwt.sign(
       {
-        id: user.id,
-        email: user.email,
+        id: userData.id,
+        email: userData.email,
         roles: roles,
         permissions: permissions
       },
@@ -185,11 +209,13 @@ app.post("/api/auth/login", async (req, res) => {
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
     });
 
+    console.log('✅ Login successful for:', email);
+
     res.json({
       success: true,
       user: {
-        id: user.id,
-        email: user.email,
+        id: userData.id,
+        email: userData.email,
         roles: roles,
         permissions: permissions,
       },
@@ -2034,6 +2060,897 @@ app.get("/api/call-volume-heatmap", authenticateToken, async (req, res) => {
   } catch (err) {
     console.error("🔥 Call Volume Heatmap - Error:", err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ===== VAN MANAGEMENT ENDPOINTS =====
+
+// GET /api/vans - List all vans with owner info
+app.get("/api/vans", authenticateToken, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("vans")
+      .select(`
+        *,
+        owner:owners!vans_owner_id_fkey (
+          id,
+          name,
+          phone,
+          email,
+          company
+        )
+      `)
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+
+    res.json(data);
+  } catch (err) {
+    console.error("Error fetching vans:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/vans/:id - Get single van with owner details
+app.get("/api/vans/:id", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const { data, error } = await supabase
+      .from("vans")
+      .select(`
+        *,
+        owner:owners!vans_owner_id_fkey (
+          id,
+          name,
+          phone,
+          email,
+          company
+        )
+      `)
+      .eq("id", id)
+      .single();
+
+    if (error) {
+      if (error.code === "PGRST116") {
+        return res.status(404).json({ error: "Van not found" });
+      }
+      throw error;
+    }
+
+    res.json(data);
+  } catch (err) {
+    console.error("Error fetching van:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/vans - Create new van
+app.post("/api/vans", authenticateToken, requirePermission("manage_vans"), async (req, res) => {
+  try {
+    const { van_number, make, version, year, vin, owner_id } = req.body;
+
+    // Validation
+    if (!van_number || !make || !year || !owner_id) {
+      return res.status(400).json({
+        error: "Missing required fields: van_number, make, year, owner_id"
+      });
+    }
+
+    // Auto-uppercase van_number and vin
+    const vanData = {
+      van_number: van_number.toUpperCase(),
+      make,
+      version: version || null,
+      year: parseInt(year),
+      vin: vin ? vin.toUpperCase() : null,
+      owner_id,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    const { data, error } = await supabase
+      .from("vans")
+      .insert(vanData)
+      .select(`
+        *,
+        owner:owners!vans_owner_id_fkey (
+          id,
+          name,
+          phone,
+          email,
+          company
+        )
+      `)
+      .single();
+
+    if (error) {
+      // Check for unique constraint violations
+      if (error.code === "23505") {
+        if (error.message.includes("van_number")) {
+          return res.status(409).json({ error: "Van number already exists" });
+        }
+        if (error.message.includes("vin")) {
+          return res.status(409).json({ error: "VIN already exists" });
+        }
+      }
+      throw error;
+    }
+
+    res.status(201).json(data);
+  } catch (err) {
+    console.error("Error creating van:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/vans/:id - Update van
+app.put("/api/vans/:id", authenticateToken, requirePermission("manage_vans"), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { van_number, make, version, year, vin, owner_id } = req.body;
+
+    // Validation
+    if (!van_number || !make || !year || !owner_id) {
+      return res.status(400).json({
+        error: "Missing required fields: van_number, make, year, owner_id"
+      });
+    }
+
+    // Auto-uppercase van_number and vin
+    const vanData = {
+      van_number: van_number.toUpperCase(),
+      make,
+      version: version || null,
+      year: parseInt(year),
+      vin: vin ? vin.toUpperCase() : null,
+      owner_id,
+      updated_at: new Date().toISOString()
+    };
+
+    const { data, error } = await supabase
+      .from("vans")
+      .update(vanData)
+      .eq("id", id)
+      .select(`
+        *,
+        owner:owners!vans_owner_id_fkey (
+          id,
+          name,
+          phone,
+          email,
+          company
+        )
+      `)
+      .single();
+
+    if (error) {
+      if (error.code === "PGRST116") {
+        return res.status(404).json({ error: "Van not found" });
+      }
+      // Check for unique constraint violations
+      if (error.code === "23505") {
+        if (error.message.includes("van_number")) {
+          return res.status(409).json({ error: "Van number already exists" });
+        }
+        if (error.message.includes("vin")) {
+          return res.status(409).json({ error: "VIN already exists" });
+        }
+      }
+      throw error;
+    }
+
+    res.json(data);
+  } catch (err) {
+    console.error("Error updating van:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/vans/:id/check-dependencies - Check if van can be deleted
+app.get("/api/vans/:id/check-dependencies", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    console.log(`🔍 Checking dependencies for van ${id}`);
+
+    // Check for sequence_sessions
+    const { data: sessions, error: sessionsError } = await supabase
+      .from("sequence_sessions")
+      .select("id", { count: "exact" })
+      .eq("van_id", id);
+
+    if (sessionsError && sessionsError.code !== "PGRST116") {
+      console.error("Error checking sequence_sessions:", sessionsError);
+      throw sessionsError;
+    }
+
+    // Check for tickets
+    const { data: tickets, error: ticketsError } = await supabase
+      .from("tickets")
+      .select("id", { count: "exact" })
+      .eq("van_id", id);
+
+    if (ticketsError && ticketsError.code !== "PGRST116") {
+      console.error("Error checking tickets:", ticketsError);
+      throw ticketsError;
+    }
+
+    const sessionCount = sessions?.length || 0;
+    const ticketCount = tickets?.length || 0;
+    const hasDependencies = sessionCount > 0 || ticketCount > 0;
+
+    console.log(`📊 Van ${id} dependencies: ${sessionCount} sessions, ${ticketCount} tickets`);
+
+    res.json({
+      hasDependencies,
+      sessionCount,
+      ticketCount,
+      message: hasDependencies
+        ? `This van has ${sessionCount} support session(s) and ${ticketCount} ticket(s) in history`
+        : "Van can be safely deleted"
+    });
+
+  } catch (err) {
+    console.error("Error checking van dependencies:", err);
+    res.status(500).json({ error: "Failed to check dependencies" });
+  }
+});
+
+// DELETE /api/vans/:id - Delete van
+app.delete("/api/vans/:id", authenticateToken, requirePermission("manage_vans"), async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    console.log(`🗑️ Attempting to delete van ${id}`);
+
+    // Check for dependencies before deletion
+    const { data: sessions } = await supabase
+      .from("sequence_sessions")
+      .select("id", { count: "exact" })
+      .eq("van_id", id);
+
+    const { data: tickets } = await supabase
+      .from("tickets")
+      .select("id", { count: "exact" })
+      .eq("van_id", id);
+
+    const sessionCount = sessions?.length || 0;
+    const ticketCount = tickets?.length || 0;
+
+    if (sessionCount > 0 || ticketCount > 0) {
+      console.log(`❌ Cannot delete van ${id}: has ${sessionCount} sessions and ${ticketCount} tickets`);
+      return res.status(400).json({
+        error: `Cannot delete van with historical data. This van has ${sessionCount} support session(s) and ${ticketCount} ticket(s).`,
+        hasDependencies: true,
+        sessionCount,
+        ticketCount
+      });
+    }
+
+    // Proceed with deletion if no dependencies
+    const { error } = await supabase
+      .from("vans")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      if (error.code === "PGRST116") {
+        return res.status(404).json({ error: "Van not found" });
+      }
+      throw error;
+    }
+
+    console.log(`✅ Van ${id} deleted successfully`);
+
+    res.json({
+      success: true,
+      message: "Van deleted successfully"
+    });
+  } catch (err) {
+    console.error("Error deleting van:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ===== OWNER MANAGEMENT ENDPOINTS =====
+
+// GET /api/owners - List all owners with van counts
+app.get("/api/owners", authenticateToken, async (req, res) => {
+  try {
+    // Get all owners with their vans
+    const { data, error } = await supabase
+      .from("owners")
+      .select(`
+        *,
+        vans (id)
+      `)
+      .order("name", { ascending: true });
+
+    if (error) throw error;
+
+    // Transform the data to include van_count
+    const ownersWithCount = data.map(owner => ({
+      ...owner,
+      van_count: owner.vans ? owner.vans.length : 0,
+      vans: undefined // Remove the nested vans array from response
+    }));
+
+    res.json(ownersWithCount);
+  } catch (err) {
+    console.error("Error fetching owners:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/owners/:id - Get single owner with their vans
+app.get("/api/owners/:id", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const { data, error } = await supabase
+      .from("owners")
+      .select(`
+        *,
+        vans (*)
+      `)
+      .eq("id", id)
+      .single();
+
+    if (error) {
+      if (error.code === "PGRST116") {
+        return res.status(404).json({ error: "Owner not found" });
+      }
+      throw error;
+    }
+
+    res.json(data);
+  } catch (err) {
+    console.error("Error fetching owner:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/owners - Create new owner
+app.post("/api/owners", authenticateToken, requirePermission("manage_owners"), async (req, res) => {
+  try {
+    const { name, company, phone, email } = req.body;
+
+    // Validation
+    if (!name || !phone || !email) {
+      return res.status(400).json({
+        error: "Missing required fields: name, phone, email"
+      });
+    }
+
+    const ownerData = {
+      name,
+      company: company || null,
+      phone,
+      email,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    const { data, error } = await supabase
+      .from("owners")
+      .insert(ownerData)
+      .select()
+      .single();
+
+    if (error) {
+      // Check for unique constraint violations
+      if (error.code === "23505") {
+        if (error.message.includes("phone")) {
+          return res.status(409).json({ error: "Phone number already exists" });
+        }
+        if (error.message.includes("email")) {
+          return res.status(409).json({ error: "Email already exists" });
+        }
+      }
+      throw error;
+    }
+
+    res.status(201).json(data);
+  } catch (err) {
+    console.error("Error creating owner:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/owners/:id - Update owner
+app.put("/api/owners/:id", authenticateToken, requirePermission("manage_owners"), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, company, phone, email } = req.body;
+
+    // Validation
+    if (!name || !phone || !email) {
+      return res.status(400).json({
+        error: "Missing required fields: name, phone, email"
+      });
+    }
+
+    const ownerData = {
+      name,
+      company: company || null,
+      phone,
+      email,
+      updated_at: new Date().toISOString()
+    };
+
+    const { data, error } = await supabase
+      .from("owners")
+      .update(ownerData)
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) {
+      if (error.code === "PGRST116") {
+        return res.status(404).json({ error: "Owner not found" });
+      }
+      // Check for unique constraint violations
+      if (error.code === "23505") {
+        if (error.message.includes("phone")) {
+          return res.status(409).json({ error: "Phone number already exists" });
+        }
+        if (error.message.includes("email")) {
+          return res.status(409).json({ error: "Email already exists" });
+        }
+      }
+      throw error;
+    }
+
+    res.json(data);
+  } catch (err) {
+    console.error("Error updating owner:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/owners/:id/check-dependencies - Check if owner can be deleted
+app.get("/api/owners/:id/check-dependencies", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    console.log(`🔍 Checking dependencies for owner ${id}`);
+
+    // Check for vans
+    const { data: vans, error: vansError } = await supabase
+      .from("vans")
+      .select("id", { count: "exact" })
+      .eq("owner_id", id);
+
+    if (vansError && vansError.code !== "PGRST116") {
+      console.error("Error checking vans:", vansError);
+      throw vansError;
+    }
+
+    // Check for tickets
+    const { data: tickets, error: ticketsError } = await supabase
+      .from("tickets")
+      .select("id", { count: "exact" })
+      .eq("owner_id", id);
+
+    if (ticketsError && ticketsError.code !== "PGRST116") {
+      console.error("Error checking tickets:", ticketsError);
+      throw ticketsError;
+    }
+
+    // Check for sessions (NOT sequence_sessions - that doesn't have owner_id)
+    const { data: sessions, error: sessionsError } = await supabase
+      .from("sessions")
+      .select("id", { count: "exact" })
+      .eq("owner_id", id);
+
+    if (sessionsError && sessionsError.code !== "PGRST116") {
+      console.error("Error checking sessions:", sessionsError);
+      throw sessionsError;
+    }
+
+    const vanCount = vans?.length || 0;
+    const ticketCount = tickets?.length || 0;
+    const sessionCount = sessions?.length || 0;
+    const hasDependencies = vanCount > 0 || ticketCount > 0 || sessionCount > 0;
+
+    console.log(`📊 Owner ${id} dependencies: ${vanCount} vans, ${sessionCount} sessions, ${ticketCount} tickets`);
+
+    // Build user-friendly message
+    const parts = [];
+    if (vanCount > 0) parts.push(`${vanCount} van(s)`);
+    if (sessionCount > 0) parts.push(`${sessionCount} support session(s)`);
+    if (ticketCount > 0) parts.push(`${ticketCount} ticket(s)`);
+
+    res.json({
+      hasDependencies,
+      vanCount,
+      sessionCount,
+      ticketCount,
+      message: hasDependencies
+        ? `This owner has ${parts.join(", ")} in the system`
+        : "Owner can be safely deleted"
+    });
+
+  } catch (err) {
+    console.error("Error checking owner dependencies:", err);
+    res.status(500).json({ error: "Failed to check dependencies" });
+  }
+});
+
+// DELETE /api/owners/:id - Delete owner (with cascade check)
+app.delete("/api/owners/:id", authenticateToken, requirePermission("manage_owners"), async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    console.log(`🗑️ Attempting to delete owner ${id}`);
+
+    // Check for dependencies before deletion
+    const { data: vans } = await supabase
+      .from("vans")
+      .select("id", { count: "exact" })
+      .eq("owner_id", id);
+
+    const { data: tickets } = await supabase
+      .from("tickets")
+      .select("id", { count: "exact" })
+      .eq("owner_id", id);
+
+    const { data: sessions } = await supabase
+      .from("sequence_sessions")
+      .select("id", { count: "exact" })
+      .eq("owner_id", id);
+
+    const vanCount = vans?.length || 0;
+    const ticketCount = tickets?.length || 0;
+    const sessionCount = sessions?.length || 0;
+
+    if (vanCount > 0 || ticketCount > 0 || sessionCount > 0) {
+      console.log(`❌ Cannot delete owner ${id}: has ${vanCount} vans, ${sessionCount} sessions, ${ticketCount} tickets`);
+
+      // Build user-friendly message
+      const parts = [];
+      if (vanCount > 0) parts.push(`${vanCount} van(s)`);
+      if (sessionCount > 0) parts.push(`${sessionCount} support session(s)`);
+      if (ticketCount > 0) parts.push(`${ticketCount} ticket(s)`);
+
+      return res.status(400).json({
+        error: `Cannot delete owner with existing data. This owner has ${parts.join(", ")} in the system.`,
+        hasDependencies: true,
+        vanCount,
+        sessionCount,
+        ticketCount
+      });
+    }
+
+    // Proceed with deletion if no dependencies
+    const { error } = await supabase
+      .from("owners")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      if (error.code === "PGRST116") {
+        return res.status(404).json({ error: "Owner not found" });
+      }
+      throw error;
+    }
+
+    console.log(`✅ Owner ${id} deleted successfully`);
+
+    res.json({
+      success: true,
+      message: "Owner deleted successfully"
+    });
+  } catch (err) {
+    console.error("Error deleting owner:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==================== USER MANAGEMENT ENDPOINTS ====================
+
+// GET /api/users - List all users with their roles
+app.get('/api/users', authenticateToken, requirePermission('manage_users'), async (req, res) => {
+  try {
+    console.log('📋 Fetching all users');
+
+    const { data, error } = await supabase
+      .from('users')
+      .select(`
+        id,
+        email,
+        full_name,
+        phone,
+        is_active,
+        created_at,
+        last_login,
+        user_roles (
+          role_id,
+          roles (
+            id,
+            name,
+            description,
+            permissions
+          )
+        )
+      `)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    // Format the response to be cleaner
+    const formattedUsers = data.map(user => ({
+      id: user.id,
+      email: user.email,
+      full_name: user.full_name,
+      phone: user.phone,
+      is_active: user.is_active,
+      created_at: user.created_at,
+      last_login: user.last_login,
+      role: user.user_roles?.[0]?.roles || null
+    }));
+
+    res.json(formattedUsers);
+
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
+// GET /api/roles - Get all available roles for user creation/editing
+app.get('/api/roles', authenticateToken, requirePermission('manage_users'), async (req, res) => {
+  try {
+    console.log('📋 Fetching all roles');
+
+    const { data, error } = await supabase
+      .from('roles')
+      .select('id, name, description, permissions')
+      .order('name');
+
+    if (error) throw error;
+
+    console.log(`✅ Found ${data.length} roles`);
+    res.json(data);
+
+  } catch (error) {
+    console.error('Error fetching roles:', error);
+    res.status(500).json({ error: 'Failed to fetch roles' });
+  }
+});
+
+// POST /api/users - Create new user
+app.post('/api/users', authenticateToken, requirePermission('manage_users'), async (req, res) => {
+  try {
+    const { email, password, full_name, phone, role_name } = req.body;
+    console.log('👤 Creating new user:', email);
+
+    // Validation
+    if (!email || !password || !role_name) {
+      return res.status(400).json({
+        error: 'Email, password, and role are required'
+      });
+    }
+
+    // Check if role exists
+    const { data: roleData, error: roleError } = await supabase
+      .from('roles')
+      .select('id, name, permissions')
+      .eq('name', role_name)
+      .single();
+
+    if (roleError || !roleData) {
+      return res.status(400).json({ error: 'Invalid role specified' });
+    }
+
+    // Security: Only admins can create admin users
+    if (role_name === 'admin' && !req.user.permissions.includes('manage_roles')) {
+      return res.status(403).json({
+        error: 'Only admins can create admin users'
+      });
+    }
+
+    // Create user in Supabase Auth (using admin client with service role key)
+    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true
+    });
+
+    if (authError) throw authError;
+
+    // Create user record in users table
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .insert({
+        id: authData.user.id,
+        email,
+        full_name,
+        phone,
+        is_active: true
+      })
+      .select()
+      .single();
+
+    if (userError) throw userError;
+
+    // Assign role to user
+    const { error: roleAssignError } = await supabase
+      .from('user_roles')
+      .insert({
+        user_id: authData.user.id,
+        role_id: roleData.id
+      });
+
+    if (roleAssignError) throw roleAssignError;
+
+    console.log('✅ User created successfully:', email);
+
+    res.json({
+      success: true,
+      user: {
+        id: userData.id,
+        email: userData.email,
+        full_name: userData.full_name,
+        phone: userData.phone,
+        role: roleData
+      }
+    });
+
+  } catch (error) {
+    console.error('Error creating user:', error);
+    res.status(500).json({
+      error: error.message || 'Failed to create user'
+    });
+  }
+});
+
+// PUT /api/users/:id - Update user (change role, name, etc)
+app.put('/api/users/:id', authenticateToken, requirePermission('manage_users'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { full_name, phone, role_name, is_active } = req.body;
+    console.log('✏️ Updating user:', id);
+
+    // Security: Prevent users from modifying their own role
+    if (id === req.user.id && role_name) {
+      return res.status(403).json({
+        error: 'Cannot modify your own role'
+      });
+    }
+
+    // If changing role
+    if (role_name) {
+      // Check if role exists
+      const { data: roleData, error: roleError } = await supabase
+        .from('roles')
+        .select('id, name')
+        .eq('name', role_name)
+        .single();
+
+      if (roleError || !roleData) {
+        return res.status(400).json({ error: 'Invalid role specified' });
+      }
+
+      // Security: Only admins can assign admin role
+      if (role_name === 'admin' && !req.user.permissions.includes('manage_roles')) {
+        return res.status(403).json({
+          error: 'Only admins can assign admin role'
+        });
+      }
+
+      // Delete old role assignment
+      await supabase
+        .from('user_roles')
+        .delete()
+        .eq('user_id', id);
+
+      // Create new role assignment
+      const { error: roleAssignError } = await supabase
+        .from('user_roles')
+        .insert({
+          user_id: id,
+          role_id: roleData.id
+        });
+
+      if (roleAssignError) throw roleAssignError;
+    }
+
+    // Update user info
+    const updateData = {};
+    if (full_name !== undefined) updateData.full_name = full_name;
+    if (phone !== undefined) updateData.phone = phone;
+    if (is_active !== undefined) updateData.is_active = is_active;
+
+    if (Object.keys(updateData).length > 0) {
+      const { error: updateError } = await supabase
+        .from('users')
+        .update(updateData)
+        .eq('id', id);
+
+      if (updateError) throw updateError;
+    }
+
+    console.log('✅ User updated successfully:', id);
+    res.json({ success: true, message: 'User updated successfully' });
+
+  } catch (error) {
+    console.error('Error updating user:', error);
+    res.status(500).json({ error: 'Failed to update user' });
+  }
+});
+
+// DELETE /api/users/:id - Deactivate user (soft delete)
+app.delete('/api/users/:id', authenticateToken, requirePermission('manage_users'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    console.log('🗑️ Deactivating user:', id);
+
+    // Security: Cannot delete yourself
+    if (id === req.user.id) {
+      return res.status(403).json({
+        error: 'Cannot deactivate your own account'
+      });
+    }
+
+    // Soft delete - just mark as inactive
+    const { error } = await supabase
+      .from('users')
+      .update({ is_active: false })
+      .eq('id', id);
+
+    if (error) throw error;
+
+    console.log('✅ User deactivated:', id);
+    res.json({ success: true, message: 'User deactivated successfully' });
+
+  } catch (error) {
+    console.error('Error deactivating user:', error);
+    res.status(500).json({ error: 'Failed to deactivate user' });
+  }
+});
+
+// PUT /api/users/:id/reset-password - Reset user password (admin only)
+app.put('/api/users/:id/reset-password', authenticateToken, requirePermission('manage_users'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { new_password } = req.body;
+    console.log('🔑 Resetting password for user:', id);
+
+    // Validation
+    if (!new_password || new_password.length < 6) {
+      return res.status(400).json({
+        error: 'Password must be at least 6 characters'
+      });
+    }
+
+    // Security: Cannot reset own password through this endpoint
+    if (id === req.user.id) {
+      return res.status(403).json({
+        error: 'Use the profile settings to change your own password'
+      });
+    }
+
+    // Update password using Supabase Admin
+    const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
+      id,
+      { password: new_password }
+    );
+
+    if (updateError) throw updateError;
+
+    console.log('✅ Password reset successfully for user:', id);
+    res.json({
+      success: true,
+      message: 'Password reset successfully'
+    });
+
+  } catch (error) {
+    console.error('Error resetting password:', error);
+    res.status(500).json({
+      error: error.message || 'Failed to reset password'
+    });
   }
 });
 
