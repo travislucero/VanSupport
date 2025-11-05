@@ -39,6 +39,8 @@ function App() {
   const [rangeType, setRangeType] = useState("7");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
+  const [appliedCustomFrom, setAppliedCustomFrom] = useState("");
+  const [appliedCustomTo, setAppliedCustomTo] = useState("");
   const [loading, setLoading] = useState(true);
 
   const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
@@ -49,6 +51,14 @@ function App() {
     return key.split('_').map(word =>
       word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
     ).join(' ');
+  };
+
+  // Apply custom date range
+  const handleApplyCustomRange = () => {
+    if (customFrom && customTo) {
+      setAppliedCustomFrom(customFrom);
+      setAppliedCustomTo(customTo);
+    }
   };
 
   const CHART_COLORS = [
@@ -65,8 +75,8 @@ function App() {
 
     const queryParams =
       rangeType === "custom"
-        ? customFrom && customTo
-          ? `from=${customFrom}&to=${customTo}`
+        ? appliedCustomFrom && appliedCustomTo
+          ? `from=${appliedCustomFrom}&to=${appliedCustomTo}`
           : null
         : `days=${rangeType}`;
 
@@ -222,7 +232,7 @@ function App() {
         console.error("❌ Critical error fetching data:", err);
         setLoading(false);
       });
-  }, [rangeType, customFrom, customTo, isAuthenticated, hasRole]);
+  }, [rangeType, appliedCustomFrom, appliedCustomTo, isAuthenticated, hasRole]);
 
   const sequences = [...new Set(data.map((d) => d.sequence_key))];
   const sequenceDisplayNames = {};
@@ -350,6 +360,12 @@ function App() {
                     type="date"
                     value={customFrom}
                     onChange={(e) => setCustomFrom(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleApplyCustomRange();
+                      }
+                    }}
                     style={{
                       padding: `${theme.spacing.sm} ${theme.spacing.md}`,
                       backgroundColor: theme.colors.background.tertiary,
@@ -377,6 +393,12 @@ function App() {
                     type="date"
                     value={customTo}
                     onChange={(e) => setCustomTo(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleApplyCustomRange();
+                      }
+                    }}
                     style={{
                       padding: `${theme.spacing.sm} ${theme.spacing.md}`,
                       backgroundColor: theme.colors.background.tertiary,
@@ -387,6 +409,36 @@ function App() {
                       outline: "none",
                     }}
                   />
+                </div>
+                <div>
+                  <button
+                    onClick={handleApplyCustomRange}
+                    disabled={!customFrom || !customTo}
+                    style={{
+                      marginTop: theme.spacing.lg,
+                      padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
+                      backgroundColor: customFrom && customTo ? theme.colors.accent.primary : theme.colors.background.tertiary,
+                      color: customFrom && customTo ? 'white' : theme.colors.text.disabled,
+                      border: 'none',
+                      borderRadius: theme.radius.md,
+                      fontSize: theme.fontSize.sm,
+                      fontWeight: theme.fontWeight.medium,
+                      cursor: customFrom && customTo ? 'pointer' : 'not-allowed',
+                      transition: 'all 0.2s',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (customFrom && customTo) {
+                        e.target.style.backgroundColor = theme.colors.accent.primaryHover;
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (customFrom && customTo) {
+                        e.target.style.backgroundColor = theme.colors.accent.primary;
+                      }
+                    }}
+                  >
+                    Apply
+                  </button>
                 </div>
               </>
             )}
