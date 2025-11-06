@@ -1,7 +1,17 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(nul)",
+      "Bash(dir:*)",
+      "Bash(findstr:*)",
+      "Bash(node check-ticket-function.js:*)",
+      "Bash(node test-api.js:*)",
+      "Bash(node diagnose-tickets.js:*)",
+      "Bash(npm run build:dev:*)",
+      "Bash(npm run)",
+      "Bash(node test-vans-pagination.js:*)",
+      "Bash(npm run dev:*)"
     ],
     "deny": [],
     "ask": []

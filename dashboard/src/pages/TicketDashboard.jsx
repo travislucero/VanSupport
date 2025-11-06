@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Ticket,
   UserPlus,
@@ -22,6 +22,7 @@ import {
 import Sidebar from '../components/Sidebar';
 import Card from '../components/Card';
 import Badge from '../components/Badge';
+import Pagination from '../components/Pagination';
 import { useToast } from '../hooks/useToast';
 import { useAuth } from '../hooks/useAuth';
 import { theme } from '../styles/theme';
@@ -35,12 +36,23 @@ const TicketDashboard = () => {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const { user, logout, hasRole } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [unassignedTickets, setUnassignedTickets] = useState([]);
   const [myTickets, setMyTickets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [assigningTicket, setAssigningTicket] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Pagination state for unassigned tickets
+  const [unassignedPage, setUnassignedPage] = useState(parseInt(searchParams.get('unassignedPage')) || 1);
+  const [unassignedPageSize, setUnassignedPageSize] = useState(parseInt(searchParams.get('unassignedLimit')) || 25);
+  const [unassignedPagination, setUnassignedPagination] = useState(null);
+
+  // Pagination state for my tickets
+  const [myTicketsPage, setMyTicketsPage] = useState(parseInt(searchParams.get('myTicketsPage')) || 1);
+  const [myTicketsPageSize, setMyTicketsPageSize] = useState(parseInt(searchParams.get('myTicketsLimit')) || 25);
+  const [myTicketsPagination, setMyTicketsPagination] = useState(null);
 
   // Filters and search
   const [unassignedSearch, setUnassignedSearch] = useState('');
@@ -59,10 +71,10 @@ const TicketDashboard = () => {
       }
 
       const [unassignedRes, myTicketsRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/api/tickets/unassigned`, {
+        fetch(`${API_BASE_URL}/api/tickets/unassigned?page=${unassignedPage}&limit=${unassignedPageSize}`, {
           credentials: 'include'
         }),
-        fetch(`${API_BASE_URL}/api/tickets/my-tickets`, {
+        fetch(`${API_BASE_URL}/api/tickets/my-tickets?page=${myTicketsPage}&limit=${myTicketsPageSize}`, {
           credentials: 'include'
         })
       ]);
@@ -75,21 +87,18 @@ const TicketDashboard = () => {
       const myTicketsData = await myTicketsRes.json();
 
       console.log('=== UNASSIGNED TICKETS DATA ===');
-      console.log('Count:', unassignedData.length);
-      if (unassignedData.length > 0) {
-        console.log('First ticket:', unassignedData[0]);
-        console.log('Available fields:', Object.keys(unassignedData[0]));
-      }
+      console.log('Pagination:', unassignedData.pagination);
+      console.log('Tickets:', unassignedData.tickets?.length || 0);
 
       console.log('=== MY TICKETS DATA ===');
-      console.log('Count:', myTicketsData.length);
-      if (myTicketsData.length > 0) {
-        console.log('First ticket:', myTicketsData[0]);
-        console.log('Available fields:', Object.keys(myTicketsData[0]));
-      }
+      console.log('Pagination:', myTicketsData.pagination);
+      console.log('Tickets:', myTicketsData.tickets?.length || 0);
 
-      setUnassignedTickets(unassignedData);
-      setMyTickets(myTicketsData);
+      setUnassignedTickets(unassignedData.tickets || []);
+      setUnassignedPagination(unassignedData.pagination);
+
+      setMyTickets(myTicketsData.tickets || []);
+      setMyTicketsPagination(myTicketsData.pagination);
     } catch (error) {
       console.error('Error fetching tickets:', error);
       showToast('Failed to load tickets', 'error');
@@ -97,7 +106,7 @@ const TicketDashboard = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [showToast]);
+  }, [showToast, unassignedPage, unassignedPageSize, myTicketsPage, myTicketsPageSize]);
 
   // Initial fetch
   useEffect(() => {
@@ -150,6 +159,47 @@ const TicketDashboard = () => {
   // Navigate to ticket detail
   const handleTicketClick = (ticketId) => {
     navigate(`/tickets/${ticketId}`);
+  };
+
+  // Pagination handlers for unassigned tickets
+  const handleUnassignedPageChange = (newPage) => {
+    setUnassignedPage(newPage);
+    const params = new URLSearchParams(searchParams);
+    params.set('unassignedPage', newPage.toString());
+    setSearchParams(params);
+    // Scroll to top of tickets section
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleUnassignedPageSizeChange = (newSize) => {
+    setUnassignedPageSize(newSize);
+    setUnassignedPage(1); // Reset to first page
+    const params = new URLSearchParams(searchParams);
+    params.set('unassignedLimit', newSize.toString());
+    params.set('unassignedPage', '1');
+    setSearchParams(params);
+  };
+
+  // Pagination handlers for my tickets
+  const handleMyTicketsPageChange = (newPage) => {
+    setMyTicketsPage(newPage);
+    const params = new URLSearchParams(searchParams);
+    params.set('myTicketsPage', newPage.toString());
+    setSearchParams(params);
+    // Scroll to my tickets section
+    const myTicketsSection = document.getElementById('my-tickets-section');
+    if (myTicketsSection) {
+      myTicketsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  const handleMyTicketsPageSizeChange = (newSize) => {
+    setMyTicketsPageSize(newSize);
+    setMyTicketsPage(1); // Reset to first page
+    const params = new URLSearchParams(searchParams);
+    params.set('myTicketsLimit', newSize.toString());
+    params.set('myTicketsPage', '1');
+    setSearchParams(params);
   };
 
   // Get status badge config
@@ -366,7 +416,7 @@ const TicketDashboard = () => {
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
                   <h2 className="text-xl font-semibold" style={{ color: '#111827' }}>Unassigned Tickets</h2>
-                  <Badge color="blue">{filteredUnassigned.length}</Badge>
+                  <Badge color="blue">{unassignedPagination?.totalCount || 0}</Badge>
                 </div>
                 <p className="text-sm" style={{ color: '#6b7280' }}>Tickets waiting for assignment</p>
               </div>
@@ -523,15 +573,28 @@ const TicketDashboard = () => {
                 </tbody>
               </table>
             </div>
+
+            {/* Pagination for Unassigned Tickets */}
+            {unassignedPagination && unassignedPagination.totalCount > 0 && (
+              <Pagination
+                currentPage={unassignedPagination.page}
+                totalPages={unassignedPagination.totalPages}
+                pageSize={unassignedPagination.limit}
+                totalCount={unassignedPagination.totalCount}
+                onPageChange={handleUnassignedPageChange}
+                onPageSizeChange={handleUnassignedPageSizeChange}
+                loading={loading || refreshing}
+              />
+            )}
           </Card>
 
           {/* My Tickets Section */}
-          <Card>
+          <Card id="my-tickets-section">
             <div className="p-6 border-b border-gray-200">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
                   <h2 className="text-xl font-semibold" style={{ color: '#111827' }}>My Tickets</h2>
-                  <Badge color="purple">{filteredMyTickets.length}</Badge>
+                  <Badge color="purple">{myTicketsPagination?.totalCount || 0}</Badge>
                 </div>
                 <p className="text-sm" style={{ color: '#6b7280' }}>Tickets assigned to you</p>
               </div>
@@ -720,6 +783,19 @@ const TicketDashboard = () => {
                 </tbody>
               </table>
             </div>
+
+            {/* Pagination for My Tickets */}
+            {myTicketsPagination && myTicketsPagination.totalCount > 0 && (
+              <Pagination
+                currentPage={myTicketsPagination.page}
+                totalPages={myTicketsPagination.totalPages}
+                pageSize={myTicketsPagination.limit}
+                totalCount={myTicketsPagination.totalCount}
+                onPageChange={handleMyTicketsPageChange}
+                onPageSizeChange={handleMyTicketsPageSizeChange}
+                loading={loading || refreshing}
+              />
+            )}
           </Card>
         </div>
       </div>

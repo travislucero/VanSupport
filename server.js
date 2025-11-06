@@ -1262,7 +1262,16 @@ app.post("/api/tickets/create", async (req, res) => {
 // 6. GET /api/tickets/unassigned - Get unassigned ticket queue
 app.get("/api/tickets/unassigned", authenticateToken, requireRole(['manager', 'admin']), async (req, res) => {
   try {
-    console.log('🎫 Get Unassigned Tickets - Fetching unassigned queue');
+    // Parse pagination parameters
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 25;
+
+    // Validate pagination parameters
+    const validLimits = [10, 25, 50, 100];
+    const pageSize = validLimits.includes(limit) ? limit : 25;
+    const currentPage = page > 0 ? page : 1;
+
+    console.log('🎫 Get Unassigned Tickets - Fetching page', currentPage, 'with limit', pageSize);
 
     const { data, error } = await supabase.rpc("fn_get_tech_tickets", {
       p_tech_user_id: null
@@ -1281,8 +1290,28 @@ app.get("/api/tickets/unassigned", authenticateToken, requireRole(['manager', 'a
       return new Date(a.created_at) - new Date(b.created_at);
     });
 
-    console.log('🎫 Get Unassigned Tickets - Success, returned', sortedData.length, 'tickets');
-    res.json(sortedData);
+    // Apply pagination
+    const totalCount = sortedData.length;
+    const totalPages = Math.ceil(totalCount / pageSize);
+    const offset = (currentPage - 1) * pageSize;
+    const paginatedData = sortedData.slice(offset, offset + pageSize);
+
+    // Build pagination metadata
+    const pagination = {
+      page: currentPage,
+      limit: pageSize,
+      totalCount: totalCount,
+      totalPages: totalPages,
+      hasNextPage: currentPage < totalPages,
+      hasPreviousPage: currentPage > 1
+    };
+
+    console.log('🎫 Get Unassigned Tickets - Success, page', currentPage, 'of', totalPages, '(', paginatedData.length, 'tickets)');
+
+    res.json({
+      tickets: paginatedData,
+      pagination: pagination
+    });
   } catch (err) {
     console.error('🎫 Get Unassigned Tickets - Error:', err);
     res.status(500).json({ error: "Internal server error" });
@@ -1292,7 +1321,16 @@ app.get("/api/tickets/unassigned", authenticateToken, requireRole(['manager', 'a
 // 7. GET /api/tickets/my-tickets - Get current user's assigned tickets
 app.get("/api/tickets/my-tickets", authenticateToken, requireRole(['manager', 'admin']), async (req, res) => {
   try {
-    console.log('🎫 Get My Tickets - Fetching tickets for user:', req.user.id);
+    // Parse pagination parameters
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 25;
+
+    // Validate pagination parameters
+    const validLimits = [10, 25, 50, 100];
+    const pageSize = validLimits.includes(limit) ? limit : 25;
+    const currentPage = page > 0 ? page : 1;
+
+    console.log('🎫 Get My Tickets - Fetching tickets for user:', req.user.id, '- page', currentPage, 'with limit', pageSize);
 
     const { data, error } = await supabase.rpc("fn_get_tech_tickets", {
       p_tech_user_id: req.user.id
@@ -1303,8 +1341,29 @@ app.get("/api/tickets/my-tickets", authenticateToken, requireRole(['manager', 'a
       return res.status(500).json({ error: error.message });
     }
 
-    console.log('🎫 Get My Tickets - Success, returned', (data || []).length, 'tickets');
-    res.json(data || []);
+    // Apply pagination
+    const allTickets = data || [];
+    const totalCount = allTickets.length;
+    const totalPages = Math.ceil(totalCount / pageSize);
+    const offset = (currentPage - 1) * pageSize;
+    const paginatedData = allTickets.slice(offset, offset + pageSize);
+
+    // Build pagination metadata
+    const pagination = {
+      page: currentPage,
+      limit: pageSize,
+      totalCount: totalCount,
+      totalPages: totalPages,
+      hasNextPage: currentPage < totalPages,
+      hasPreviousPage: currentPage > 1
+    };
+
+    console.log('🎫 Get My Tickets - Success, page', currentPage, 'of', totalPages, '(', paginatedData.length, 'tickets)');
+
+    res.json({
+      tickets: paginatedData,
+      pagination: pagination
+    });
   } catch (err) {
     console.error('🎫 Get My Tickets - Error:', err);
     res.status(500).json({ error: "Internal server error" });
@@ -2068,6 +2127,17 @@ app.get("/api/call-volume-heatmap", authenticateToken, async (req, res) => {
 // GET /api/vans - List all vans with owner info
 app.get("/api/vans", authenticateToken, async (req, res) => {
   try {
+    // Parse pagination parameters
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 25;
+
+    // Validate pagination parameters
+    const validLimits = [10, 25, 50, 100];
+    const pageSize = validLimits.includes(limit) ? limit : 25;
+    const currentPage = page > 0 ? page : 1;
+
+    console.log('🚐 Get Vans - Fetching page', currentPage, 'with limit', pageSize);
+
     const { data, error } = await supabase
       .from("vans")
       .select(`
@@ -2080,11 +2150,33 @@ app.get("/api/vans", authenticateToken, async (req, res) => {
           company
         )
       `)
-      .order("created_at", { ascending: false });
+      .order("van_number", { ascending: true });
 
     if (error) throw error;
 
-    res.json(data);
+    // Apply pagination
+    const allVans = data || [];
+    const totalCount = allVans.length;
+    const totalPages = Math.ceil(totalCount / pageSize);
+    const offset = (currentPage - 1) * pageSize;
+    const paginatedData = allVans.slice(offset, offset + pageSize);
+
+    // Build pagination metadata
+    const pagination = {
+      page: currentPage,
+      limit: pageSize,
+      totalCount: totalCount,
+      totalPages: totalPages,
+      hasNextPage: currentPage < totalPages,
+      hasPreviousPage: currentPage > 1
+    };
+
+    console.log('🚐 Get Vans - Success, page', currentPage, 'of', totalPages, '(', paginatedData.length, 'vans)');
+
+    res.json({
+      vans: paginatedData,
+      pagination: pagination
+    });
   } catch (err) {
     console.error("Error fetching vans:", err);
     res.status(500).json({ error: err.message });
@@ -2358,6 +2450,17 @@ app.delete("/api/vans/:id", authenticateToken, requirePermission("manage_vans"),
 // GET /api/owners - List all owners with van counts
 app.get("/api/owners", authenticateToken, async (req, res) => {
   try {
+    // Parse pagination parameters
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 25;
+
+    // Validate pagination parameters
+    const validLimits = [10, 25, 50, 100];
+    const pageSize = validLimits.includes(limit) ? limit : 25;
+    const currentPage = page > 0 ? page : 1;
+
+    console.log('👥 Get Owners - Fetching page', currentPage, 'with limit', pageSize);
+
     // Get all owners with their vans
     const { data, error } = await supabase
       .from("owners")
@@ -2376,7 +2479,28 @@ app.get("/api/owners", authenticateToken, async (req, res) => {
       vans: undefined // Remove the nested vans array from response
     }));
 
-    res.json(ownersWithCount);
+    // Apply pagination
+    const totalCount = ownersWithCount.length;
+    const totalPages = Math.ceil(totalCount / pageSize);
+    const offset = (currentPage - 1) * pageSize;
+    const paginatedData = ownersWithCount.slice(offset, offset + pageSize);
+
+    // Build pagination metadata
+    const pagination = {
+      page: currentPage,
+      limit: pageSize,
+      totalCount: totalCount,
+      totalPages: totalPages,
+      hasNextPage: currentPage < totalPages,
+      hasPreviousPage: currentPage > 1
+    };
+
+    console.log('👥 Get Owners - Success, page', currentPage, 'of', totalPages, '(', paginatedData.length, 'owners)');
+
+    res.json({
+      owners: paginatedData,
+      pagination: pagination
+    });
   } catch (err) {
     console.error("Error fetching owners:", err);
     res.status(500).json({ error: err.message });

@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth.jsx';
 import Sidebar from '../components/Sidebar';
 import Card from '../components/Card';
+import Pagination from '../components/Pagination';
 import { theme } from '../styles/theme';
 import {
   Truck,
@@ -24,6 +26,8 @@ import {
 
 function Vans() {
   const { user, logout, hasRole } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+
   const [vans, setVans] = useState([]);
   const [owners, setOwners] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -33,6 +37,11 @@ function Vans() {
   const [filterMake, setFilterMake] = useState('');
   const [filterYearFrom, setFilterYearFrom] = useState('');
   const [filterYearTo, setFilterYearTo] = useState('');
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(parseInt(searchParams.get('page')) || 1);
+  const [pageSize, setPageSize] = useState(parseInt(searchParams.get('limit')) || 25);
+  const [pagination, setPagination] = useState(null);
 
   // Modal states
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -54,16 +63,11 @@ function Vans() {
   // Validation state
   const [formErrors, setFormErrors] = useState({});
 
-  useEffect(() => {
-    fetchVans();
-    fetchOwners();
-  }, []);
-
-  const fetchVans = async () => {
+  const fetchVans = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const response = await fetch('/api/vans', {
+      const response = await fetch(`/api/vans?page=${currentPage}&limit=${pageSize}`, {
         credentials: 'include',
       });
 
@@ -72,18 +76,21 @@ function Vans() {
       }
 
       const data = await response.json();
-      setVans(data);
+      setVans(data.vans || []);
+      setPagination(data.pagination);
+
+      console.log('🚐 Vans fetched:', data.vans?.length || 0, 'Pagination:', data.pagination);
     } catch (err) {
       console.error('Error fetching vans:', err);
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentPage, pageSize]);
 
-  const fetchOwners = async () => {
+  const fetchOwners = useCallback(async () => {
     try {
-      const response = await fetch('/api/owners', {
+      const response = await fetch('/api/owners?limit=100', {
         credentials: 'include',
       });
 
@@ -92,11 +99,16 @@ function Vans() {
       }
 
       const data = await response.json();
-      setOwners(data);
+      setOwners(data.owners || data);
     } catch (err) {
       console.error('Error fetching owners:', err);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchVans();
+    fetchOwners();
+  }, [fetchVans, fetchOwners]);
 
   const resetForm = useCallback(() => {
     setVanForm({
@@ -300,6 +312,24 @@ function Vans() {
     setDeletingVan(van);
     setDeleteModalOpen(true);
   }, []);
+
+  // Pagination handlers
+  const handlePageChange = useCallback((newPage) => {
+    setCurrentPage(newPage);
+    const params = new URLSearchParams(searchParams);
+    params.set('page', newPage.toString());
+    setSearchParams(params);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [searchParams, setSearchParams]);
+
+  const handlePageSizeChange = useCallback((newSize) => {
+    setPageSize(newSize);
+    setCurrentPage(1);
+    const params = new URLSearchParams(searchParams);
+    params.set('limit', newSize.toString());
+    params.set('page', '1');
+    setSearchParams(params);
+  }, [searchParams, setSearchParams]);
 
   const filteredAndSortedVans = useMemo(() => {
     let filtered = [...vans];
@@ -605,6 +635,18 @@ function Vans() {
               }}>
                 Vans
               </h1>
+              {pagination && pagination.totalCount > 0 && (
+                <span style={{
+                  backgroundColor: theme.colors.accent.primary,
+                  color: '#ffffff',
+                  padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
+                  borderRadius: theme.radius.full,
+                  fontSize: theme.fontSize.sm,
+                  fontWeight: theme.fontWeight.medium,
+                }}>
+                  {pagination.totalCount}
+                </span>
+              )}
             </div>
             <p style={{ color: theme.colors.text.secondary, fontSize: theme.fontSize.base, margin: 0 }}>
               Manage mobile grooming vans and their owners
@@ -896,6 +938,19 @@ function Vans() {
                   ))}
                 </tbody>
               </table>
+
+              {/* Pagination */}
+              {pagination && pagination.totalCount > 0 && (
+                <Pagination
+                  currentPage={pagination.page}
+                  totalPages={pagination.totalPages}
+                  pageSize={pagination.limit}
+                  totalCount={pagination.totalCount}
+                  onPageChange={handlePageChange}
+                  onPageSizeChange={handlePageSizeChange}
+                  loading={loading}
+                />
+              )}
             </div>
           )}
         </Card>

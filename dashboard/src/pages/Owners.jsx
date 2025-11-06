@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth.jsx';
 import Sidebar from '../components/Sidebar';
 import Card from '../components/Card';
+import Pagination from '../components/Pagination';
 import { theme } from '../styles/theme';
 import {
   User,
@@ -26,11 +28,18 @@ import {
 
 function Owners() {
   const { user, logout, hasRole } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+
   const [owners, setOwners] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(parseInt(searchParams.get('page')) || 1);
+  const [pageSize, setPageSize] = useState(parseInt(searchParams.get('limit')) || 25);
+  const [pagination, setPagination] = useState(null);
 
   // Modal states
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -50,15 +59,11 @@ function Owners() {
   // Validation state
   const [formErrors, setFormErrors] = useState({});
 
-  useEffect(() => {
-    fetchOwners();
-  }, []);
-
-  const fetchOwners = async () => {
+  const fetchOwners = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const response = await fetch('/api/owners', {
+      const response = await fetch(`/api/owners?page=${currentPage}&limit=${pageSize}`, {
         credentials: 'include',
       });
 
@@ -67,14 +72,21 @@ function Owners() {
       }
 
       const data = await response.json();
-      setOwners(data);
+      setOwners(data.owners || []);
+      setPagination(data.pagination);
+
+      console.log('👥 Owners fetched:', data.owners?.length || 0, 'Pagination:', data.pagination);
     } catch (err) {
       console.error('Error fetching owners:', err);
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentPage, pageSize]);
+
+  useEffect(() => {
+    fetchOwners();
+  }, [fetchOwners]);
 
   const resetForm = useCallback(() => {
     setOwnerForm({
@@ -278,6 +290,25 @@ function Owners() {
     setDeletingOwner(owner);
     setDeleteModalOpen(true);
   }, []);
+
+  // Pagination handlers
+  const handlePageChange = useCallback((newPage) => {
+    setCurrentPage(newPage);
+    const params = new URLSearchParams(searchParams);
+    params.set('page', newPage.toString());
+    setSearchParams(params);
+    // Scroll to top of page
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [searchParams, setSearchParams]);
+
+  const handlePageSizeChange = useCallback((newSize) => {
+    setPageSize(newSize);
+    setCurrentPage(1); // Reset to first page
+    const params = new URLSearchParams(searchParams);
+    params.set('limit', newSize.toString());
+    params.set('page', '1');
+    setSearchParams(params);
+  }, [searchParams, setSearchParams]);
 
   const filteredAndSortedOwners = useMemo(() => {
     let filtered = [...owners];
@@ -493,6 +524,18 @@ function Owners() {
               }}>
                 Owners
               </h1>
+              {pagination && pagination.totalCount > 0 && (
+                <span style={{
+                  padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
+                  backgroundColor: theme.colors.accent.primary + '20',
+                  color: theme.colors.accent.primary,
+                  borderRadius: theme.radius.full,
+                  fontSize: theme.fontSize.sm,
+                  fontWeight: theme.fontWeight.semibold,
+                }}>
+                  {pagination.totalCount}
+                </span>
+              )}
             </div>
             <p style={{ color: theme.colors.text.secondary, fontSize: theme.fontSize.base, margin: 0 }}>
               Manage van owners and their contact information
@@ -737,6 +780,19 @@ function Owners() {
                   ))}
                 </tbody>
               </table>
+
+              {/* Pagination */}
+              {pagination && pagination.totalCount > 0 && (
+                <Pagination
+                  currentPage={pagination.page}
+                  totalPages={pagination.totalPages}
+                  pageSize={pagination.limit}
+                  totalCount={pagination.totalCount}
+                  onPageChange={handlePageChange}
+                  onPageSizeChange={handlePageSizeChange}
+                  loading={loading}
+                />
+              )}
             </div>
           )}
         </Card>
