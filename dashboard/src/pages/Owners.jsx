@@ -35,6 +35,7 @@ function Owners() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(parseInt(searchParams.get('page')) || 1);
@@ -59,11 +60,37 @@ function Owners() {
   // Validation state
   const [formErrors, setFormErrors] = useState({});
 
+  // Debounce search query (500ms delay)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+      // Reset to page 1 when search query changes
+      if (searchQuery !== debouncedSearchQuery) {
+        setCurrentPage(1);
+        const params = new URLSearchParams(searchParams);
+        params.set('page', '1');
+        setSearchParams(params);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   const fetchOwners = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const response = await fetch(`/api/owners?page=${currentPage}&limit=${pageSize}`, {
+      // Build query string with search parameter
+      const params = new URLSearchParams({
+        page: currentPage.toString(),
+        limit: pageSize.toString(),
+      });
+
+      if (debouncedSearchQuery && debouncedSearchQuery.trim() !== '') {
+        params.append('search', debouncedSearchQuery.trim());
+      }
+
+      const response = await fetch(`/api/owners?${params.toString()}`, {
         credentials: 'include',
       });
 
@@ -82,7 +109,7 @@ function Owners() {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, pageSize]);
+  }, [currentPage, pageSize, debouncedSearchQuery]);
 
   useEffect(() => {
     fetchOwners();
@@ -309,25 +336,6 @@ function Owners() {
     params.set('page', '1');
     setSearchParams(params);
   }, [searchParams, setSearchParams]);
-
-  const filteredAndSortedOwners = useMemo(() => {
-    let filtered = [...owners];
-
-    // Filter by search query
-    if (searchQuery) {
-      filtered = filtered.filter(o =>
-        o.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (o.company && o.company.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        o.phone.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        o.email.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-    }
-
-    // Sort by name
-    filtered.sort((a, b) => a.name.localeCompare(b.name));
-
-    return filtered;
-  }, [owners, searchQuery]);
 
   const OwnerFormFields = useMemo(() => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.lg }}>
@@ -606,7 +614,7 @@ function Owners() {
 
         {/* Owners Table */}
         <Card>
-          {filteredAndSortedOwners.length === 0 ? (
+          {owners.length === 0 && !loading ? (
             <div style={{
               textAlign: 'center',
               padding: theme.spacing['2xl'],
@@ -682,7 +690,7 @@ function Owners() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredAndSortedOwners.map((owner) => (
+                  {owners.map((owner) => (
                     <tr key={owner.id} style={{
                       borderBottom: `1px solid ${theme.colors.border.light}`,
                       transition: 'background-color 0.2s',

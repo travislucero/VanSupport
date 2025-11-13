@@ -134,17 +134,34 @@ export const validateName = (name) => {
 };
 
 /**
- * Validate make (must be Ford, RAM, or Mercedes)
+ * Validate make (must be Ford or Mercedes)
  */
 export const validateMake = (make) => {
-  const validMakes = ['Ford', 'RAM', 'Mercedes'];
+  const validMakes = ['Ford', 'Mercedes'];
 
   if (!make) {
     return { valid: false, error: 'Make is required' };
   }
 
   if (!validMakes.includes(make)) {
-    return { valid: false, error: 'Make must be Ford, RAM, or Mercedes' };
+    return { valid: false, error: 'Make must be Ford or Mercedes' };
+  }
+
+  return { valid: true };
+};
+
+/**
+ * Validate version (must be 3000 or 4000)
+ */
+export const validateVersion = (version) => {
+  const validVersions = ['3000', '4000'];
+
+  if (!version) {
+    return { valid: false, error: 'Version is required' };
+  }
+
+  if (!validVersions.includes(version)) {
+    return { valid: false, error: 'Version must be 3000 or 4000' };
   }
 
   return { valid: true };

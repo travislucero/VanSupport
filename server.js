@@ -2548,12 +2548,13 @@ app.get("/api/call-volume-heatmap", authenticateToken, async (req, res) => {
 
 // ===== VAN MANAGEMENT ENDPOINTS =====
 
-// GET /api/vans - List all vans with owner info
+// GET /api/vans - List all vans with owner info (supports search)
 app.get("/api/vans", authenticateToken, async (req, res) => {
   try {
-    // Parse pagination parameters
+    // Parse pagination and search parameters
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 25;
+    const searchQuery = req.query.search || '';
 
     // Validate pagination parameters
     const validLimits = [10, 25, 50, 100];
@@ -2564,9 +2565,13 @@ app.get("/api/vans", authenticateToken, async (req, res) => {
       "🚐 Get Vans - Fetching page",
       currentPage,
       "with limit",
-      pageSize
+      pageSize,
+      searchQuery ? `and search: "${searchQuery}"` : ''
     );
 
+    // Build the query with owner join
+    // Note: We fetch all vans and do filtering in memory because we need to search
+    // by owner name (joined field) which Supabase doesn't support in .or() queries
     const { data, error } = await supabase
       .from("vans")
       .select(
@@ -2585,12 +2590,32 @@ app.get("/api/vans", authenticateToken, async (req, res) => {
 
     if (error) throw error;
 
+    let filteredVans = data || [];
+
+    // Apply search filtering in memory (searches across all fields including owner name)
+    if (searchQuery && searchQuery.trim() !== '') {
+      const searchLower = searchQuery.trim().toLowerCase();
+      filteredVans = filteredVans.filter(van => {
+        // Check van fields
+        const matchedByVan =
+          van.van_number?.toLowerCase().includes(searchLower) ||
+          van.make?.toLowerCase().includes(searchLower) ||
+          van.version?.toLowerCase().includes(searchLower) ||
+          van.year?.toString().includes(searchQuery.trim()) ||
+          van.vin?.toLowerCase().includes(searchLower);
+
+        // Check owner name
+        const matchedByOwner = van.owner?.name?.toLowerCase().includes(searchLower);
+
+        return matchedByVan || matchedByOwner;
+      });
+    }
+
     // Apply pagination
-    const allVans = data || [];
-    const totalCount = allVans.length;
+    const totalCount = filteredVans.length;
     const totalPages = Math.ceil(totalCount / pageSize);
     const offset = (currentPage - 1) * pageSize;
-    const paginatedData = allVans.slice(offset, offset + pageSize);
+    const paginatedData = filteredVans.slice(offset, offset + pageSize);
 
     // Build pagination metadata
     const pagination = {
@@ -2609,7 +2634,8 @@ app.get("/api/vans", authenticateToken, async (req, res) => {
       totalPages,
       "(",
       paginatedData.length,
-      "vans)"
+      "vans)",
+      searchQuery ? `matching "${searchQuery}"` : ''
     );
 
     res.json({
@@ -2911,12 +2937,13 @@ app.delete(
 
 // ===== OWNER MANAGEMENT ENDPOINTS =====
 
-// GET /api/owners - List all owners with van counts
+// GET /api/owners - List all owners with van counts (supports search)
 app.get("/api/owners", authenticateToken, async (req, res) => {
   try {
-    // Parse pagination parameters
+    // Parse pagination and search parameters
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 25;
+    const searchQuery = req.query.search || '';
 
     // Validate pagination parameters
     const validLimits = [10, 25, 50, 100];
@@ -2927,19 +2954,38 @@ app.get("/api/owners", authenticateToken, async (req, res) => {
       "👥 Get Owners - Fetching page",
       currentPage,
       "with limit",
-      pageSize
+      pageSize,
+      searchQuery ? `and search: "${searchQuery}"` : ''
     );
 
-    // Get all owners with their vans
-    const { data, error } = await supabase
+    // Build the query
+    let query = supabase
       .from("owners")
       .select(
         `
         *,
         vans (id)
-      `
-      )
-      .order("name", { ascending: true });
+      `,
+        { count: 'exact' }
+      );
+
+    // Apply search filters if search query exists
+    if (searchQuery && searchQuery.trim() !== '') {
+      const searchTerm = `%${searchQuery.trim()}%`;
+
+      // Use OR filter to search across multiple fields
+      // Note: Supabase doesn't support ILIKE with OR directly, so we need to use a different approach
+      // We'll fetch all data and filter in memory for now, but ideally this should be done with a database function
+      query = query.or(
+        `name.ilike.${searchTerm},company.ilike.${searchTerm},phone.ilike.${searchTerm},email.ilike.${searchTerm}`
+      );
+    }
+
+    // Add ordering
+    query = query.order("name", { ascending: true });
+
+    // Execute query
+    const { data, error, count } = await query;
 
     if (error) throw error;
 
@@ -2951,7 +2997,7 @@ app.get("/api/owners", authenticateToken, async (req, res) => {
     }));
 
     // Apply pagination
-    const totalCount = ownersWithCount.length;
+    const totalCount = count || ownersWithCount.length;
     const totalPages = Math.ceil(totalCount / pageSize);
     const offset = (currentPage - 1) * pageSize;
     const paginatedData = ownersWithCount.slice(offset, offset + pageSize);
@@ -2973,7 +3019,8 @@ app.get("/api/owners", authenticateToken, async (req, res) => {
       totalPages,
       "(",
       paginatedData.length,
-      "owners)"
+      "owners)",
+      searchQuery ? `matching "${searchQuery}"` : ''
     );
 
     res.json({

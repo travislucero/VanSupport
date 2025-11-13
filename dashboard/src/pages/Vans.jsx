@@ -22,6 +22,7 @@ import {
   validateMake,
   validateYear,
   validateVIN,
+  validateVersion,
 } from '../utils/validators';
 
 function Vans() {
@@ -34,6 +35,7 @@ function Vans() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [filterMake, setFilterMake] = useState('');
   const [filterYearFrom, setFilterYearFrom] = useState('');
   const [filterYearTo, setFilterYearTo] = useState('');
@@ -63,11 +65,37 @@ function Vans() {
   // Validation state
   const [formErrors, setFormErrors] = useState({});
 
+  // Debounce search query (500ms delay)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+      // Reset to page 1 when search query changes
+      if (searchQuery !== debouncedSearchQuery) {
+        setCurrentPage(1);
+        const params = new URLSearchParams(searchParams);
+        params.set('page', '1');
+        setSearchParams(params);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   const fetchVans = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const response = await fetch(`/api/vans?page=${currentPage}&limit=${pageSize}`, {
+      // Build query string with search parameter
+      const params = new URLSearchParams({
+        page: currentPage.toString(),
+        limit: pageSize.toString(),
+      });
+
+      if (debouncedSearchQuery && debouncedSearchQuery.trim() !== '') {
+        params.append('search', debouncedSearchQuery.trim());
+      }
+
+      const response = await fetch(`/api/vans?${params.toString()}`, {
         credentials: 'include',
       });
 
@@ -86,7 +114,7 @@ function Vans() {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, pageSize]);
+  }, [currentPage, pageSize, debouncedSearchQuery]);
 
   const fetchOwners = useCallback(async () => {
     try {
@@ -133,6 +161,11 @@ function Vans() {
     const makeValidation = validateMake(vanForm.make);
     if (!makeValidation.valid) {
       errors.make = makeValidation.error;
+    }
+
+    const versionValidation = validateVersion(vanForm.version);
+    if (!versionValidation.valid) {
+      errors.version = versionValidation.error;
     }
 
     const yearValidation = validateYear(vanForm.year);
@@ -331,24 +364,16 @@ function Vans() {
     setSearchParams(params);
   }, [searchParams, setSearchParams]);
 
-  const filteredAndSortedVans = useMemo(() => {
+  // Client-side filtering for make and year (these are not sent to backend)
+  const filteredVans = useMemo(() => {
     let filtered = [...vans];
 
-    // Filter by search query
-    if (searchQuery) {
-      filtered = filtered.filter(v =>
-        v.van_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        v.make.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (v.owner && v.owner.name.toLowerCase().includes(searchQuery.toLowerCase()))
-      );
-    }
-
-    // Filter by make
+    // Filter by make (client-side only)
     if (filterMake) {
       filtered = filtered.filter(v => v.make === filterMake);
     }
 
-    // Filter by year range
+    // Filter by year range (client-side only)
     if (filterYearFrom) {
       filtered = filtered.filter(v => v.year >= parseInt(filterYearFrom));
     }
@@ -357,7 +382,7 @@ function Vans() {
     }
 
     return filtered;
-  }, [vans, searchQuery, filterMake, filterYearFrom, filterYearTo]);
+  }, [vans, filterMake, filterYearFrom, filterYearTo]);
 
   const VanFormFields = useMemo(() => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.lg }}>
@@ -419,7 +444,6 @@ function Vans() {
         >
           <option value="">Select make...</option>
           <option value="Ford">Ford</option>
-          <option value="RAM">RAM</option>
           <option value="Mercedes">Mercedes</option>
         </select>
         {formErrors.make && (
@@ -441,21 +465,32 @@ function Vans() {
           color: theme.colors.text.primary,
           marginBottom: theme.spacing.xs,
         }}>
-          Version
+          Version <span style={{ color: theme.colors.accent.danger }}>*</span>
         </label>
-        <input
-          type="text"
+        <select
           value={vanForm.version}
           onChange={(e) => handleFormFieldChange('version', e.target.value)}
-          placeholder="e.g., 3075, 4075"
           style={{
             width: '100%',
             padding: theme.spacing.sm,
-            border: `1px solid ${theme.colors.border.medium}`,
+            border: `1px solid ${formErrors.version ? theme.colors.accent.danger : theme.colors.border.medium}`,
             borderRadius: theme.radius.md,
             fontSize: theme.fontSize.sm,
           }}
-        />
+        >
+          <option value="">Select version...</option>
+          <option value="3000">3000</option>
+          <option value="4000">4000</option>
+        </select>
+        {formErrors.version && (
+          <div style={{
+            fontSize: theme.fontSize.xs,
+            color: theme.colors.accent.danger,
+            marginTop: theme.spacing.xs,
+          }}>
+            {formErrors.version}
+          </div>
+        )}
       </div>
 
       <div>
@@ -726,7 +761,6 @@ function Vans() {
           >
             <option value="">All Makes</option>
             <option value="Ford">Ford</option>
-            <option value="RAM">RAM</option>
             <option value="Mercedes">Mercedes</option>
           </select>
 
@@ -761,7 +795,7 @@ function Vans() {
 
         {/* Vans Table */}
         <Card>
-          {filteredAndSortedVans.length === 0 ? (
+          {filteredVans.length === 0 && !loading ? (
             <div style={{
               textAlign: 'center',
               padding: theme.spacing['2xl'],
@@ -837,7 +871,7 @@ function Vans() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredAndSortedVans.map((van) => (
+                  {filteredVans.map((van) => (
                     <tr key={van.id} style={{
                       borderBottom: `1px solid ${theme.colors.border.light}`,
                       transition: 'background-color 0.2s',
