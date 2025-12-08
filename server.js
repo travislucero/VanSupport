@@ -1858,7 +1858,32 @@ app.post(
   }
 );
 
-// 12. PUT /api/tickets/:uuid/priority - Update ticket priority
+// 12. GET /api/tickets/:uuid/attachments - Get ticket attachments
+app.get("/api/tickets/:uuid/attachments", async (req, res) => {
+  try {
+    const { uuid } = req.params;
+
+    console.log("📎 Get Ticket Attachments - Fetching for ticket:", uuid);
+
+    // Use the database function to get attachments
+    const { data, error } = await supabase.rpc("fn_get_ticket_attachments", {
+      p_ticket_id: uuid,
+    });
+
+    if (error) {
+      console.error("📎 Get Ticket Attachments - Supabase error:", error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log("📎 Get Ticket Attachments - Success, found:", data?.length || 0, "attachments");
+    res.json(data || []);
+  } catch (err) {
+    console.error("📎 Get Ticket Attachments - Error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// 13. PUT /api/tickets/:uuid/priority - Update ticket priority
 app.put(
   "/api/tickets/:uuid/priority",
   authenticateToken,

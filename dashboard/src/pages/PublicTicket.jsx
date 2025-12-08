@@ -16,7 +16,8 @@ import {
   Wrench,
   UserCheck,
   X,
-  XCircle
+  XCircle,
+  Camera
 } from 'lucide-react';
 import Card from '../components/Card';
 import Badge from '../components/Badge';
@@ -51,6 +52,12 @@ const PublicTicket = () => {
   // Success messages
   const [successMessage, setSuccessMessage] = useState('');
 
+  // Attachments state
+  const [attachments, setAttachments] = useState([]);
+
+  // Lightbox state for viewing full-size images
+  const [lightboxImage, setLightboxImage] = useState(null);
+
   // Fetch ticket data
   const fetchTicket = useCallback(async (silent = false) => {
     try {
@@ -79,10 +86,31 @@ const PublicTicket = () => {
     }
   }, [uuid]);
 
+  // Fetch attachments for the ticket
+  const fetchAttachments = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/tickets/${uuid}/attachments`);
+
+      if (response.ok) {
+        const data = await response.json();
+        setAttachments(data || []);
+        console.log('📎 Attachments fetched:', data?.length || 0);
+      }
+    } catch (error) {
+      console.error('Error fetching attachments:', error);
+    }
+  }, [uuid]);
+
+  // Helper function to get attachments for a specific comment
+  const getCommentAttachments = useCallback((commentId) => {
+    return attachments.filter(att => att.comment_id === commentId);
+  }, [attachments]);
+
   // Initial fetch
   useEffect(() => {
     fetchTicket();
-  }, [fetchTicket]);
+    fetchAttachments();
+  }, [fetchTicket, fetchAttachments]);
 
   // Auto-refresh comments
   useEffect(() => {
@@ -788,6 +816,92 @@ const PublicTicket = () => {
                         <p style={{ color: '#374151', fontSize: '0.875rem', whiteSpace: 'pre-wrap', lineHeight: '1.6' }}>
                           {comment.comment_text}
                         </p>
+
+                        {/* Attachments for this comment */}
+                        {(() => {
+                          const commentAttachments = getCommentAttachments(comment.id);
+                          if (commentAttachments.length === 0) return null;
+
+                          return (
+                            <div style={{
+                              marginTop: '12px',
+                              display: 'flex',
+                              flexWrap: 'wrap',
+                              gap: '8px'
+                            }}>
+                              {commentAttachments.map((attachment) => {
+                                const isVideo = attachment.mime_type?.startsWith('video/');
+                                const isImage = attachment.mime_type?.startsWith('image/');
+
+                                return (
+                                  <div key={attachment.id} style={{
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '4px'
+                                  }}>
+                                    {isVideo ? (
+                                      <video
+                                        src={attachment.public_url}
+                                        controls
+                                        style={{
+                                          maxWidth: '300px',
+                                          maxHeight: '200px',
+                                          borderRadius: '8px',
+                                          border: '1px solid #e5e7eb'
+                                        }}
+                                      />
+                                    ) : isImage ? (
+                                      <img
+                                        src={attachment.public_url}
+                                        alt={attachment.original_filename || 'Attachment'}
+                                        onClick={() => setLightboxImage(attachment.public_url)}
+                                        style={{
+                                          maxWidth: '200px',
+                                          maxHeight: '150px',
+                                          objectFit: 'cover',
+                                          borderRadius: '8px',
+                                          border: '1px solid #e5e7eb',
+                                          cursor: 'pointer',
+                                          transition: 'transform 0.2s, box-shadow 0.2s'
+                                        }}
+                                        onMouseOver={(e) => {
+                                          e.target.style.transform = 'scale(1.02)';
+                                          e.target.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+                                        }}
+                                        onMouseOut={(e) => {
+                                          e.target.style.transform = 'scale(1)';
+                                          e.target.style.boxShadow = 'none';
+                                        }}
+                                      />
+                                    ) : (
+                                      <a
+                                        href={attachment.public_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        style={{
+                                          color: '#3b82f6',
+                                          fontSize: '0.75rem'
+                                        }}
+                                      >
+                                        {attachment.original_filename || 'Download attachment'}
+                                      </a>
+                                    )}
+                                    <span style={{
+                                      fontSize: '0.75rem',
+                                      color: '#6b7280',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '4px'
+                                    }}>
+                                      <Camera size={12} />
+                                      {attachment.uploaded_by_type === 'customer' ? 'Photo from customer' : 'Photo from technician'}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
                   </div>
@@ -898,6 +1012,58 @@ const PublicTicket = () => {
           </p>
         </div>
       </div>
+
+      {/* Lightbox Modal for full-size image viewing */}
+      {lightboxImage && (
+        <div
+          onClick={() => setLightboxImage(null)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.9)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            cursor: 'pointer'
+          }}
+        >
+          <button
+            onClick={() => setLightboxImage(null)}
+            style={{
+              position: 'absolute',
+              top: '20px',
+              right: '20px',
+              background: 'rgba(255, 255, 255, 0.2)',
+              border: 'none',
+              borderRadius: '50%',
+              width: '40px',
+              height: '40px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              color: '#ffffff'
+            }}
+          >
+            <X size={24} />
+          </button>
+          <img
+            src={lightboxImage}
+            alt="Full size"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: '90vw',
+              maxHeight: '90vh',
+              objectFit: 'contain',
+              borderRadius: '8px'
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 };
