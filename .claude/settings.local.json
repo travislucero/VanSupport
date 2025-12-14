@@ -11,7 +11,11 @@
       "Bash(npm run build:dev:*)",
       "Bash(npm run)",
       "Bash(node test-vans-pagination.js:*)",
-      "Bash(npm run dev:*)"
+      "Bash(npm run dev:*)",
+      "Bash(cat:*)",
+      "Bash(find:*)",
+      "Bash(npm install:*)",
+      "Bash(node --check:*)"
     ],
     "deny": [],
     "ask": []

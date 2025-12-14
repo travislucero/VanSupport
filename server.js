@@ -8,6 +8,8 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import cookieParser from "cookie-parser";
 import patternValidator from "./utils/patternValidator.js";
+import multer from "multer";
+import { BlobServiceClient } from "@azure/storage-blob";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -47,6 +49,36 @@ const supabaseAdmin = createClient(
     },
   }
 );
+
+// Azure Blob Storage configuration
+const AZURE_STORAGE_ACCOUNT_NAME = process.env.AZURE_STORAGE_ACCOUNT_NAME;
+const AZURE_STORAGE_SAS_TOKEN = process.env.AZURE_STORAGE_SAS_TOKEN;
+const AZURE_CONTAINER_NAME = "ticket-attachments";
+
+// Create Azure Blob Service Client
+const blobServiceClient = new BlobServiceClient(
+  `https://${AZURE_STORAGE_ACCOUNT_NAME}.blob.core.windows.net?${AZURE_STORAGE_SAS_TOKEN}`
+);
+const containerClient = blobServiceClient.getContainerClient(AZURE_CONTAINER_NAME);
+
+// Multer configuration for file uploads (memory storage for Azure upload)
+const allowedImageTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+const allowedVideoTypes = ["video/mp4", "video/quicktime", "video/webm", "video/x-m4v"];
+const allowedMimeTypes = [...allowedImageTypes, ...allowedVideoTypes];
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB limit for videos
+  },
+  fileFilter: (req, file, cb) => {
+    if (allowedMimeTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Invalid file type. Only JPEG, PNG, GIF, WebP images and MP4, MOV, WebM videos are allowed."));
+    }
+  },
+});
 
 // 2. Authentication middleware
 const authenticateToken = (req, res, next) => {
@@ -1414,6 +1446,130 @@ app.post("/api/tickets/public/:uuid/reopen", async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
+
+// 4b. POST /api/tickets/public/:uuid/attachments - Upload image attachment (public)
+app.post(
+  "/api/tickets/public/:uuid/attachments",
+  upload.single("file"),
+  async (req, res) => {
+    try {
+      const { uuid } = req.params;
+      const { author_name } = req.body;
+      const file = req.file;
+
+      if (!file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      if (!author_name || !author_name.trim()) {
+        return res.status(400).json({ error: "Author name is required" });
+      }
+
+      console.log("📎 Public Upload - Uploading attachment for ticket:", uuid);
+      console.log("📎 File details:", {
+        originalname: file.originalname,
+        mimetype: file.mimetype,
+        size: file.size,
+      });
+
+      // First verify the ticket exists
+      const { data: ticketData, error: ticketError } = await supabase.rpc(
+        "fn_get_ticket_detail",
+        {
+          p_ticket_id: uuid,
+          p_viewer_type: "customer",
+        }
+      );
+
+      if (ticketError || !ticketData) {
+        console.error("📎 Public Upload - Ticket not found:", ticketError);
+        return res.status(404).json({ error: "Ticket not found" });
+      }
+
+      // Generate unique filename with timestamp
+      const timestamp = Date.now();
+      const extension = file.originalname.split(".").pop().toLowerCase();
+      const blobName = `${uuid}/${timestamp}.${extension}`;
+
+      // Upload to Azure Blob Storage
+      const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+
+      await blockBlobClient.uploadData(file.buffer, {
+        blobHTTPHeaders: {
+          blobContentType: file.mimetype,
+        },
+      });
+
+      // Construct the public URL (with SAS token for access)
+      const publicUrl = `https://${AZURE_STORAGE_ACCOUNT_NAME}.blob.core.windows.net/${AZURE_CONTAINER_NAME}/${blobName}?${AZURE_STORAGE_SAS_TOKEN}`;
+
+      console.log("📎 Public Upload - File uploaded to Azure:", blobName);
+
+      // First, create a comment for this attachment
+      const { data: commentData, error: commentError } = await supabase.rpc(
+        "fn_add_ticket_comment",
+        {
+          p_ticket_id: uuid,
+          p_comment_text: `Photo uploaded`,
+          p_author_type: "customer",
+          p_author_user_id: null,
+          p_author_name: author_name.trim(),
+          p_is_resolution: false,
+        }
+      );
+
+      if (commentError) {
+        console.error("📎 Public Upload - Error creating comment:", commentError);
+        return res.status(500).json({ error: "Failed to create comment for attachment" });
+      }
+
+      console.log("📎 Public Upload - Comment created with ID:", commentData);
+
+      // Insert attachment record into the database
+      const { data: attachmentData, error: attachmentError } = await supabase
+        .from("ticket_attachments")
+        .insert({
+          ticket_id: uuid,
+          comment_id: commentData,
+          original_filename: file.originalname,
+          mime_type: file.mimetype,
+          storage_path: blobName,
+          public_url: publicUrl,
+          uploaded_by_type: "customer",
+          uploaded_by_user_id: null,
+          source: "web",
+        })
+        .select()
+        .single();
+
+      if (attachmentError) {
+        console.error("📎 Public Upload - DB insert error:", attachmentError);
+        return res.status(500).json({ error: "Failed to save attachment record" });
+      }
+
+      console.log("📎 Public Upload - Attachment record created:", attachmentData.id);
+
+      // Trigger notification webhook asynchronously (fire and forget)
+      if (commentData) {
+        triggerCommentNotification(uuid, commentData).catch((err) => {
+          console.error("⚠️ Error in comment notification webhook:", err);
+        });
+      }
+
+      res.status(201).json({
+        success: true,
+        attachment: attachmentData,
+        comment_id: commentData,
+      });
+    } catch (err) {
+      console.error("📎 Public Upload - Error:", err);
+      if (err.message && err.message.includes("Invalid file type")) {
+        return res.status(400).json({ error: err.message });
+      }
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
 
 // 5. POST /api/tickets/create - Create new ticket (public or tech)
 app.post("/api/tickets/create", async (req, res) => {

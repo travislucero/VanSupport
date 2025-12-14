@@ -17,7 +17,12 @@ import {
   UserCheck,
   X,
   XCircle,
-  Camera
+  Camera,
+  Upload,
+  Image,
+  Loader2,
+  Video,
+  Play
 } from 'lucide-react';
 import Card from '../components/Card';
 import Badge from '../components/Badge';
@@ -55,8 +60,17 @@ const PublicTicket = () => {
   // Attachments state
   const [attachments, setAttachments] = useState([]);
 
-  // Lightbox state for viewing full-size images
+  // Lightbox state for viewing full-size images and videos
   const [lightboxImage, setLightboxImage] = useState(null);
+  const [lightboxVideo, setLightboxVideo] = useState(null);
+
+  // File upload state
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
+  const [uploadAuthorName, setUploadAuthorName] = useState('');
+  const fileInputRef = useRef(null);
 
   // Fetch ticket data
   const fetchTicket = useCallback(async (silent = false) => {
@@ -249,6 +263,122 @@ const PublicTicket = () => {
       alert('Failed to reopen ticket. Please try again.');
     } finally {
       setReopening(false);
+    }
+  };
+
+  // File upload handlers
+  const allowedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+  const allowedVideoTypes = ['video/mp4', 'video/quicktime', 'video/webm', 'video/x-m4v'];
+  const allAllowedTypes = [...allowedImageTypes, ...allowedVideoTypes];
+
+  const isVideoFile = (file) => allowedVideoTypes.includes(file?.type);
+
+  const handleFileSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!allAllowedTypes.includes(file.type)) {
+      setUploadError('Invalid file type. Only JPEG, PNG, GIF, WebP images and MP4, MOV, WebM videos are allowed.');
+      setSelectedFile(null);
+      return;
+    }
+
+    // Validate file size (50MB for videos, 10MB for images)
+    const maxSize = isVideoFile(file) ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
+    const maxSizeLabel = isVideoFile(file) ? '50MB' : '10MB';
+    if (file.size > maxSize) {
+      setUploadError(`File size exceeds ${maxSizeLabel} limit.`);
+      setSelectedFile(null);
+      return;
+    }
+
+    setSelectedFile(file);
+    setUploadError(null);
+  };
+
+  const handleFileUpload = async () => {
+    if (!selectedFile) {
+      setUploadError('Please select a file first');
+      return;
+    }
+
+    if (!uploadAuthorName.trim()) {
+      setUploadError('Please enter your name');
+      return;
+    }
+
+    setUploading(true);
+    setUploadProgress(0);
+    setUploadError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      formData.append('author_name', uploadAuthorName.trim());
+
+      // Use XMLHttpRequest for progress tracking
+      const xhr = new XMLHttpRequest();
+
+      const uploadPromise = new Promise((resolve, reject) => {
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) {
+            const progress = Math.round((e.loaded / e.total) * 100);
+            setUploadProgress(progress);
+          }
+        });
+
+        xhr.addEventListener('load', () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve(JSON.parse(xhr.responseText));
+          } else {
+            try {
+              const errorData = JSON.parse(xhr.responseText);
+              reject(new Error(errorData.error || 'Upload failed'));
+            } catch {
+              reject(new Error('Upload failed'));
+            }
+          }
+        });
+
+        xhr.addEventListener('error', () => {
+          reject(new Error('Network error during upload'));
+        });
+
+        xhr.open('POST', `${API_BASE_URL}/api/tickets/public/${uuid}/attachments`);
+        xhr.send(formData);
+      });
+
+      await uploadPromise;
+
+      showSuccess('Photo uploaded successfully!');
+      setSelectedFile(null);
+      setUploadProgress(0);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+
+      // Refresh ticket and attachments
+      await Promise.all([fetchTicket(), fetchAttachments()]);
+
+      // Scroll to new comment
+      setTimeout(() => {
+        commentsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    } catch (err) {
+      console.error('Error uploading file:', err);
+      setUploadError(err.message || 'Failed to upload file. Please try again.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const clearSelectedFile = () => {
+    setSelectedFile(null);
+    setUploadError(null);
+    setUploadProgress(0);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 
@@ -840,16 +970,54 @@ const PublicTicket = () => {
                                     gap: '4px'
                                   }}>
                                     {isVideo ? (
-                                      <video
-                                        src={attachment.public_url}
-                                        controls
+                                      <div
+                                        onClick={() => setLightboxVideo(attachment.public_url)}
                                         style={{
+                                          position: 'relative',
+                                          cursor: 'pointer',
                                           maxWidth: '300px',
                                           maxHeight: '200px',
                                           borderRadius: '8px',
-                                          border: '1px solid #e5e7eb'
+                                          overflow: 'hidden',
+                                          border: '1px solid #e5e7eb',
+                                          backgroundColor: '#000'
                                         }}
-                                      />
+                                      >
+                                        <video
+                                          src={attachment.public_url}
+                                          style={{
+                                            width: '100%',
+                                            height: '100%',
+                                            maxHeight: '200px',
+                                            objectFit: 'cover'
+                                          }}
+                                        />
+                                        <div style={{
+                                          position: 'absolute',
+                                          top: '50%',
+                                          left: '50%',
+                                          transform: 'translate(-50%, -50%)',
+                                          backgroundColor: 'rgba(0, 0, 0, 0.6)',
+                                          borderRadius: '50%',
+                                          width: '48px',
+                                          height: '48px',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          transition: 'transform 0.2s, background-color 0.2s'
+                                        }}
+                                        onMouseOver={(e) => {
+                                          e.currentTarget.style.transform = 'translate(-50%, -50%) scale(1.1)';
+                                          e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.8)';
+                                        }}
+                                        onMouseOut={(e) => {
+                                          e.currentTarget.style.transform = 'translate(-50%, -50%)';
+                                          e.currentTarget.style.backgroundColor = 'rgba(0, 0, 0, 0.6)';
+                                        }}
+                                        >
+                                          <Play size={24} style={{ color: 'white', marginLeft: '3px' }} />
+                                        </div>
+                                      </div>
                                     ) : isImage ? (
                                       <img
                                         src={attachment.public_url}
@@ -1001,6 +1169,249 @@ const PublicTicket = () => {
                   {addingComment ? 'Adding Comment...' : 'Add Comment'}
                 </button>
               </form>
+
+              {/* Photo Upload Section */}
+              <div style={{ marginTop: '32px', paddingTop: '24px', borderTop: '1px solid #e5e7eb' }}>
+                <h4 style={{ color: '#111827', fontSize: '1rem', fontWeight: '600', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Camera size={18} />
+                  Upload Photo or Video
+                </h4>
+                <p style={{ color: '#6b7280', fontSize: '0.875rem', marginBottom: '16px' }}>
+                  Share photos or videos related to your issue. Images: JPEG, PNG, GIF, WebP (max 10MB). Videos: MP4, MOV, WebM (max 50MB)
+                </p>
+
+                {/* Your Name for Upload */}
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ display: 'block', color: '#374151', fontSize: '0.875rem', fontWeight: '500', marginBottom: '8px' }}>
+                    Your Name
+                  </label>
+                  <input
+                    type="text"
+                    value={uploadAuthorName}
+                    onChange={(e) => setUploadAuthorName(e.target.value)}
+                    placeholder="Enter your name"
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      backgroundColor: theme.colors.background.tertiary,
+                      color: theme.colors.text.primary,
+                      border: `1px solid ${theme.colors.border.medium}`,
+                      borderRadius: theme.radius.md,
+                      fontSize: '0.875rem',
+                      outline: 'none'
+                    }}
+                  />
+                </div>
+
+                {/* File Input */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/webm"
+                  onChange={handleFileSelect}
+                  style={{ display: 'none' }}
+                  id="photo-upload"
+                />
+
+                {/* Upload Area */}
+                {!selectedFile ? (
+                  <label
+                    htmlFor="photo-upload"
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: '32px',
+                      border: '2px dashed #d1d5db',
+                      borderRadius: '12px',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                      backgroundColor: '#fafafa'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = '#3b82f6';
+                      e.currentTarget.style.backgroundColor = '#f0f9ff';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = '#d1d5db';
+                      e.currentTarget.style.backgroundColor = '#fafafa';
+                    }}
+                  >
+                    <Upload size={32} style={{ color: '#9ca3af', marginBottom: '12px' }} />
+                    <span style={{ color: '#374151', fontSize: '0.875rem', fontWeight: '500' }}>
+                      Click to select a photo or video
+                    </span>
+                    <span style={{ color: '#6b7280', fontSize: '0.75rem', marginTop: '4px' }}>
+                      or drag and drop
+                    </span>
+                  </label>
+                ) : (
+                  <div style={{
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '12px',
+                    padding: '16px',
+                    backgroundColor: '#fafafa'
+                  }}>
+                    {/* Preview */}
+                    <div style={{ display: 'flex', alignItems: 'start', gap: '16px', marginBottom: '16px' }}>
+                      {isVideoFile(selectedFile) ? (
+                        <div style={{
+                          width: '120px',
+                          height: '100px',
+                          borderRadius: '8px',
+                          border: '1px solid #e5e7eb',
+                          overflow: 'hidden',
+                          position: 'relative',
+                          backgroundColor: '#000'
+                        }}>
+                          <video
+                            src={URL.createObjectURL(selectedFile)}
+                            style={{
+                              width: '100%',
+                              height: '100%',
+                              objectFit: 'cover'
+                            }}
+                          />
+                          <div style={{
+                            position: 'absolute',
+                            top: '50%',
+                            left: '50%',
+                            transform: 'translate(-50%, -50%)',
+                            backgroundColor: 'rgba(0, 0, 0, 0.6)',
+                            borderRadius: '50%',
+                            width: '32px',
+                            height: '32px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}>
+                            <Play size={16} style={{ color: 'white', marginLeft: '2px' }} />
+                          </div>
+                        </div>
+                      ) : (
+                        <img
+                          src={URL.createObjectURL(selectedFile)}
+                          alt="Preview"
+                          style={{
+                            width: '100px',
+                            height: '100px',
+                            objectFit: 'cover',
+                            borderRadius: '8px',
+                            border: '1px solid #e5e7eb'
+                          }}
+                        />
+                      )}
+                      <div style={{ flex: 1 }}>
+                        <p style={{ color: '#111827', fontSize: '0.875rem', fontWeight: '500', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          {isVideoFile(selectedFile) && <Video size={14} style={{ color: '#6b7280' }} />}
+                          {selectedFile.name}
+                        </p>
+                        <p style={{ color: '#6b7280', fontSize: '0.75rem' }}>
+                          {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                        </p>
+                        <button
+                          type="button"
+                          onClick={clearSelectedFile}
+                          style={{
+                            marginTop: '8px',
+                            padding: '4px 8px',
+                            backgroundColor: 'transparent',
+                            border: '1px solid #ef4444',
+                            borderRadius: '4px',
+                            color: '#ef4444',
+                            fontSize: '0.75rem',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
+                        >
+                          <X size={12} />
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Progress Bar */}
+                    {uploading && (
+                      <div style={{ marginBottom: '16px' }}>
+                        <div style={{
+                          height: '8px',
+                          backgroundColor: '#e5e7eb',
+                          borderRadius: '4px',
+                          overflow: 'hidden'
+                        }}>
+                          <div style={{
+                            height: '100%',
+                            width: `${uploadProgress}%`,
+                            backgroundColor: '#3b82f6',
+                            transition: 'width 0.3s ease'
+                          }} />
+                        </div>
+                        <p style={{ color: '#6b7280', fontSize: '0.75rem', marginTop: '4px', textAlign: 'center' }}>
+                          Uploading... {uploadProgress}%
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Upload Button */}
+                    <button
+                      type="button"
+                      onClick={handleFileUpload}
+                      disabled={uploading || !uploadAuthorName.trim()}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px',
+                        width: '100%',
+                        padding: '12px 20px',
+                        backgroundColor: '#10b981',
+                        border: 'none',
+                        borderRadius: '8px',
+                        color: 'white',
+                        fontSize: '0.875rem',
+                        fontWeight: '500',
+                        cursor: (uploading || !uploadAuthorName.trim()) ? 'not-allowed' : 'pointer',
+                        opacity: (uploading || !uploadAuthorName.trim()) ? 0.5 : 1,
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      {uploading ? (
+                        <>
+                          <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} />
+                          Uploading...
+                        </>
+                      ) : (
+                        <>
+                          <Upload size={18} />
+                          Upload Photo
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+
+                {/* Error Message */}
+                {uploadError && (
+                  <div style={{
+                    marginTop: '12px',
+                    padding: '12px',
+                    backgroundColor: '#fef2f2',
+                    border: '1px solid #fecaca',
+                    borderRadius: '8px',
+                    color: '#dc2626',
+                    fontSize: '0.875rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}>
+                    <XCircle size={16} />
+                    {uploadError}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </Card>
@@ -1059,6 +1470,59 @@ const PublicTicket = () => {
               maxWidth: '90vw',
               maxHeight: '90vh',
               objectFit: 'contain',
+              borderRadius: '8px'
+            }}
+          />
+        </div>
+      )}
+
+      {/* Video Lightbox Modal */}
+      {lightboxVideo && (
+        <div
+          onClick={() => setLightboxVideo(null)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.9)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            cursor: 'pointer'
+          }}
+        >
+          <button
+            onClick={() => setLightboxVideo(null)}
+            style={{
+              position: 'absolute',
+              top: '20px',
+              right: '20px',
+              background: 'rgba(255, 255, 255, 0.2)',
+              border: 'none',
+              borderRadius: '50%',
+              width: '40px',
+              height: '40px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              color: '#ffffff',
+              zIndex: 10000
+            }}
+          >
+            <X size={24} />
+          </button>
+          <video
+            src={lightboxVideo}
+            controls
+            autoPlay
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: '90vw',
+              maxHeight: '90vh',
               borderRadius: '8px'
             }}
           />
