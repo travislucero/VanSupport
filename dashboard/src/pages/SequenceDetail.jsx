@@ -23,7 +23,22 @@ import {
   ToggleRight,
   GitBranch,
   Target,
+  Wrench,
+  Package,
+  ShoppingCart,
+  Link as LinkIcon,
+  Circle,
+  DollarSign,
 } from 'lucide-react';
+
+// Helper function to format external URLs
+const formatExternalUrl = (url) => {
+  if (!url) return null;
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+  return `https://${url}`;
+};
 
 // Helper Components
 function Modal({ children, onClose, title }) {
@@ -318,6 +333,460 @@ function StepModal({
   );
 }
 
+// SuppliesList Component for displaying tools and parts
+function SuppliesList({ tools, parts, onEditTool, onDeleteTool, onEditPart, onDeletePart, theme }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
+      {/* Tools */}
+      {tools.length > 0 && (
+        <div>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: theme.spacing.xs,
+            marginBottom: theme.spacing.sm,
+          }}>
+            <Wrench size={14} color={theme.colors.text.tertiary} />
+            <span style={{ fontSize: theme.fontSize.xs, color: theme.colors.text.tertiary, textTransform: 'uppercase', fontWeight: theme.fontWeight.semibold }}>
+              Tools ({tools.length})
+            </span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
+            {tools.map((tool) => (
+              <div
+                key={tool.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  justifyContent: 'space-between',
+                  padding: theme.spacing.md,
+                  backgroundColor: theme.colors.background.tertiary,
+                  borderRadius: theme.radius.md,
+                  border: `1px solid ${theme.colors.border.light}`,
+                }}
+              >
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, marginBottom: theme.spacing.xs }}>
+                    <span style={{ fontWeight: theme.fontWeight.medium, color: theme.colors.text.primary }}>
+                      {tool.tool_name}
+                    </span>
+                    {tool.is_required ? (
+                      <Badge variant="danger" size="sm">Required</Badge>
+                    ) : (
+                      <Badge variant="secondary" size="sm">Optional</Badge>
+                    )}
+                  </div>
+                  {tool.tool_description && (
+                    <p style={{ margin: 0, fontSize: theme.fontSize.sm, color: theme.colors.text.secondary }}>
+                      {tool.tool_description}
+                    </p>
+                  )}
+                  {tool.tool_link && (
+                    <a
+                      href={formatExternalUrl(tool.tool_link)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: theme.spacing.xs,
+                        marginTop: theme.spacing.xs,
+                        fontSize: theme.fontSize.sm,
+                        color: theme.colors.accent.primary,
+                      }}
+                    >
+                      <LinkIcon size={12} />
+                      View Link
+                    </a>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: theme.spacing.xs }}>
+                  <button
+                    onClick={() => onEditTool(tool)}
+                    style={{
+                      padding: theme.spacing.xs,
+                      backgroundColor: 'transparent',
+                      border: 'none',
+                      borderRadius: theme.radius.sm,
+                      cursor: 'pointer',
+                      color: theme.colors.text.tertiary,
+                    }}
+                  >
+                    <Edit2 size={14} />
+                  </button>
+                  <button
+                    onClick={() => onDeleteTool(tool)}
+                    style={{
+                      padding: theme.spacing.xs,
+                      backgroundColor: 'transparent',
+                      border: 'none',
+                      borderRadius: theme.radius.sm,
+                      cursor: 'pointer',
+                      color: theme.colors.accent.danger,
+                    }}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Parts */}
+      {parts.length > 0 && (
+        <div>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: theme.spacing.xs,
+            marginBottom: theme.spacing.sm,
+          }}>
+            <Package size={14} color={theme.colors.text.tertiary} />
+            <span style={{ fontSize: theme.fontSize.xs, color: theme.colors.text.tertiary, textTransform: 'uppercase', fontWeight: theme.fontWeight.semibold }}>
+              Parts ({parts.length})
+            </span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
+            {parts.map((part) => (
+              <div
+                key={part.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  justifyContent: 'space-between',
+                  padding: theme.spacing.md,
+                  backgroundColor: theme.colors.background.tertiary,
+                  borderRadius: theme.radius.md,
+                  border: `1px solid ${theme.colors.border.light}`,
+                }}
+              >
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, marginBottom: theme.spacing.xs }}>
+                    <span style={{ fontWeight: theme.fontWeight.medium, color: theme.colors.text.primary }}>
+                      {part.part_name}
+                    </span>
+                    {part.is_required ? (
+                      <Badge variant="danger" size="sm">Required</Badge>
+                    ) : (
+                      <Badge variant="secondary" size="sm">Optional</Badge>
+                    )}
+                    {part.part_number && (
+                      <Badge variant="default" size="sm">#{part.part_number}</Badge>
+                    )}
+                  </div>
+                  {part.part_description && (
+                    <p style={{ margin: 0, fontSize: theme.fontSize.sm, color: theme.colors.text.secondary }}>
+                      {part.part_description}
+                    </p>
+                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.md, marginTop: theme.spacing.xs }}>
+                    {part.estimated_price && (
+                      <span style={{ fontSize: theme.fontSize.sm, color: theme.colors.accent.success, fontWeight: theme.fontWeight.medium }}>
+                        ~${Number(part.estimated_price).toFixed(2)}
+                      </span>
+                    )}
+                    {part.part_link && (
+                      <a
+                        href={formatExternalUrl(part.part_link)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: theme.spacing.xs,
+                          fontSize: theme.fontSize.sm,
+                          color: theme.colors.accent.success,
+                        }}
+                      >
+                        <ShoppingCart size={12} />
+                        Buy
+                      </a>
+                    )}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: theme.spacing.xs }}>
+                  <button
+                    onClick={() => onEditPart(part)}
+                    style={{
+                      padding: theme.spacing.xs,
+                      backgroundColor: 'transparent',
+                      border: 'none',
+                      borderRadius: theme.radius.sm,
+                      cursor: 'pointer',
+                      color: theme.colors.text.tertiary,
+                    }}
+                  >
+                    <Edit2 size={14} />
+                  </button>
+                  <button
+                    onClick={() => onDeletePart(part)}
+                    style={{
+                      padding: theme.spacing.xs,
+                      backgroundColor: 'transparent',
+                      border: 'none',
+                      borderRadius: theme.radius.sm,
+                      cursor: 'pointer',
+                      color: theme.colors.accent.danger,
+                    }}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Compact inline supplies component for step cards
+function StepSuppliesInline({ stepNum, tools, parts, onAddTool, onAddPart, onEditTool, onDeleteTool, onEditPart, onDeletePart, theme, isGeneral = false, sequenceKey }) {
+  const [expanded, setExpanded] = useState(false);
+  const totalCount = tools.length + parts.length;
+
+  if (totalCount === 0 && !isGeneral) {
+    // Show add buttons even when empty for step-specific
+    return (
+      <div style={{
+        marginTop: theme.spacing.md,
+        paddingTop: theme.spacing.md,
+        borderTop: `1px solid ${theme.colors.border.light}`,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+          <Wrench size={14} color={theme.colors.text.tertiary} />
+          <span style={{ fontSize: theme.fontSize.xs, color: theme.colors.text.tertiary }}>No supplies for this step</span>
+          <button
+            onClick={() => onAddTool(stepNum)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              padding: '4px 8px',
+              backgroundColor: 'transparent',
+              border: `1px solid ${theme.colors.border.light}`,
+              borderRadius: theme.radius.sm,
+              cursor: 'pointer',
+              fontSize: theme.fontSize.xs,
+              color: theme.colors.accent.primary,
+            }}
+          >
+            <Plus size={12} />
+            Tool
+          </button>
+          <button
+            onClick={() => onAddPart(stepNum)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              padding: '4px 8px',
+              backgroundColor: 'transparent',
+              border: `1px solid ${theme.colors.border.light}`,
+              borderRadius: theme.radius.sm,
+              cursor: 'pointer',
+              fontSize: theme.fontSize.xs,
+              color: theme.colors.accent.success,
+            }}
+          >
+            <Plus size={12} />
+            Part
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{
+      marginTop: theme.spacing.md,
+      paddingTop: theme.spacing.md,
+      borderTop: `1px solid ${theme.colors.border.light}`,
+    }}>
+      {/* Header row with toggle */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          cursor: totalCount > 0 ? 'pointer' : 'default',
+        }}
+        onClick={() => totalCount > 0 && setExpanded(!expanded)}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+          <Wrench size={14} color={theme.colors.text.tertiary} />
+          <span style={{ fontSize: theme.fontSize.sm, fontWeight: theme.fontWeight.medium, color: theme.colors.text.secondary }}>
+            {isGeneral ? 'General Supplies' : 'Supplies'}
+          </span>
+          {totalCount > 0 && (
+            <Badge variant={isGeneral ? 'primary' : 'secondary'} size="sm">{totalCount}</Badge>
+          )}
+          {totalCount > 0 && (
+            expanded ? <ChevronUp size={14} color={theme.colors.text.tertiary} /> : <ChevronDown size={14} color={theme.colors.text.tertiary} />
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: theme.spacing.xs, alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
+          {sequenceKey && (
+            <a
+              href={`/supplies/${sequenceKey}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '4px 8px',
+                fontSize: theme.fontSize.xs,
+                color: theme.colors.text.tertiary,
+                textDecoration: 'none',
+              }}
+              title="Preview public supplies page"
+            >
+              <ExternalLink size={12} />
+            </a>
+          )}
+          <button
+            onClick={() => onAddTool(stepNum)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              padding: '4px 8px',
+              backgroundColor: 'transparent',
+              border: `1px solid ${theme.colors.border.light}`,
+              borderRadius: theme.radius.sm,
+              cursor: 'pointer',
+              fontSize: theme.fontSize.xs,
+              color: theme.colors.accent.primary,
+            }}
+          >
+            <Plus size={12} />
+            Tool
+          </button>
+          <button
+            onClick={() => onAddPart(stepNum)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              padding: '4px 8px',
+              backgroundColor: 'transparent',
+              border: `1px solid ${theme.colors.border.light}`,
+              borderRadius: theme.radius.sm,
+              cursor: 'pointer',
+              fontSize: theme.fontSize.xs,
+              color: theme.colors.accent.success,
+            }}
+          >
+            <Plus size={12} />
+            Part
+          </button>
+        </div>
+      </div>
+
+      {/* Expanded content */}
+      {expanded && totalCount > 0 && (
+        <div style={{ marginTop: theme.spacing.md }}>
+          {/* Tools */}
+          {tools.length > 0 && (
+            <div style={{ marginBottom: parts.length > 0 ? theme.spacing.md : 0 }}>
+              <div style={{ fontSize: theme.fontSize.xs, color: theme.colors.text.tertiary, marginBottom: theme.spacing.xs, textTransform: 'uppercase' }}>
+                Tools ({tools.length})
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
+                {tools.map((tool) => (
+                  <div
+                    key={tool.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: theme.spacing.sm,
+                      backgroundColor: theme.colors.background.primary,
+                      borderRadius: theme.radius.sm,
+                      border: `1px solid ${theme.colors.border.light}`,
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, flex: 1 }}>
+                      <span style={{ fontSize: theme.fontSize.sm, color: theme.colors.text.primary }}>{tool.tool_name}</span>
+                      {tool.is_required && <Badge variant="danger" size="sm">Required</Badge>}
+                      {tool.tool_link && (
+                        <a href={formatExternalUrl(tool.tool_link)} target="_blank" rel="noopener noreferrer" style={{ color: theme.colors.accent.primary }}>
+                          <ExternalLink size={12} />
+                        </a>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      <button onClick={() => onEditTool(tool)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', color: theme.colors.text.tertiary }}>
+                        <Edit2 size={12} />
+                      </button>
+                      <button onClick={() => onDeleteTool(tool)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', color: theme.colors.accent.danger }}>
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Parts */}
+          {parts.length > 0 && (
+            <div>
+              <div style={{ fontSize: theme.fontSize.xs, color: theme.colors.text.tertiary, marginBottom: theme.spacing.xs, textTransform: 'uppercase' }}>
+                Parts ({parts.length})
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
+                {parts.map((part) => (
+                  <div
+                    key={part.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: theme.spacing.sm,
+                      backgroundColor: theme.colors.background.primary,
+                      borderRadius: theme.radius.sm,
+                      border: `1px solid ${theme.colors.border.light}`,
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, flex: 1 }}>
+                      <span style={{ fontSize: theme.fontSize.sm, color: theme.colors.text.primary }}>{part.part_name}</span>
+                      {part.is_required && <Badge variant="danger" size="sm">Required</Badge>}
+                      {part.part_number && <Badge variant="default" size="sm">#{part.part_number}</Badge>}
+                      {part.estimated_price && (
+                        <span style={{ fontSize: theme.fontSize.xs, color: theme.colors.accent.success }}>
+                          ~${Number(part.estimated_price).toFixed(2)}
+                        </span>
+                      )}
+                      {part.part_link && (
+                        <a href={formatExternalUrl(part.part_link)} target="_blank" rel="noopener noreferrer" style={{ color: theme.colors.accent.success }}>
+                          <ShoppingCart size={12} />
+                        </a>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      <button onClick={() => onEditPart(part)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', color: theme.colors.text.tertiary }}>
+                        <Edit2 size={12} />
+                      </button>
+                      <button onClick={() => onDeletePart(part)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', color: theme.colors.accent.danger }}>
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SequenceDetail() {
   const { key } = useParams();
   const { user, logout, hasRole } = useAuth();
@@ -361,11 +830,44 @@ function SequenceDetail() {
     isActive: true,
   });
 
+  // Supplies state
+  const [supplies, setSupplies] = useState({ tools: [], parts: [] });
+  const [suppliesLoading, setSuppliesLoading] = useState(false);
+  const [addToolOpen, setAddToolOpen] = useState(false);
+  const [editToolOpen, setEditToolOpen] = useState(false);
+  const [deleteToolOpen, setDeleteToolOpen] = useState(false);
+  const [addPartOpen, setAddPartOpen] = useState(false);
+  const [editPartOpen, setEditPartOpen] = useState(false);
+  const [deletePartOpen, setDeletePartOpen] = useState(false);
+  const [editingTool, setEditingTool] = useState(null);
+  const [editingPart, setEditingPart] = useState(null);
+  const [deletingTool, setDeletingTool] = useState(null);
+  const [deletingPart, setDeletingPart] = useState(null);
+  const [toolForm, setToolForm] = useState({
+    tool_name: '',
+    tool_description: '',
+    tool_link: '',
+    is_required: true,
+    sort_order: 0,
+    step_num: null,
+  });
+  const [partForm, setPartForm] = useState({
+    part_name: '',
+    part_number: '',
+    part_description: '',
+    part_link: '',
+    estimated_price: '',
+    is_required: true,
+    sort_order: 0,
+    step_num: null,
+  });
+
   // Fetch sequence details
   useEffect(() => {
     fetchSequenceDetail();
     fetchAllSequences();
     fetchTriggerPatterns();
+    fetchSupplies();
   }, [key]);
 
   const fetchSequenceDetail = async (skipLoadingState = false) => {
@@ -427,6 +929,242 @@ function SequenceDetail() {
       }
     } catch (err) {
       console.error('Error fetching trigger patterns:', err);
+    }
+  };
+
+  const fetchSupplies = async () => {
+    setSuppliesLoading(true);
+    try {
+      const response = await fetch(`/api/sequences/${key}/supplies`, {
+        credentials: 'include',
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setSupplies({
+          tools: data.tools || [],
+          parts: data.parts || [],
+        });
+      }
+    } catch (err) {
+      console.error('Error fetching supplies:', err);
+    } finally {
+      setSuppliesLoading(false);
+    }
+  };
+
+  // Tool CRUD operations
+  const resetToolForm = () => {
+    setToolForm({
+      tool_name: '',
+      tool_description: '',
+      tool_link: '',
+      is_required: true,
+      sort_order: supplies.tools.length,
+      step_num: null,
+    });
+  };
+
+  const openAddTool = (stepNum = null) => {
+    resetToolForm();
+    setToolForm(prev => ({ ...prev, step_num: stepNum }));
+    setAddToolOpen(true);
+  };
+
+  const openEditTool = (tool) => {
+    setEditingTool(tool);
+    setToolForm({
+      tool_name: tool.tool_name || '',
+      tool_description: tool.tool_description || '',
+      tool_link: tool.tool_link || '',
+      is_required: tool.is_required ?? true,
+      sort_order: tool.sort_order || 0,
+      step_num: tool.step_num || null,
+    });
+    setEditToolOpen(true);
+  };
+
+  const openDeleteTool = (tool) => {
+    setDeletingTool(tool);
+    setDeleteToolOpen(true);
+  };
+
+  const addTool = async () => {
+    try {
+      const response = await fetch(`/api/sequences/${key}/tools`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(toolForm),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to add tool');
+      }
+
+      await fetchSupplies();
+      setAddToolOpen(false);
+      resetToolForm();
+      showSuccess('Tool added successfully');
+    } catch (err) {
+      console.error('Error adding tool:', err);
+      setError('Failed to add tool');
+    }
+  };
+
+  const updateTool = async () => {
+    try {
+      const response = await fetch(`/api/sequences/tools/${editingTool.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(toolForm),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update tool');
+      }
+
+      await fetchSupplies();
+      setEditToolOpen(false);
+      setEditingTool(null);
+      showSuccess('Tool updated successfully');
+    } catch (err) {
+      console.error('Error updating tool:', err);
+      setError('Failed to update tool');
+    }
+  };
+
+  const deleteTool = async () => {
+    try {
+      const response = await fetch(`/api/sequences/tools/${deletingTool.id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete tool');
+      }
+
+      await fetchSupplies();
+      setDeleteToolOpen(false);
+      setDeletingTool(null);
+      showSuccess('Tool deleted successfully');
+    } catch (err) {
+      console.error('Error deleting tool:', err);
+      setError('Failed to delete tool');
+    }
+  };
+
+  // Part CRUD operations
+  const resetPartForm = () => {
+    setPartForm({
+      part_name: '',
+      part_number: '',
+      part_description: '',
+      part_link: '',
+      estimated_price: '',
+      is_required: true,
+      sort_order: supplies.parts.length,
+      step_num: null,
+    });
+  };
+
+  const openAddPart = (stepNum = null) => {
+    resetPartForm();
+    setPartForm(prev => ({ ...prev, step_num: stepNum }));
+    setAddPartOpen(true);
+  };
+
+  const openEditPart = (part) => {
+    setEditingPart(part);
+    setPartForm({
+      part_name: part.part_name || '',
+      part_number: part.part_number || '',
+      part_description: part.part_description || '',
+      part_link: part.part_link || '',
+      estimated_price: part.estimated_price || '',
+      is_required: part.is_required ?? true,
+      sort_order: part.sort_order || 0,
+      step_num: part.step_num || null,
+    });
+    setEditPartOpen(true);
+  };
+
+  const openDeletePart = (part) => {
+    setDeletingPart(part);
+    setDeletePartOpen(true);
+  };
+
+  const addPart = async () => {
+    try {
+      const response = await fetch(`/api/sequences/${key}/parts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          ...partForm,
+          estimated_price: partForm.estimated_price ? parseFloat(partForm.estimated_price) : null,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to add part');
+      }
+
+      await fetchSupplies();
+      setAddPartOpen(false);
+      resetPartForm();
+      showSuccess('Part added successfully');
+    } catch (err) {
+      console.error('Error adding part:', err);
+      setError('Failed to add part');
+    }
+  };
+
+  const updatePart = async () => {
+    try {
+      const response = await fetch(`/api/sequences/parts/${editingPart.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          ...partForm,
+          estimated_price: partForm.estimated_price ? parseFloat(partForm.estimated_price) : null,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update part');
+      }
+
+      await fetchSupplies();
+      setEditPartOpen(false);
+      setEditingPart(null);
+      showSuccess('Part updated successfully');
+    } catch (err) {
+      console.error('Error updating part:', err);
+      setError('Failed to update part');
+    }
+  };
+
+  const deletePart = async () => {
+    try {
+      const response = await fetch(`/api/sequences/parts/${deletingPart.id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete part');
+      }
+
+      await fetchSupplies();
+      setDeletePartOpen(false);
+      setDeletingPart(null);
+      showSuccess('Part deleted successfully');
+    } catch (err) {
+      console.error('Error deleting part:', err);
+      setError('Failed to delete part');
     }
   };
 
@@ -1198,13 +1936,75 @@ function SequenceDetail() {
         {/* Steps Card */}
         <Card
           title={
-            <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
-              <span>Troubleshooting Steps</span>
-              <Badge variant="primary" size="sm">{sortedSteps.length}</Badge>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+                <span>Troubleshooting Steps</span>
+                <Badge variant="primary" size="sm">{sortedSteps.length}</Badge>
+              </div>
+              <a
+                href={`/supplies/${key}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: theme.spacing.xs,
+                  color: theme.colors.accent.primary,
+                  fontSize: theme.fontSize.sm,
+                  fontWeight: theme.fontWeight.medium,
+                  textDecoration: 'none',
+                }}
+              >
+                <ExternalLink size={14} />
+                Preview Supplies Page
+              </a>
             </div>
           }
           style={{ marginBottom: theme.spacing.lg }}
         >
+          {/* General Supplies Section */}
+          {(() => {
+            const generalTools = supplies.tools.filter(t => !t.step_num);
+            const generalParts = supplies.parts.filter(p => !p.step_num);
+            const hasGeneral = generalTools.length > 0 || generalParts.length > 0;
+
+            return (
+              <div style={{
+                marginBottom: theme.spacing.lg,
+                padding: theme.spacing.md,
+                backgroundColor: theme.colors.background.tertiary,
+                borderRadius: theme.radius.md,
+                border: `1px solid ${theme.colors.accent.primary}33`,
+              }}>
+                <StepSuppliesInline
+                  stepNum={null}
+                  tools={generalTools}
+                  parts={generalParts}
+                  onAddTool={openAddTool}
+                  onAddPart={openAddPart}
+                  onEditTool={openEditTool}
+                  onDeleteTool={openDeleteTool}
+                  onEditPart={openEditPart}
+                  onDeletePart={openDeletePart}
+                  theme={theme}
+                  isGeneral={true}
+                  sequenceKey={key}
+                />
+                <div style={{
+                  marginTop: theme.spacing.sm,
+                  padding: theme.spacing.sm,
+                  backgroundColor: theme.colors.background.primary,
+                  borderRadius: theme.radius.sm,
+                  fontSize: theme.fontSize.xs,
+                  color: theme.colors.text.tertiary,
+                  fontFamily: 'monospace',
+                }}>
+                  Public URL: {window.location.origin}/supplies/{key}
+                </div>
+              </div>
+            );
+          })()}
+
           {sortedSteps.length === 0 ? (
             <div style={{ textAlign: 'center', padding: theme.spacing['2xl'], color: theme.colors.text.secondary }}>
               <p style={{ fontSize: theme.fontSize.lg, marginBottom: theme.spacing.md }}>No steps yet</p>
@@ -1405,6 +2205,21 @@ function SequenceDetail() {
                       </div>
                     </div>
                   </div>
+
+                  {/* Step Supplies Inline */}
+                  <StepSuppliesInline
+                    stepNum={step.step_num}
+                    tools={supplies.tools.filter(t => t.step_num === step.step_num)}
+                    parts={supplies.parts.filter(p => p.step_num === step.step_num)}
+                    onAddTool={openAddTool}
+                    onAddPart={openAddPart}
+                    onEditTool={openEditTool}
+                    onDeleteTool={openDeleteTool}
+                    onEditPart={openEditPart}
+                    onDeletePart={openDeletePart}
+                    theme={theme}
+                    sequenceKey={key}
+                  />
                 </div>
               ))}
             </div>
@@ -1494,6 +2309,550 @@ function SequenceDetail() {
 
         {/* Delete Sequence Modal */}
         {deleteSequenceOpen && <DeleteSequenceModal />}
+
+        {/* Tool Modals */}
+        {addToolOpen && (
+          <Modal onClose={() => setAddToolOpen(false)} title="Add Tool">
+            <div style={{ display: 'grid', gap: theme.spacing.lg }}>
+              <FormField
+                label="Tool Name"
+                required
+                value={toolForm.tool_name}
+                onChange={(e) => setToolForm({ ...toolForm, tool_name: e.target.value })}
+              />
+              <FormField
+                label="Description"
+                type="textarea"
+                value={toolForm.tool_description}
+                onChange={(e) => setToolForm({ ...toolForm, tool_description: e.target.value })}
+              />
+              <FormField
+                label="Link (optional)"
+                value={toolForm.tool_link}
+                onChange={(e) => setToolForm({ ...toolForm, tool_link: e.target.value })}
+                helpText="e.g., https://amazon.com/dp/... or www.example.com"
+              />
+              <FormField
+                label="Required"
+                type="select"
+                value={toolForm.is_required ? 'true' : 'false'}
+                onChange={(e) => setToolForm({ ...toolForm, is_required: e.target.value === 'true' })}
+                options={[
+                  { value: 'true', label: 'Yes - Required' },
+                  { value: 'false', label: 'No - Optional' },
+                ]}
+              />
+              <FormField
+                label="Sort Order"
+                type="number"
+                value={toolForm.sort_order}
+                onChange={(e) => setToolForm({ ...toolForm, sort_order: parseInt(e.target.value) || 0 })}
+                helpText="Lower numbers appear first"
+              />
+              {/* Show step indicator or dropdown */}
+              {toolForm.step_num !== null ? (
+                <div>
+                  <label style={{
+                    display: 'block',
+                    marginBottom: theme.spacing.xs,
+                    fontSize: theme.fontSize.sm,
+                    fontWeight: theme.fontWeight.medium,
+                    color: theme.colors.text.primary,
+                  }}>
+                    Applies To
+                  </label>
+                  <div style={{
+                    padding: theme.spacing.sm,
+                    backgroundColor: theme.colors.background.tertiary,
+                    borderRadius: theme.radius.md,
+                    border: `1px solid ${theme.colors.border.light}`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: theme.spacing.sm,
+                  }}>
+                    <div style={{
+                      width: '20px',
+                      height: '20px',
+                      borderRadius: theme.radius.full,
+                      backgroundColor: theme.colors.accent.primary,
+                      color: '#ffffff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: theme.fontSize.xs,
+                      fontWeight: theme.fontWeight.bold,
+                    }}>
+                      {toolForm.step_num}
+                    </div>
+                    <span style={{ fontSize: theme.fontSize.sm, color: theme.colors.text.primary }}>
+                      Step {toolForm.step_num}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <FormField
+                  label="Applies To Step"
+                  type="select"
+                  value=""
+                  onChange={(e) => setToolForm({ ...toolForm, step_num: e.target.value === '' ? null : parseInt(e.target.value) })}
+                  options={[
+                    { value: '', label: 'All Steps (General)' },
+                    ...sortedSteps.map(s => ({ value: s.step_num.toString(), label: `Step ${s.step_num}` })),
+                  ]}
+                  helpText="Which step this tool is needed for"
+                />
+              )}
+              <div style={{ display: 'flex', gap: theme.spacing.md, justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => setAddToolOpen(false)}
+                  style={{
+                    padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
+                    backgroundColor: theme.colors.background.tertiary,
+                    color: theme.colors.text.primary,
+                    border: 'none',
+                    borderRadius: theme.radius.md,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={addTool}
+                  disabled={!toolForm.tool_name}
+                  style={{
+                    padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
+                    backgroundColor: theme.colors.accent.primary,
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: theme.radius.md,
+                    cursor: toolForm.tool_name ? 'pointer' : 'not-allowed',
+                    opacity: toolForm.tool_name ? 1 : 0.5,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: theme.spacing.xs,
+                  }}
+                >
+                  <Plus size={16} />
+                  Add Tool
+                </button>
+              </div>
+            </div>
+          </Modal>
+        )}
+
+        {editToolOpen && (
+          <Modal onClose={() => setEditToolOpen(false)} title="Edit Tool">
+            <div style={{ display: 'grid', gap: theme.spacing.lg }}>
+              <FormField
+                label="Tool Name"
+                required
+                value={toolForm.tool_name}
+                onChange={(e) => setToolForm({ ...toolForm, tool_name: e.target.value })}
+              />
+              <FormField
+                label="Description"
+                type="textarea"
+                value={toolForm.tool_description}
+                onChange={(e) => setToolForm({ ...toolForm, tool_description: e.target.value })}
+              />
+              <FormField
+                label="Link (optional)"
+                value={toolForm.tool_link}
+                onChange={(e) => setToolForm({ ...toolForm, tool_link: e.target.value })}
+                helpText="e.g., https://amazon.com/dp/... or www.example.com"
+              />
+              <FormField
+                label="Required"
+                type="select"
+                value={toolForm.is_required ? 'true' : 'false'}
+                onChange={(e) => setToolForm({ ...toolForm, is_required: e.target.value === 'true' })}
+                options={[
+                  { value: 'true', label: 'Yes - Required' },
+                  { value: 'false', label: 'No - Optional' },
+                ]}
+              />
+              <FormField
+                label="Sort Order"
+                type="number"
+                value={toolForm.sort_order}
+                onChange={(e) => setToolForm({ ...toolForm, sort_order: parseInt(e.target.value) || 0 })}
+                helpText="Lower numbers appear first"
+              />
+              <FormField
+                label="Applies To Step"
+                type="select"
+                value={toolForm.step_num === null ? '' : toolForm.step_num.toString()}
+                onChange={(e) => setToolForm({ ...toolForm, step_num: e.target.value === '' ? null : parseInt(e.target.value) })}
+                options={[
+                  { value: '', label: 'All Steps' },
+                  ...sortedSteps.map(s => ({ value: s.step_num.toString(), label: `Step ${s.step_num}` })),
+                ]}
+                helpText="Which step this tool is needed for"
+              />
+              <div style={{ display: 'flex', gap: theme.spacing.md, justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => setEditToolOpen(false)}
+                  style={{
+                    padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
+                    backgroundColor: theme.colors.background.tertiary,
+                    color: theme.colors.text.primary,
+                    border: 'none',
+                    borderRadius: theme.radius.md,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={updateTool}
+                  disabled={!toolForm.tool_name}
+                  style={{
+                    padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
+                    backgroundColor: theme.colors.accent.primary,
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: theme.radius.md,
+                    cursor: toolForm.tool_name ? 'pointer' : 'not-allowed',
+                    opacity: toolForm.tool_name ? 1 : 0.5,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: theme.spacing.xs,
+                  }}
+                >
+                  <Save size={16} />
+                  Save Changes
+                </button>
+              </div>
+            </div>
+          </Modal>
+        )}
+
+        {deleteToolOpen && deletingTool && (
+          <Modal onClose={() => setDeleteToolOpen(false)} title="Delete Tool">
+            <div>
+              <p style={{ margin: `0 0 ${theme.spacing.lg} 0`, color: theme.colors.text.primary, fontSize: theme.fontSize.base }}>
+                Are you sure you want to delete the tool "<strong>{deletingTool.tool_name}</strong>"?
+              </p>
+              <div style={{ display: 'flex', gap: theme.spacing.md, justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => setDeleteToolOpen(false)}
+                  style={{
+                    padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
+                    backgroundColor: theme.colors.background.tertiary,
+                    color: theme.colors.text.primary,
+                    border: 'none',
+                    borderRadius: theme.radius.md,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={deleteTool}
+                  style={{
+                    padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
+                    backgroundColor: theme.colors.accent.danger,
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: theme.radius.md,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: theme.spacing.xs,
+                  }}
+                >
+                  <Trash2 size={16} />
+                  Delete Tool
+                </button>
+              </div>
+            </div>
+          </Modal>
+        )}
+
+        {/* Part Modals */}
+        {addPartOpen && (
+          <Modal onClose={() => setAddPartOpen(false)} title="Add Part">
+            <div style={{ display: 'grid', gap: theme.spacing.lg }}>
+              <FormField
+                label="Part Name"
+                required
+                value={partForm.part_name}
+                onChange={(e) => setPartForm({ ...partForm, part_name: e.target.value })}
+              />
+              <FormField
+                label="Part Number"
+                value={partForm.part_number}
+                onChange={(e) => setPartForm({ ...partForm, part_number: e.target.value })}
+                helpText="Manufacturer part number"
+              />
+              <FormField
+                label="Description"
+                type="textarea"
+                value={partForm.part_description}
+                onChange={(e) => setPartForm({ ...partForm, part_description: e.target.value })}
+              />
+              <FormField
+                label="Buy Link (optional)"
+                value={partForm.part_link}
+                onChange={(e) => setPartForm({ ...partForm, part_link: e.target.value })}
+                helpText="e.g., https://amazon.com/dp/... or www.example.com"
+              />
+              <FormField
+                label="Estimated Price"
+                type="number"
+                value={partForm.estimated_price}
+                onChange={(e) => setPartForm({ ...partForm, estimated_price: e.target.value })}
+                helpText="Approximate cost in USD"
+              />
+              <FormField
+                label="Required"
+                type="select"
+                value={partForm.is_required ? 'true' : 'false'}
+                onChange={(e) => setPartForm({ ...partForm, is_required: e.target.value === 'true' })}
+                options={[
+                  { value: 'true', label: 'Yes - Required' },
+                  { value: 'false', label: 'No - Optional' },
+                ]}
+              />
+              <FormField
+                label="Sort Order"
+                type="number"
+                value={partForm.sort_order}
+                onChange={(e) => setPartForm({ ...partForm, sort_order: parseInt(e.target.value) || 0 })}
+                helpText="Lower numbers appear first"
+              />
+              {/* Show step indicator or dropdown */}
+              {partForm.step_num !== null ? (
+                <div>
+                  <label style={{
+                    display: 'block',
+                    marginBottom: theme.spacing.xs,
+                    fontSize: theme.fontSize.sm,
+                    fontWeight: theme.fontWeight.medium,
+                    color: theme.colors.text.primary,
+                  }}>
+                    Applies To
+                  </label>
+                  <div style={{
+                    padding: theme.spacing.sm,
+                    backgroundColor: theme.colors.background.tertiary,
+                    borderRadius: theme.radius.md,
+                    border: `1px solid ${theme.colors.border.light}`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: theme.spacing.sm,
+                  }}>
+                    <div style={{
+                      width: '20px',
+                      height: '20px',
+                      borderRadius: theme.radius.full,
+                      backgroundColor: theme.colors.accent.primary,
+                      color: '#ffffff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: theme.fontSize.xs,
+                      fontWeight: theme.fontWeight.bold,
+                    }}>
+                      {partForm.step_num}
+                    </div>
+                    <span style={{ fontSize: theme.fontSize.sm, color: theme.colors.text.primary }}>
+                      Step {partForm.step_num}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <FormField
+                  label="Applies To Step"
+                  type="select"
+                  value=""
+                  onChange={(e) => setPartForm({ ...partForm, step_num: e.target.value === '' ? null : parseInt(e.target.value) })}
+                  options={[
+                    { value: '', label: 'All Steps (General)' },
+                    ...sortedSteps.map(s => ({ value: s.step_num.toString(), label: `Step ${s.step_num}` })),
+                  ]}
+                  helpText="Which step this part is needed for"
+                />
+              )}
+              <div style={{ display: 'flex', gap: theme.spacing.md, justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => setAddPartOpen(false)}
+                  style={{
+                    padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
+                    backgroundColor: theme.colors.background.tertiary,
+                    color: theme.colors.text.primary,
+                    border: 'none',
+                    borderRadius: theme.radius.md,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={addPart}
+                  disabled={!partForm.part_name}
+                  style={{
+                    padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
+                    backgroundColor: theme.colors.accent.success,
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: theme.radius.md,
+                    cursor: partForm.part_name ? 'pointer' : 'not-allowed',
+                    opacity: partForm.part_name ? 1 : 0.5,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: theme.spacing.xs,
+                  }}
+                >
+                  <Plus size={16} />
+                  Add Part
+                </button>
+              </div>
+            </div>
+          </Modal>
+        )}
+
+        {editPartOpen && (
+          <Modal onClose={() => setEditPartOpen(false)} title="Edit Part">
+            <div style={{ display: 'grid', gap: theme.spacing.lg }}>
+              <FormField
+                label="Part Name"
+                required
+                value={partForm.part_name}
+                onChange={(e) => setPartForm({ ...partForm, part_name: e.target.value })}
+              />
+              <FormField
+                label="Part Number"
+                value={partForm.part_number}
+                onChange={(e) => setPartForm({ ...partForm, part_number: e.target.value })}
+                helpText="Manufacturer part number"
+              />
+              <FormField
+                label="Description"
+                type="textarea"
+                value={partForm.part_description}
+                onChange={(e) => setPartForm({ ...partForm, part_description: e.target.value })}
+              />
+              <FormField
+                label="Buy Link (optional)"
+                value={partForm.part_link}
+                onChange={(e) => setPartForm({ ...partForm, part_link: e.target.value })}
+                helpText="e.g., https://amazon.com/dp/... or www.example.com"
+              />
+              <FormField
+                label="Estimated Price"
+                type="number"
+                value={partForm.estimated_price}
+                onChange={(e) => setPartForm({ ...partForm, estimated_price: e.target.value })}
+                helpText="Approximate cost in USD"
+              />
+              <FormField
+                label="Required"
+                type="select"
+                value={partForm.is_required ? 'true' : 'false'}
+                onChange={(e) => setPartForm({ ...partForm, is_required: e.target.value === 'true' })}
+                options={[
+                  { value: 'true', label: 'Yes - Required' },
+                  { value: 'false', label: 'No - Optional' },
+                ]}
+              />
+              <FormField
+                label="Sort Order"
+                type="number"
+                value={partForm.sort_order}
+                onChange={(e) => setPartForm({ ...partForm, sort_order: parseInt(e.target.value) || 0 })}
+                helpText="Lower numbers appear first"
+              />
+              <FormField
+                label="Applies To Step"
+                type="select"
+                value={partForm.step_num === null ? '' : partForm.step_num.toString()}
+                onChange={(e) => setPartForm({ ...partForm, step_num: e.target.value === '' ? null : parseInt(e.target.value) })}
+                options={[
+                  { value: '', label: 'All Steps' },
+                  ...sortedSteps.map(s => ({ value: s.step_num.toString(), label: `Step ${s.step_num}` })),
+                ]}
+                helpText="Which step this part is needed for"
+              />
+              <div style={{ display: 'flex', gap: theme.spacing.md, justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => setEditPartOpen(false)}
+                  style={{
+                    padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
+                    backgroundColor: theme.colors.background.tertiary,
+                    color: theme.colors.text.primary,
+                    border: 'none',
+                    borderRadius: theme.radius.md,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={updatePart}
+                  disabled={!partForm.part_name}
+                  style={{
+                    padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
+                    backgroundColor: theme.colors.accent.success,
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: theme.radius.md,
+                    cursor: partForm.part_name ? 'pointer' : 'not-allowed',
+                    opacity: partForm.part_name ? 1 : 0.5,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: theme.spacing.xs,
+                  }}
+                >
+                  <Save size={16} />
+                  Save Changes
+                </button>
+              </div>
+            </div>
+          </Modal>
+        )}
+
+        {deletePartOpen && deletingPart && (
+          <Modal onClose={() => setDeletePartOpen(false)} title="Delete Part">
+            <div>
+              <p style={{ margin: `0 0 ${theme.spacing.lg} 0`, color: theme.colors.text.primary, fontSize: theme.fontSize.base }}>
+                Are you sure you want to delete the part "<strong>{deletingPart.part_name}</strong>"?
+              </p>
+              <div style={{ display: 'flex', gap: theme.spacing.md, justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => setDeletePartOpen(false)}
+                  style={{
+                    padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
+                    backgroundColor: theme.colors.background.tertiary,
+                    color: theme.colors.text.primary,
+                    border: 'none',
+                    borderRadius: theme.radius.md,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={deletePart}
+                  style={{
+                    padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
+                    backgroundColor: theme.colors.accent.danger,
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: theme.radius.md,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: theme.spacing.xs,
+                  }}
+                >
+                  <Trash2 size={16} />
+                  Delete Part
+                </button>
+              </div>
+            </div>
+          </Modal>
+        )}
 
         {/* Spinner Animation */}
         <style>

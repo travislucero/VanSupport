@@ -11,6 +11,7 @@ import TicketDashboard from './pages/TicketDashboard.jsx'
 import TechTicketDetail from './pages/TechTicketDetail.jsx'
 import PublicTicket from './pages/PublicTicket.jsx'
 import CreateTicket from './pages/CreateTicket.jsx'
+import SequenceSupplies from './pages/SequenceSupplies.jsx'
 import Vans from './pages/Vans.jsx'
 import Owners from './pages/Owners.jsx'
 import Users from './pages/Users.jsx'
@@ -112,6 +113,11 @@ createRoot(document.getElementById('root')).render(
             <Route
               path="/ticket/:uuid"
               element={<PublicTicket />}
+            />
+            {/* Public supplies view - no authentication required */}
+            <Route
+              path="/supplies/:sequenceKey"
+              element={<SequenceSupplies />}
             />
             <Route
               path="/vans"

@@ -954,6 +954,286 @@ app.delete(
   }
 );
 
+// Sequence Supplies endpoints (Tools and Parts)
+
+// 1. GET /api/sequences/:key/supplies - Get supplies for a sequence (PUBLIC - no auth)
+app.get("/api/sequences/:key/supplies", async (req, res) => {
+  try {
+    const { key } = req.params;
+    console.log("🔧 Get Sequence Supplies - Fetching for sequence:", key);
+
+    const { data, error } = await supabase.rpc("fn_get_sequence_supplies", {
+      p_sequence_key: key,
+    });
+
+    if (error) {
+      console.error("🔧 Get Sequence Supplies - Supabase error:", error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    // Handle array response from Supabase - return first item
+    const suppliesData = Array.isArray(data) ? data[0] : data;
+
+    if (!suppliesData) {
+      console.log("🔧 Get Sequence Supplies - Sequence not found:", key);
+      return res.status(404).json({ error: "Sequence not found" });
+    }
+
+    console.log(
+      "🔧 Get Sequence Supplies - Success, tools:",
+      suppliesData.tools?.length || 0,
+      "parts:",
+      suppliesData.parts?.length || 0
+    );
+    res.json(suppliesData);
+  } catch (err) {
+    console.error("🔧 Get Sequence Supplies - Error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// 2. POST /api/sequences/:key/tools - Add a tool to a sequence (Admin)
+app.post(
+  "/api/sequences/:key/tools",
+  authenticateToken,
+  requireRole(["manager", "admin"]),
+  async (req, res) => {
+    try {
+      const { key } = req.params;
+      const { tool_name, tool_description, tool_link, is_required, sort_order, step_num } =
+        req.body;
+
+      if (!tool_name) {
+        return res.status(400).json({ error: "Tool name is required" });
+      }
+
+      console.log("🔧 Add Sequence Tool - Adding tool to sequence:", key, step_num ? `step ${step_num}` : "(all steps)");
+
+      const { data, error } = await supabase.rpc("fn_add_sequence_tool", {
+        p_sequence_key: key,
+        p_tool_name: tool_name,
+        p_tool_description: tool_description || null,
+        p_tool_link: tool_link || null,
+        p_is_required: is_required ?? true,
+        p_sort_order: sort_order ?? 0,
+        p_step_num: step_num || null,
+      });
+
+      if (error) {
+        console.error("🔧 Add Sequence Tool - Supabase error:", error);
+        return res.status(500).json({ error: error.message });
+      }
+
+      console.log("🔧 Add Sequence Tool - Success");
+      res.status(201).json(data);
+    } catch (err) {
+      console.error("🔧 Add Sequence Tool - Error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// 3. PUT /api/sequences/tools/:toolId - Update a tool (Admin)
+app.put(
+  "/api/sequences/tools/:toolId",
+  authenticateToken,
+  requireRole(["manager", "admin"]),
+  async (req, res) => {
+    try {
+      const { toolId } = req.params;
+      const { tool_name, tool_description, tool_link, is_required, sort_order, step_num } =
+        req.body;
+
+      if (!tool_name) {
+        return res.status(400).json({ error: "Tool name is required" });
+      }
+
+      console.log("🔧 Update Sequence Tool - Updating tool:", toolId);
+
+      const { data, error } = await supabase.rpc("fn_update_sequence_tool", {
+        p_tool_id: toolId,
+        p_tool_name: tool_name,
+        p_tool_description: tool_description || null,
+        p_tool_link: tool_link || null,
+        p_is_required: is_required ?? true,
+        p_sort_order: sort_order ?? 0,
+        p_step_num: step_num || null,
+      });
+
+      if (error) {
+        console.error("🔧 Update Sequence Tool - Supabase error:", error);
+        return res.status(500).json({ error: error.message });
+      }
+
+      console.log("🔧 Update Sequence Tool - Success");
+      res.json(data);
+    } catch (err) {
+      console.error("🔧 Update Sequence Tool - Error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// 4. DELETE /api/sequences/tools/:toolId - Delete a tool (Admin)
+app.delete(
+  "/api/sequences/tools/:toolId",
+  authenticateToken,
+  requireRole(["manager", "admin"]),
+  async (req, res) => {
+    try {
+      const { toolId } = req.params;
+
+      console.log("🔧 Delete Sequence Tool - Deleting tool:", toolId);
+
+      const { error } = await supabase.rpc("fn_delete_sequence_tool", {
+        p_tool_id: toolId,
+      });
+
+      if (error) {
+        console.error("🔧 Delete Sequence Tool - Supabase error:", error);
+        return res.status(500).json({ error: error.message });
+      }
+
+      console.log("🔧 Delete Sequence Tool - Success");
+      res.json({ success: true, message: "Tool deleted successfully" });
+    } catch (err) {
+      console.error("🔧 Delete Sequence Tool - Error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// 5. POST /api/sequences/:key/parts - Add a part to a sequence (Admin)
+app.post(
+  "/api/sequences/:key/parts",
+  authenticateToken,
+  requireRole(["manager", "admin"]),
+  async (req, res) => {
+    try {
+      const { key } = req.params;
+      const {
+        part_name,
+        part_number,
+        part_description,
+        part_link,
+        estimated_price,
+        is_required,
+        sort_order,
+        step_num,
+      } = req.body;
+
+      if (!part_name) {
+        return res.status(400).json({ error: "Part name is required" });
+      }
+
+      console.log("🔩 Add Sequence Part - Adding part to sequence:", key, step_num ? `step ${step_num}` : "(all steps)");
+
+      const { data, error } = await supabase.rpc("fn_add_sequence_part", {
+        p_sequence_key: key,
+        p_part_name: part_name,
+        p_part_number: part_number || null,
+        p_part_description: part_description || null,
+        p_part_link: part_link || null,
+        p_estimated_price: estimated_price || null,
+        p_is_required: is_required ?? true,
+        p_sort_order: sort_order ?? 0,
+        p_step_num: step_num || null,
+      });
+
+      if (error) {
+        console.error("🔩 Add Sequence Part - Supabase error:", error);
+        return res.status(500).json({ error: error.message });
+      }
+
+      console.log("🔩 Add Sequence Part - Success");
+      res.status(201).json(data);
+    } catch (err) {
+      console.error("🔩 Add Sequence Part - Error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// 6. PUT /api/sequences/parts/:partId - Update a part (Admin)
+app.put(
+  "/api/sequences/parts/:partId",
+  authenticateToken,
+  requireRole(["manager", "admin"]),
+  async (req, res) => {
+    try {
+      const { partId } = req.params;
+      const {
+        part_name,
+        part_number,
+        part_description,
+        part_link,
+        estimated_price,
+        is_required,
+        sort_order,
+        step_num,
+      } = req.body;
+
+      if (!part_name) {
+        return res.status(400).json({ error: "Part name is required" });
+      }
+
+      console.log("🔩 Update Sequence Part - Updating part:", partId);
+
+      const { data, error } = await supabase.rpc("fn_update_sequence_part", {
+        p_part_id: partId,
+        p_part_name: part_name,
+        p_part_number: part_number || null,
+        p_part_description: part_description || null,
+        p_part_link: part_link || null,
+        p_estimated_price: estimated_price || null,
+        p_is_required: is_required ?? true,
+        p_sort_order: sort_order ?? 0,
+        p_step_num: step_num || null,
+      });
+
+      if (error) {
+        console.error("🔩 Update Sequence Part - Supabase error:", error);
+        return res.status(500).json({ error: error.message });
+      }
+
+      console.log("🔩 Update Sequence Part - Success");
+      res.json(data);
+    } catch (err) {
+      console.error("🔩 Update Sequence Part - Error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// 7. DELETE /api/sequences/parts/:partId - Delete a part (Admin)
+app.delete(
+  "/api/sequences/parts/:partId",
+  authenticateToken,
+  requireRole(["manager", "admin"]),
+  async (req, res) => {
+    try {
+      const { partId } = req.params;
+
+      console.log("🔩 Delete Sequence Part - Deleting part:", partId);
+
+      const { error } = await supabase.rpc("fn_delete_sequence_part", {
+        p_part_id: partId,
+      });
+
+      if (error) {
+        console.error("🔩 Delete Sequence Part - Supabase error:", error);
+        return res.status(500).json({ error: error.message });
+      }
+
+      console.log("🔩 Delete Sequence Part - Success");
+      res.json({ success: true, message: "Part deleted successfully" });
+    } catch (err) {
+      console.error("🔩 Delete Sequence Part - Error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
 // Trigger Pattern Management endpoints (Manager+ access required)
 
 // 1. GET /api/patterns - List all trigger patterns
