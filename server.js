@@ -595,6 +595,131 @@ app.get(
   }
 );
 
+// Active Sequences endpoints (Manager+ access required)
+// IMPORTANT: These must be defined BEFORE /api/sequences/:key to avoid route conflicts
+
+// GET /api/sequences/active - Get all active SMS troubleshooting sequences
+app.get(
+  "/api/sequences/active",
+  authenticateToken,
+  requireRole(["manager", "admin"]),
+  async (req, res) => {
+    try {
+      console.log("📱 Get Active Sequences - Fetching active sequences");
+
+      const { data, error } = await supabase.rpc("fn_get_active_sequences");
+
+      if (error) {
+        console.error("📱 Get Active Sequences - Supabase error:", error);
+        return res.status(500).json({ error: error.message });
+      }
+
+      console.log(
+        "📱 Get Active Sequences - Success, returned",
+        data?.length || 0,
+        "active sequences"
+      );
+      res.json(data || []);
+    } catch (err) {
+      console.error("📱 Get Active Sequences - Error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// POST /api/sequences/:id/close - Close an active sequence
+app.post(
+  "/api/sequences/:id/close",
+  authenticateToken,
+  requireRole(["manager", "admin"]),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { status, createTicket, closedBy } = req.body;
+
+      console.log(
+        "📱 Close Sequence - Closing sequence:",
+        id,
+        "status:",
+        status || "closed",
+        "createTicket:",
+        createTicket || false
+      );
+
+      const { data, error } = await supabase.rpc("fn_close_sequence", {
+        p_sequence_session_id: id,
+        p_status: status || "closed",
+        p_create_ticket: createTicket || false,
+        p_closed_by: closedBy || req.user?.email || "system",
+      });
+
+      if (error) {
+        console.error("📱 Close Sequence - Supabase error:", error);
+        return res.status(500).json({ error: error.message });
+      }
+
+      // Handle array response from Supabase - return first item
+      const result = Array.isArray(data) ? data[0] : data;
+
+      if (!result?.success) {
+        console.log("📱 Close Sequence - Failed:", result?.message);
+        return res.status(400).json({
+          success: false,
+          message: result?.message || "Failed to close sequence",
+        });
+      }
+
+      console.log(
+        "📱 Close Sequence - Success",
+        result.ticket_id ? `ticket created: ${result.ticket_number}` : ""
+      );
+      res.json({
+        success: true,
+        message: result.message,
+        ticketId: result.ticket_id,
+        ticketNumber: result.ticket_number,
+      });
+    } catch (err) {
+      console.error("📱 Close Sequence - Error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// GET /api/sequences/:sessionId/messages - Get SMS messages for a sequence session
+app.get(
+  "/api/sequences/:sessionId/messages",
+  authenticateToken,
+  requireRole(["manager", "admin"]),
+  async (req, res) => {
+    try {
+      const { sessionId } = req.params;
+      console.log("📱 Get Sequence Messages - Fetching messages for session:", sessionId);
+
+      const { data, error } = await supabase
+        .from("sms_messages")
+        .select("id, from_phone, to_phone, message_body, direction, created_at")
+        .eq("sequence_session_id", sessionId)
+        .order("created_at", { ascending: true });
+
+      if (error) {
+        console.error("📱 Get Sequence Messages - Supabase error:", error);
+        return res.status(500).json({ error: error.message });
+      }
+
+      console.log(
+        "📱 Get Sequence Messages - Success, returned",
+        data?.length || 0,
+        "messages"
+      );
+      res.json(data || []);
+    } catch (err) {
+      console.error("📱 Get Sequence Messages - Error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
 // 2. GET /api/sequences/:key - Get sequence details
 app.get(
   "/api/sequences/:key",

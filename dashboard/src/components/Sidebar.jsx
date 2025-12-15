@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -12,13 +12,41 @@ import {
   Shield,
   ChevronDown,
   ChevronRight,
-  Settings
+  Settings,
+  MessageSquare
 } from 'lucide-react';
 import { theme } from '../styles/theme';
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 const Sidebar = ({ user, onLogout, hasRole }) => {
   const location = useLocation();
   const [adminExpanded, setAdminExpanded] = useState(true);
+  const [activeSequencesCount, setActiveSequencesCount] = useState(0);
+
+  // Fetch active sequences count for the badge
+  useEffect(() => {
+    const fetchActiveCount = async () => {
+      if (!hasRole('manager') && !hasRole('admin')) return;
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/sequences/active`, {
+          credentials: 'include'
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setActiveSequencesCount(data?.length || 0);
+        }
+      } catch (error) {
+        console.error('Error fetching active sequences count:', error);
+      }
+    };
+
+    fetchActiveCount();
+    // Refresh count every 30 seconds
+    const interval = setInterval(fetchActiveCount, 30000);
+    return () => clearInterval(interval);
+  }, [hasRole]);
 
   // Top-level menu items (always visible based on role)
   const getTopLevelItems = () => {
@@ -40,6 +68,18 @@ const Sidebar = ({ user, onLogout, hasRole }) => {
         Icon: Ticket,
         path: '/tickets',
         show: true
+      });
+    }
+
+    // Add Active Sequences for manager and admin
+    if (hasRole('manager') || hasRole('admin')) {
+      items.push({
+        id: 'active-sequences',
+        label: 'Active Sequences',
+        Icon: MessageSquare,
+        path: '/active-sequences',
+        show: true,
+        badge: activeSequencesCount > 0 ? activeSequencesCount : null
       });
     }
 
@@ -283,7 +323,21 @@ const Sidebar = ({ user, onLogout, hasRole }) => {
               }}
             >
               <Icon size={20} />
-              {item.label}
+              <span style={{ flex: 1 }}>{item.label}</span>
+              {item.badge && (
+                <span style={{
+                  backgroundColor: isActive ? 'rgba(255,255,255,0.3)' : theme.colors.accent.primary,
+                  color: isActive ? '#fff' : '#fff',
+                  padding: '2px 8px',
+                  borderRadius: theme.radius.full,
+                  fontSize: theme.fontSize.xs,
+                  fontWeight: theme.fontWeight.semibold,
+                  minWidth: '20px',
+                  textAlign: 'center'
+                }}>
+                  {item.badge}
+                </span>
+              )}
             </Link>
           );
         })}

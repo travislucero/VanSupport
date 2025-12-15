@@ -12,6 +12,7 @@ import TechTicketDetail from './pages/TechTicketDetail.jsx'
 import PublicTicket from './pages/PublicTicket.jsx'
 import CreateTicket from './pages/CreateTicket.jsx'
 import SequenceSupplies from './pages/SequenceSupplies.jsx'
+import ActiveSequences from './pages/ActiveSequences.jsx'
 import Vans from './pages/Vans.jsx'
 import Owners from './pages/Owners.jsx'
 import Users from './pages/Users.jsx'
@@ -90,6 +91,14 @@ createRoot(document.getElementById('root')).render(
               element={
                 <ProtectedRoute requireManager={true}>
                   <TicketDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/active-sequences"
+              element={
+                <ProtectedRoute requireManager={true}>
+                  <ActiveSequences />
                 </ProtectedRoute>
               }
             />
