@@ -631,7 +631,7 @@ function StepSuppliesInline({ stepNum, tools, parts, onAddTool, onAddPart, onEdi
         <div style={{ display: 'flex', gap: theme.spacing.xs, alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
           {sequenceKey && (
             <a
-              href={`/supplies/${sequenceKey}`}
+              href={`/supplies/${sequenceKey}${stepNum ? `?step=${stepNum}` : ''}`}
               target="_blank"
               rel="noopener noreferrer"
               style={{
@@ -643,7 +643,7 @@ function StepSuppliesInline({ stepNum, tools, parts, onAddTool, onAddPart, onEdi
                 color: theme.colors.text.tertiary,
                 textDecoration: 'none',
               }}
-              title="Preview public supplies page"
+              title={stepNum ? `Preview Step ${stepNum} supplies` : "Preview public supplies page"}
             >
               <ExternalLink size={12} />
             </a>

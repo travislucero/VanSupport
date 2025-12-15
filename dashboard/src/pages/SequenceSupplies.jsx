@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import {
   Wrench,
   Package,
@@ -26,6 +26,9 @@ const formatExternalUrl = (url) => {
 
 const SequenceSupplies = () => {
   const { sequenceKey } = useParams();
+  const [searchParams] = useSearchParams();
+  const stepParam = searchParams.get('step');
+  const filterByStep = stepParam ? parseInt(stepParam, 10) : null;
 
   const [supplies, setSupplies] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -106,25 +109,34 @@ const SequenceSupplies = () => {
     );
   }
 
-  const hasTools = supplies.tools && supplies.tools.length > 0;
-  const hasParts = supplies.parts && supplies.parts.length > 0;
+  // When filtering by step, show only items for that step OR general supplies (step_num is null)
+  let filteredTools = supplies.tools || [];
+  let filteredParts = supplies.parts || [];
+
+  if (filterByStep !== null) {
+    filteredTools = filteredTools.filter(t => t.step_num === filterByStep || !t.step_num);
+    filteredParts = filteredParts.filter(p => p.step_num === filterByStep || !p.step_num);
+  }
+
+  const hasTools = filteredTools.length > 0;
+  const hasParts = filteredParts.length > 0;
   const hasNoSupplies = !hasTools && !hasParts;
 
   // Group supplies by step_num
-  const generalTools = supplies.tools?.filter(t => !t.step_num) || [];
-  const generalParts = supplies.parts?.filter(p => !p.step_num) || [];
+  const generalTools = filteredTools.filter(t => !t.step_num);
+  const generalParts = filteredParts.filter(p => !p.step_num);
 
   // Get unique step numbers (excluding null/undefined)
   const stepNumbers = [...new Set([
-    ...(supplies.tools?.filter(t => t.step_num).map(t => t.step_num) || []),
-    ...(supplies.parts?.filter(p => p.step_num).map(p => p.step_num) || [])
+    ...filteredTools.filter(t => t.step_num).map(t => t.step_num),
+    ...filteredParts.filter(p => p.step_num).map(p => p.step_num)
   ])].sort((a, b) => a - b);
 
   const hasGeneralSupplies = generalTools.length > 0 || generalParts.length > 0;
   const hasStepSpecificSupplies = stepNumbers.length > 0;
 
-  // If all supplies are general (no step-specific), don't show step headers
-  const showStepHeaders = hasStepSpecificSupplies;
+  // Don't show step headers when filtering by a specific step (since we're only showing one step)
+  const showStepHeaders = filterByStep === null && hasStepSpecificSupplies;
 
   return (
     <div style={{
@@ -145,7 +157,7 @@ const SequenceSupplies = () => {
             fontWeight: '700',
             marginBottom: '0.5rem'
           }}>
-            Supplies Needed
+            {filterByStep !== null ? `Step ${filterByStep} Supplies` : 'Supplies Needed'}
           </h1>
           {supplies.sequence_name && (
             <p style={{
