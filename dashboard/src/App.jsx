@@ -136,6 +136,15 @@ function App() {
           if (!res.ok) throw new Error(`FCR error: ${res.status}`);
           return res.json();
         })
+        .then((data) => {
+          console.log("📊 FCR API Response:", data);
+          console.log("📊 FCR data length:", data?.length || 0);
+          if (data?.length > 0) {
+            console.log("📊 FCR first item:", data[0]);
+            console.log("📊 FCR first item keys:", Object.keys(data[0]));
+          }
+          return data;
+        })
         .catch((err) => {
           console.error("❌ First contact resolution failed:", err);
           return [];
@@ -204,6 +213,9 @@ function App() {
         setSummary(summaryData?.[0] || null);
         setIssueDistribution(distributionData || []);
         setResolutionTimeTrend(trendData || []);
+        console.log("📊 Setting FCR Data:", fcrResponse);
+        console.log("📊 FCR Response type:", typeof fcrResponse);
+        console.log("📊 FCR is array:", Array.isArray(fcrResponse));
         setFcrData(fcrResponse || []);
         setHeatmapData(heatmapResponse || []);
 
@@ -587,6 +599,7 @@ function App() {
         </div>
 
         {/* First Contact Resolution */}
+        {console.log("📊 Render - fcrData:", fcrData, "length:", fcrData?.length)}
         <Card
           title="First Contact Resolution Rate"
           description="Resolution rate by troubleshooting sequence"
