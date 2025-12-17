@@ -152,111 +152,227 @@ const Sidebar = ({ user, onLogout, hasRole }) => {
   const adminItems = getAdminItems();
   const shouldShowAdmin = adminItems.length > 0;
 
+  // Styles
+  const styles = {
+    sidebar: {
+      width: '260px',
+      height: '100vh',
+      backgroundColor: theme.colors.background.secondary,
+      borderRight: `1px solid ${theme.colors.border.light}`,
+      display: 'flex',
+      flexDirection: 'column',
+      position: 'fixed',
+      left: 0,
+      top: 0,
+      overflowY: 'auto',
+      zIndex: theme.zIndex.fixed,
+      boxShadow: theme.shadows.sm,
+    },
+    brand: {
+      padding: theme.spacing['2xl'],
+      borderBottom: `1px solid ${theme.colors.border.light}`,
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      backgroundColor: theme.colors.background.secondary,
+    },
+    logo: {
+      height: '48px',
+      width: 'auto',
+      marginBottom: theme.spacing.sm,
+    },
+    brandName: {
+      margin: 0,
+      fontSize: theme.fontSize['2xl'],
+      fontWeight: theme.fontWeight.bold,
+      color: theme.colors.accent.primary,
+      letterSpacing: '0.05em',
+    },
+    brandTagline: {
+      color: theme.colors.text.tertiary,
+      fontSize: theme.fontSize.xs,
+      marginTop: theme.spacing.xs,
+      fontWeight: theme.fontWeight.medium,
+      textAlign: 'center',
+    },
+    userSection: {
+      padding: theme.spacing.xl,
+      borderBottom: `1px solid ${theme.colors.border.light}`,
+      backgroundColor: theme.colors.background.tertiary,
+    },
+    userInfo: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: theme.spacing.md,
+    },
+    avatar: {
+      width: '44px',
+      height: '44px',
+      borderRadius: theme.radius.lg,
+      backgroundColor: theme.colors.accent.primary,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      color: theme.colors.text.inverse,
+      fontWeight: theme.fontWeight.semibold,
+      fontSize: theme.fontSize.lg,
+      boxShadow: theme.shadows.sm,
+    },
+    userDetails: {
+      flex: 1,
+      minWidth: 0,
+    },
+    userName: {
+      color: theme.colors.text.primary,
+      fontSize: theme.fontSize.sm,
+      fontWeight: theme.fontWeight.semibold,
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+    },
+    userRole: {
+      color: theme.colors.text.tertiary,
+      fontSize: theme.fontSize.xs,
+      marginTop: '2px',
+      textTransform: 'capitalize',
+    },
+    navigation: {
+      padding: theme.spacing.lg,
+      flex: 1,
+    },
+    sectionLabel: {
+      color: theme.colors.text.tertiary,
+      fontSize: theme.fontSize.xs,
+      fontWeight: theme.fontWeight.semibold,
+      textTransform: 'uppercase',
+      letterSpacing: '0.05em',
+      marginBottom: theme.spacing.md,
+      paddingLeft: theme.spacing.md,
+    },
+    navItem: (isActive) => ({
+      width: '100%',
+      display: 'flex',
+      alignItems: 'center',
+      gap: theme.spacing.md,
+      padding: `${theme.spacing.md} ${theme.spacing.lg}`,
+      backgroundColor: isActive ? theme.colors.accent.primaryLight : 'transparent',
+      color: isActive ? theme.colors.accent.primary : theme.colors.text.secondary,
+      border: 'none',
+      borderRadius: theme.radius.lg,
+      cursor: 'pointer',
+      fontSize: theme.fontSize.sm,
+      fontWeight: isActive ? theme.fontWeight.semibold : theme.fontWeight.medium,
+      marginBottom: theme.spacing.xs,
+      transition: theme.transitions.fast,
+      textAlign: 'left',
+      textDecoration: 'none',
+      position: 'relative',
+    }),
+    navItemActive: {
+      boxShadow: `inset 3px 0 0 ${theme.colors.accent.primary}`,
+    },
+    badge: (isActive) => ({
+      backgroundColor: isActive ? theme.colors.accent.primary : theme.colors.accent.primary,
+      color: theme.colors.text.inverse,
+      padding: '2px 8px',
+      borderRadius: theme.radius.full,
+      fontSize: theme.fontSize.xs,
+      fontWeight: theme.fontWeight.semibold,
+      minWidth: '20px',
+      textAlign: 'center',
+    }),
+    adminHeader: {
+      width: '100%',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: `${theme.spacing.md} ${theme.spacing.lg}`,
+      backgroundColor: 'transparent',
+      color: theme.colors.text.secondary,
+      border: 'none',
+      borderRadius: theme.radius.lg,
+      cursor: 'pointer',
+      fontSize: theme.fontSize.sm,
+      fontWeight: theme.fontWeight.medium,
+      marginBottom: theme.spacing.xs,
+      transition: theme.transitions.fast,
+      textAlign: 'left',
+    },
+    adminSubmenu: {
+      marginLeft: theme.spacing.lg,
+      marginTop: theme.spacing.xs,
+      paddingLeft: theme.spacing.md,
+      borderLeft: `2px solid ${theme.colors.border.light}`,
+    },
+    subNavItem: (isActive) => ({
+      width: '100%',
+      display: 'flex',
+      alignItems: 'center',
+      gap: theme.spacing.md,
+      padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+      backgroundColor: isActive ? theme.colors.accent.primaryLight : 'transparent',
+      color: isActive ? theme.colors.accent.primary : theme.colors.text.secondary,
+      border: 'none',
+      borderRadius: theme.radius.md,
+      cursor: 'pointer',
+      fontSize: theme.fontSize.sm,
+      fontWeight: isActive ? theme.fontWeight.medium : theme.fontWeight.normal,
+      marginBottom: theme.spacing.xs,
+      transition: theme.transitions.fast,
+      textAlign: 'left',
+      textDecoration: 'none',
+    }),
+    logoutSection: {
+      padding: theme.spacing.lg,
+      borderTop: `1px solid ${theme.colors.border.light}`,
+      backgroundColor: theme.colors.background.secondary,
+    },
+    logoutButton: {
+      width: '100%',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: theme.spacing.sm,
+      padding: `${theme.spacing.md} ${theme.spacing.lg}`,
+      backgroundColor: 'transparent',
+      color: theme.colors.text.secondary,
+      border: `1px solid ${theme.colors.border.medium}`,
+      borderRadius: theme.radius.lg,
+      cursor: 'pointer',
+      fontSize: theme.fontSize.sm,
+      fontWeight: theme.fontWeight.medium,
+      transition: theme.transitions.fast,
+    },
+  };
+
   return (
-    <div
-      style={{
-        width: '260px',
-        height: '100vh',
-        backgroundColor: theme.colors.background.secondary,
-        borderRight: `1px solid ${theme.colors.border.light}`,
-        display: 'flex',
-        flexDirection: 'column',
-        position: 'fixed',
-        left: 0,
-        top: 0,
-        overflowY: 'auto',
-        zIndex: 10,
-      }}
-    >
+    <div style={styles.sidebar}>
       {/* Logo/Brand */}
-      <div
-        style={{
-          padding: theme.spacing.xl,
-          borderBottom: `1px solid ${theme.colors.border.light}`,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-        }}
-      >
+      <div style={styles.brand}>
         <img
           src="/max-logo-small.png"
           alt="MAX Logo"
-          style={{
-            height: '48px',
-            width: 'auto',
-            marginBottom: theme.spacing.sm,
-          }}
+          style={styles.logo}
         />
-        <h1
-          style={{
-            margin: 0,
-            fontSize: theme.fontSize['2xl'],
-            fontWeight: theme.fontWeight.bold,
-            color: theme.colors.accent.primary,
-            letterSpacing: '0.05em',
-          }}
-        >
-          MAX
-        </h1>
-        <div
-          style={{
-            color: theme.colors.text.tertiary,
-            fontSize: theme.fontSize.xs,
-            marginTop: theme.spacing.xs,
-            fontWeight: theme.fontWeight.medium,
-            textAlign: 'center',
-          }}
-        >
+        <h1 style={styles.brandName}>MAX</h1>
+        <div style={styles.brandTagline}>
           Mobile AI Xpress Support
         </div>
       </div>
 
       {/* User Profile */}
       {user && (
-        <div
-          style={{
-            padding: theme.spacing.lg,
-            borderBottom: `1px solid ${theme.colors.border.light}`,
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.md }}>
-            <div
-              style={{
-                width: '48px',
-                height: '48px',
-                borderRadius: theme.radius.full,
-                backgroundColor: theme.colors.accent.secondary,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#ffffff',
-                fontWeight: theme.fontWeight.semibold,
-                fontSize: theme.fontSize.lg,
-              }}
-            >
+        <div style={styles.userSection}>
+          <div style={styles.userInfo}>
+            <div style={styles.avatar}>
               {user.email?.charAt(0).toUpperCase() || 'U'}
             </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div
-                style={{
-                  color: theme.colors.text.primary,
-                  fontSize: theme.fontSize.sm,
-                  fontWeight: theme.fontWeight.medium,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-              >
+            <div style={styles.userDetails}>
+              <div style={styles.userName}>
                 {user.email?.split('@')[0] || 'User'}
               </div>
               {user.roles && user.roles.length > 0 && (
-                <div
-                  style={{
-                    color: theme.colors.text.secondary,
-                    fontSize: theme.fontSize.xs,
-                    marginTop: '2px',
-                  }}
-                >
+                <div style={styles.userRole}>
                   {user.roles[0].name}
                 </div>
               )}
@@ -266,19 +382,8 @@ const Sidebar = ({ user, onLogout, hasRole }) => {
       )}
 
       {/* Navigation Menu */}
-      <div style={{ padding: theme.spacing.lg, flex: 1 }}>
-        <div
-          style={{
-            color: theme.colors.text.tertiary,
-            fontSize: theme.fontSize.xs,
-            fontWeight: theme.fontWeight.semibold,
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em',
-            marginBottom: theme.spacing.md,
-          }}
-        >
-          Navigation
-        </div>
+      <div style={styles.navigation}>
+        <div style={styles.sectionLabel}>Navigation</div>
 
         {/* Top-Level Menu Items */}
         {topLevelItems.map((item) => {
@@ -290,51 +395,26 @@ const Sidebar = ({ user, onLogout, hasRole }) => {
               key={item.id}
               to={item.path}
               style={{
-                width: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                gap: theme.spacing.md,
-                padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-                backgroundColor: isActive
-                  ? theme.colors.accent.primary
-                  : 'transparent',
-                color: isActive
-                  ? '#ffffff'
-                  : theme.colors.text.secondary,
-                border: 'none',
-                borderRadius: theme.radius.md,
-                cursor: 'pointer',
-                fontSize: theme.fontSize.sm,
-                fontWeight: theme.fontWeight.medium,
-                marginBottom: theme.spacing.xs,
-                transition: 'all 0.2s',
-                textAlign: 'left',
-                textDecoration: 'none',
+                ...styles.navItem(isActive),
+                ...(isActive ? styles.navItemActive : {}),
               }}
               onMouseEnter={(e) => {
                 if (!isActive) {
                   e.currentTarget.style.backgroundColor = theme.colors.background.tertiary;
+                  e.currentTarget.style.color = theme.colors.text.primary;
                 }
               }}
               onMouseLeave={(e) => {
                 if (!isActive) {
                   e.currentTarget.style.backgroundColor = 'transparent';
+                  e.currentTarget.style.color = theme.colors.text.secondary;
                 }
               }}
             >
-              <Icon size={20} />
+              <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
               <span style={{ flex: 1 }}>{item.label}</span>
               {item.badge && (
-                <span style={{
-                  backgroundColor: isActive ? 'rgba(255,255,255,0.3)' : theme.colors.accent.primary,
-                  color: isActive ? '#fff' : '#fff',
-                  padding: '2px 8px',
-                  borderRadius: theme.radius.full,
-                  fontSize: theme.fontSize.xs,
-                  fontWeight: theme.fontWeight.semibold,
-                  minWidth: '20px',
-                  textAlign: 'center'
-                }}>
+                <span style={styles.badge(isActive)}>
                   {item.badge}
                 </span>
               )}
@@ -344,27 +424,11 @@ const Sidebar = ({ user, onLogout, hasRole }) => {
 
         {/* Admin Submenu */}
         {shouldShowAdmin && (
-          <div style={{ marginTop: theme.spacing.sm }}>
+          <div style={{ marginTop: theme.spacing.lg }}>
             {/* Admin Header - Clickable to expand/collapse */}
             <button
               onClick={() => setAdminExpanded(!adminExpanded)}
-              style={{
-                width: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-                backgroundColor: 'transparent',
-                color: theme.colors.text.secondary,
-                border: 'none',
-                borderRadius: theme.radius.md,
-                cursor: 'pointer',
-                fontSize: theme.fontSize.sm,
-                fontWeight: theme.fontWeight.medium,
-                marginBottom: theme.spacing.xs,
-                transition: 'all 0.2s',
-                textAlign: 'left',
-              }}
+              style={styles.adminHeader}
               onMouseEnter={(e) => {
                 e.currentTarget.style.backgroundColor = theme.colors.background.tertiary;
               }}
@@ -385,7 +449,7 @@ const Sidebar = ({ user, onLogout, hasRole }) => {
 
             {/* Admin Submenu Items - Only show when expanded */}
             {adminExpanded && (
-              <div style={{ marginLeft: theme.spacing.md, marginTop: theme.spacing.xs }}>
+              <div style={styles.adminSubmenu}>
                 {adminItems.map((item) => {
                   const Icon = item.Icon;
                   const isActive = location.pathname === item.path;
@@ -394,40 +458,21 @@ const Sidebar = ({ user, onLogout, hasRole }) => {
                     <Link
                       key={item.id}
                       to={item.path}
-                      style={{
-                        width: '100%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: theme.spacing.md,
-                        padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-                        backgroundColor: isActive
-                          ? theme.colors.accent.primaryLight
-                          : 'transparent',
-                        color: isActive
-                          ? theme.colors.accent.primary
-                          : theme.colors.text.secondary,
-                        border: 'none',
-                        borderRadius: theme.radius.md,
-                        cursor: 'pointer',
-                        fontSize: theme.fontSize.sm,
-                        fontWeight: isActive ? theme.fontWeight.medium : theme.fontWeight.normal,
-                        marginBottom: theme.spacing.xs,
-                        transition: 'all 0.2s',
-                        textAlign: 'left',
-                        textDecoration: 'none',
-                      }}
+                      style={styles.subNavItem(isActive)}
                       onMouseEnter={(e) => {
                         if (!isActive) {
                           e.currentTarget.style.backgroundColor = theme.colors.background.tertiary;
+                          e.currentTarget.style.color = theme.colors.text.primary;
                         }
                       }}
                       onMouseLeave={(e) => {
                         if (!isActive) {
                           e.currentTarget.style.backgroundColor = 'transparent';
+                          e.currentTarget.style.color = theme.colors.text.secondary;
                         }
                       }}
                     >
-                      <Icon size={16} />
+                      <Icon size={16} strokeWidth={isActive ? 2.5 : 2} />
                       {item.label}
                     </Link>
                   );
@@ -439,36 +484,23 @@ const Sidebar = ({ user, onLogout, hasRole }) => {
       </div>
 
       {/* Logout Button */}
-      <div style={{ padding: theme.spacing.lg, borderTop: `1px solid ${theme.colors.border.light}` }}>
+      <div style={styles.logoutSection}>
         <button
           onClick={onLogout}
-          style={{
-            width: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: theme.spacing.sm,
-            padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-            backgroundColor: 'transparent',
-            color: theme.colors.text.secondary,
-            border: `1px solid ${theme.colors.border.medium}`,
-            borderRadius: theme.radius.md,
-            cursor: 'pointer',
-            fontSize: theme.fontSize.sm,
-            fontWeight: theme.fontWeight.medium,
-            transition: 'all 0.2s',
-          }}
+          style={styles.logoutButton}
           onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = theme.colors.background.tertiary;
-            e.currentTarget.style.borderColor = theme.colors.border.dark;
+            e.currentTarget.style.backgroundColor = theme.colors.accent.dangerLight;
+            e.currentTarget.style.borderColor = theme.colors.accent.danger;
+            e.currentTarget.style.color = theme.colors.accent.danger;
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.backgroundColor = 'transparent';
             e.currentTarget.style.borderColor = theme.colors.border.medium;
+            e.currentTarget.style.color = theme.colors.text.secondary;
           }}
         >
           <LogOut size={16} />
-          Logout
+          Sign Out
         </button>
       </div>
     </div>

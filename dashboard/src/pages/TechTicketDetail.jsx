@@ -23,7 +23,8 @@ import {
   ChevronDown,
   ChevronUp,
   Image,
-  Camera
+  Camera,
+  Play
 } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import Card from '../components/Card';
@@ -67,8 +68,9 @@ const TechTicketDetail = () => {
   // Attachments state
   const [attachments, setAttachments] = useState([]);
 
-  // Lightbox state for viewing full-size images
+  // Lightbox state for viewing full-size images and videos
   const [lightboxImage, setLightboxImage] = useState(null);
+  const [lightboxVideo, setLightboxVideo] = useState(null);
 
   // Fetch ticket detail
   const fetchTicket = useCallback(async (silent = false) => {
@@ -1104,16 +1106,69 @@ const TechTicketDetail = () => {
                                           gap: theme.spacing.xs
                                         }}>
                                           {isVideo ? (
-                                            <video
-                                              src={attachment.public_url}
-                                              controls
+                                            <div
+                                              onClick={() => setLightboxVideo(attachment.public_url)}
                                               style={{
-                                                maxWidth: '300px',
-                                                maxHeight: '200px',
+                                                position: 'relative',
+                                                cursor: 'pointer',
                                                 borderRadius: theme.radius.md,
-                                                border: `1px solid ${theme.colors.border.medium}`
+                                                overflow: 'hidden',
+                                                border: `1px solid ${theme.colors.border.medium}`,
+                                                transition: 'transform 0.2s, box-shadow 0.2s'
                                               }}
-                                            />
+                                              onMouseOver={(e) => {
+                                                e.currentTarget.style.transform = 'scale(1.02)';
+                                                e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+                                              }}
+                                              onMouseOut={(e) => {
+                                                e.currentTarget.style.transform = 'scale(1)';
+                                                e.currentTarget.style.boxShadow = 'none';
+                                              }}
+                                            >
+                                              <video
+                                                src={attachment.public_url}
+                                                style={{
+                                                  maxWidth: '300px',
+                                                  maxHeight: '200px',
+                                                  display: 'block'
+                                                }}
+                                              />
+                                              <div
+                                                style={{
+                                                  position: 'absolute',
+                                                  top: 0,
+                                                  left: 0,
+                                                  right: 0,
+                                                  bottom: 0,
+                                                  backgroundColor: 'rgba(0, 0, 0, 0.3)',
+                                                  display: 'flex',
+                                                  alignItems: 'center',
+                                                  justifyContent: 'center',
+                                                  transition: 'background-color 0.2s'
+                                                }}
+                                                onMouseOver={(e) => {
+                                                  e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.6)';
+                                                }}
+                                                onMouseOut={(e) => {
+                                                  e.currentTarget.style.backgroundColor = 'rgba(0, 0, 0, 0.3)';
+                                                }}
+                                              >
+                                                <div
+                                                  style={{
+                                                    width: '50px',
+                                                    height: '50px',
+                                                    borderRadius: '50%',
+                                                    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+                                                  }}
+                                                >
+                                                  <Play size={24} fill={theme.colors.accent.primary} color={theme.colors.accent.primary} />
+                                                </div>
+                                              </div>
+                                            </div>
                                           ) : isImage ? (
                                             <img
                                               src={attachment.public_url}
@@ -1449,6 +1504,59 @@ const TechTicketDetail = () => {
               maxWidth: '90vw',
               maxHeight: '90vh',
               objectFit: 'contain',
+              borderRadius: theme.radius.lg
+            }}
+          />
+        </div>
+      )}
+
+      {/* Lightbox Modal for full-size video viewing */}
+      {lightboxVideo && (
+        <div
+          onClick={() => setLightboxVideo(null)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.9)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            cursor: 'pointer'
+          }}
+        >
+          <button
+            onClick={() => setLightboxVideo(null)}
+            style={{
+              position: 'absolute',
+              top: '20px',
+              right: '20px',
+              background: 'rgba(255, 255, 255, 0.2)',
+              border: 'none',
+              borderRadius: '50%',
+              width: '40px',
+              height: '40px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              color: '#ffffff',
+              zIndex: 10000
+            }}
+          >
+            <X size={24} />
+          </button>
+          <video
+            src={lightboxVideo}
+            controls
+            autoPlay
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: '90vw',
+              maxHeight: '90vh',
               borderRadius: theme.radius.lg
             }}
           />

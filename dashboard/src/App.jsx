@@ -14,7 +14,7 @@ import {
   ResponsiveContainer,
   CartesianGrid,
 } from "recharts";
-import { Phone, CheckCircle, Clock } from "lucide-react";
+import { Phone, CheckCircle, Clock, Calendar, Loader2 } from "lucide-react";
 import Login from "./Login";
 import { useAuth } from "./hooks/useAuth.jsx";
 import Sidebar from "./components/Sidebar";
@@ -22,6 +22,8 @@ import Card from "./components/Card";
 import StatCard from "./components/StatCard";
 import Badge from "./components/Badge";
 import Avatar from "./components/Avatar";
+import Button from "./components/Button";
+import Select from "./components/Select";
 import { theme } from "./styles/theme";
 
 function App() {
@@ -261,15 +263,17 @@ function App() {
       <div
         style={{
           display: "flex",
+          flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
           minHeight: "100vh",
-          backgroundColor: theme.colors.background.primary,
+          backgroundColor: theme.colors.background.page,
           color: theme.colors.text.primary,
-          fontSize: theme.fontSize['2xl'],
+          gap: theme.spacing.lg,
         }}
       >
-        Loading...
+        <Loader2 size={40} style={{ animation: 'spin 1s linear infinite' }} color={theme.colors.accent.primary} />
+        <span style={{ fontSize: theme.fontSize.lg, color: theme.colors.text.secondary }}>Loading...</span>
       </div>
     );
   }
@@ -283,39 +287,64 @@ function App() {
       <div
         style={{
           display: "flex",
+          flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
           minHeight: "100vh",
-          backgroundColor: theme.colors.background.primary,
+          backgroundColor: theme.colors.background.page,
           color: theme.colors.text.primary,
-          fontSize: theme.fontSize['2xl'],
+          gap: theme.spacing.lg,
         }}
       >
-        Loading dashboard...
+        <Loader2 size={40} style={{ animation: 'spin 1s linear infinite' }} color={theme.colors.accent.primary} />
+        <span style={{ fontSize: theme.fontSize.lg, color: theme.colors.text.secondary }}>Loading dashboard...</span>
       </div>
     );
   }
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", backgroundColor: theme.colors.background.primary }}>
+    <div style={{ display: "flex", minHeight: "100vh", backgroundColor: theme.colors.background.page }}>
       <Sidebar user={user} onLogout={logout} hasRole={hasRole} />
 
       <div style={{ marginLeft: "260px", flex: 1, padding: theme.spacing['2xl'] }}>
         {/* Header */}
-        <div style={{ marginBottom: theme.spacing['2xl'] }}>
-          <h1
-            style={{
-              fontSize: theme.fontSize['4xl'],
-              fontWeight: theme.fontWeight.bold,
-              color: theme.colors.text.primary,
-              marginBottom: theme.spacing.xs,
-            }}
-          >
-            Analytics Dashboard
-          </h1>
-          <p style={{ color: theme.colors.text.secondary, fontSize: theme.fontSize.base }}>
-            Welcome back, {user?.email?.split('@')[0] || 'User'}
-          </p>
+        <div style={{
+          marginBottom: theme.spacing['2xl'],
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+        }}>
+          <div>
+            <h1
+              style={{
+                fontSize: theme.fontSize['3xl'],
+                fontWeight: theme.fontWeight.bold,
+                color: theme.colors.text.primary,
+                marginBottom: theme.spacing.xs,
+                letterSpacing: '-0.02em',
+              }}
+            >
+              Analytics Dashboard
+            </h1>
+            <p style={{ color: theme.colors.text.secondary, fontSize: theme.fontSize.base, margin: 0 }}>
+              Welcome back, {user?.email?.split('@')[0] || 'User'}
+            </p>
+          </div>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: theme.spacing.sm,
+            color: theme.colors.text.tertiary,
+            fontSize: theme.fontSize.sm,
+          }}>
+            <Calendar size={16} />
+            {new Date().toLocaleDateString('en-US', {
+              weekday: 'long',
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric'
+            })}
+          </div>
         </div>
 
         {/* Date Range Controls */}
@@ -422,35 +451,14 @@ function App() {
                     }}
                   />
                 </div>
-                <div>
-                  <button
+                <div style={{ marginTop: theme.spacing.lg }}>
+                  <Button
                     onClick={handleApplyCustomRange}
                     disabled={!customFrom || !customTo}
-                    style={{
-                      marginTop: theme.spacing.lg,
-                      padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
-                      backgroundColor: customFrom && customTo ? theme.colors.accent.primary : theme.colors.background.tertiary,
-                      color: customFrom && customTo ? 'white' : theme.colors.text.disabled,
-                      border: 'none',
-                      borderRadius: theme.radius.md,
-                      fontSize: theme.fontSize.sm,
-                      fontWeight: theme.fontWeight.medium,
-                      cursor: customFrom && customTo ? 'pointer' : 'not-allowed',
-                      transition: 'all 0.2s',
-                    }}
-                    onMouseEnter={(e) => {
-                      if (customFrom && customTo) {
-                        e.target.style.backgroundColor = theme.colors.accent.primaryHover;
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (customFrom && customTo) {
-                        e.target.style.backgroundColor = theme.colors.accent.primary;
-                      }
-                    }}
+                    size="sm"
                   >
                     Apply
-                  </button>
+                  </Button>
                 </div>
               </>
             )}
@@ -505,21 +513,6 @@ function App() {
           <Card
             title="Issue Distribution"
             description="Breakdown of issue types"
-            action={
-              <button
-                style={{
-                  padding: `${theme.spacing.xs} ${theme.spacing.md}`,
-                  backgroundColor: theme.colors.background.tertiary,
-                  color: theme.colors.text.primary,
-                  border: `1px solid ${theme.colors.border.medium}`,
-                  borderRadius: theme.radius.md,
-                  fontSize: theme.fontSize.sm,
-                  fontWeight: theme.fontWeight.medium,
-                }}
-              >
-                View Details
-              </button>
-            }
           >
             {issueDistribution.length === 0 ? (
               <div style={{ padding: theme.spacing['2xl'], textAlign: "center", color: theme.colors.text.secondary }}>

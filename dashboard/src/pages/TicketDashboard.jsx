@@ -340,10 +340,10 @@ const TicketDashboard = () => {
   );
 
   return (
-    <div className="flex min-h-screen" style={{ backgroundColor: '#f9fafb' }}>
+    <div className="flex min-h-screen" style={{ backgroundColor: theme.colors.background.page }}>
       <Sidebar user={user} onLogout={logout} hasRole={hasRole} />
 
-      <div style={{ marginLeft: '260px', flex: 1, padding: '2rem', position: 'relative', zIndex: 1 }}>
+      <div style={{ marginLeft: '260px', flex: 1, padding: theme.spacing['2xl'], position: 'relative', zIndex: 1 }}>
         {/* Page Header */}
         <div className="mb-8">
             <div className="flex items-center justify-between">

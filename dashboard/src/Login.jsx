@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { useAuth } from "./hooks/useAuth.jsx";
 import { theme } from "./styles/theme";
+import Button from "./components/Button";
+import Input from "./components/Input";
+import { AlertCircle } from "lucide-react";
 
 function Login() {
   const [email, setEmail] = useState("");
@@ -20,200 +23,160 @@ function Login() {
       setError(result.error || "Login failed");
       setLoading(false);
     }
-    // If successful, the AuthProvider will update and App will re-render
+  };
+
+  const styles = {
+    page: {
+      minHeight: "100vh",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: theme.colors.background.page,
+      padding: theme.spacing.xl,
+    },
+    container: {
+      width: "100%",
+      maxWidth: "420px",
+    },
+    logoSection: {
+      textAlign: "center",
+      marginBottom: theme.spacing['3xl'],
+    },
+    logo: {
+      maxWidth: "240px",
+      width: "100%",
+      height: "auto",
+      marginBottom: theme.spacing.lg,
+    },
+    subtitle: {
+      color: theme.colors.text.secondary,
+      fontSize: theme.fontSize.base,
+      margin: 0,
+    },
+    card: {
+      padding: theme.spacing['2xl'],
+      backgroundColor: theme.colors.background.secondary,
+      borderRadius: theme.radius['2xl'],
+      border: `1px solid ${theme.colors.border.light}`,
+      boxShadow: theme.shadows.lg,
+    },
+    cardHeader: {
+      marginBottom: theme.spacing['2xl'],
+      textAlign: "center",
+    },
+    cardTitle: {
+      margin: 0,
+      fontSize: theme.fontSize['xl'],
+      fontWeight: theme.fontWeight.semibold,
+      color: theme.colors.text.primary,
+      marginBottom: theme.spacing.xs,
+    },
+    cardDescription: {
+      margin: 0,
+      fontSize: theme.fontSize.sm,
+      color: theme.colors.text.tertiary,
+    },
+    form: {
+      display: "flex",
+      flexDirection: "column",
+      gap: theme.spacing.xl,
+    },
+    errorBox: {
+      display: "flex",
+      alignItems: "center",
+      gap: theme.spacing.md,
+      padding: theme.spacing.lg,
+      backgroundColor: theme.colors.accent.dangerLight,
+      border: `1px solid ${theme.colors.accent.danger}`,
+      borderRadius: theme.radius.lg,
+      color: theme.colors.accent.danger,
+      fontSize: theme.fontSize.sm,
+    },
+    footer: {
+      marginTop: theme.spacing['2xl'],
+      textAlign: "center",
+      color: theme.colors.text.tertiary,
+      fontSize: theme.fontSize.xs,
+    },
+    footerLink: {
+      color: theme.colors.accent.primary,
+      textDecoration: "none",
+      fontWeight: theme.fontWeight.medium,
+    },
   };
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        backgroundColor: theme.colors.background.primary,
-        padding: theme.spacing.lg,
-      }}
-    >
-      <div
-        style={{
-          width: "100%",
-          maxWidth: "440px",
-        }}
-      >
-        {/* Logo */}
-        <div style={{ textAlign: "center", marginBottom: theme.spacing['2xl'] }}>
+    <div style={styles.page}>
+      <div style={styles.container}>
+        {/* Logo Section */}
+        <div style={styles.logoSection}>
           <img
             src="/max-logo.png"
             alt="MAX - Mobile AI Xpress Support"
-            style={{
-              maxWidth: "280px",
-              width: "100%",
-              height: "auto",
-              marginBottom: theme.spacing.lg,
-            }}
+            style={styles.logo}
           />
-          <p
-            style={{
-              color: theme.colors.text.secondary,
-              fontSize: theme.fontSize.base,
-            }}
-          >
-            Sign in to access your dashboard
+          <p style={styles.subtitle}>
+            Van Support Management System
           </p>
         </div>
 
         {/* Login Card */}
-        <div
-          style={{
-            padding: theme.spacing['2xl'],
-            backgroundColor: theme.colors.background.secondary,
-            borderRadius: theme.radius.xl,
-            border: `1px solid ${theme.colors.border.light}`,
-            boxShadow: theme.shadows.lg,
-          }}
-        >
+        <div style={styles.card}>
+          <div style={styles.cardHeader}>
+            <h1 style={styles.cardTitle}>Welcome back</h1>
+            <p style={styles.cardDescription}>
+              Sign in to access your dashboard
+            </p>
+          </div>
 
-          <form onSubmit={handleSubmit}>
-            <div style={{ marginBottom: theme.spacing.lg }}>
-              <label
-                htmlFor="email"
-                style={{
-                  display: "block",
-                  color: theme.colors.text.primary,
-                  marginBottom: theme.spacing.sm,
-                  fontSize: theme.fontSize.sm,
-                  fontWeight: theme.fontWeight.medium,
-                }}
-              >
-                Email Address
-              </label>
-              <input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                autoComplete="email"
-                placeholder="you@example.com"
-                style={{
-                  width: "100%",
-                  padding: `${theme.spacing.md} ${theme.spacing.lg}`,
-                  backgroundColor: theme.colors.background.tertiary,
-                  color: theme.colors.text.primary,
-                  border: `1px solid ${theme.colors.border.medium}`,
-                  borderRadius: theme.radius.lg,
-                  fontSize: theme.fontSize.base,
-                  outline: "none",
-                  transition: "border-color 0.2s, box-shadow 0.2s",
-                }}
-                onFocus={(e) => {
-                  e.target.style.borderColor = theme.colors.accent.primary;
-                  e.target.style.boxShadow = `0 0 0 3px ${theme.colors.accent.primary}20`;
-                }}
-                onBlur={(e) => {
-                  e.target.style.borderColor = theme.colors.border.medium;
-                  e.target.style.boxShadow = "none";
-                }}
-              />
-            </div>
+          <form onSubmit={handleSubmit} style={styles.form}>
+            <Input
+              label="Email Address"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              required
+              autoComplete="email"
+              disabled={loading}
+            />
 
-            <div style={{ marginBottom: theme.spacing.xl }}>
-              <label
-                htmlFor="password"
-                style={{
-                  display: "block",
-                  color: theme.colors.text.primary,
-                  marginBottom: theme.spacing.sm,
-                  fontSize: theme.fontSize.sm,
-                  fontWeight: theme.fontWeight.medium,
-                }}
-              >
-                Password
-              </label>
-              <input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                autoComplete="current-password"
-                placeholder="Enter your password"
-                style={{
-                  width: "100%",
-                  padding: `${theme.spacing.md} ${theme.spacing.lg}`,
-                  backgroundColor: theme.colors.background.tertiary,
-                  color: theme.colors.text.primary,
-                  border: `1px solid ${theme.colors.border.medium}`,
-                  borderRadius: theme.radius.lg,
-                  fontSize: theme.fontSize.base,
-                  outline: "none",
-                  transition: "border-color 0.2s, box-shadow 0.2s",
-                }}
-                onFocus={(e) => {
-                  e.target.style.borderColor = theme.colors.accent.primary;
-                  e.target.style.boxShadow = `0 0 0 3px ${theme.colors.accent.primary}20`;
-                }}
-                onBlur={(e) => {
-                  e.target.style.borderColor = theme.colors.border.medium;
-                  e.target.style.boxShadow = "none";
-                }}
-              />
-            </div>
+            <Input
+              label="Password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Enter your password"
+              required
+              autoComplete="current-password"
+              disabled={loading}
+            />
 
             {error && (
-              <div
-                style={{
-                  padding: theme.spacing.md,
-                  marginBottom: theme.spacing.lg,
-                  backgroundColor: `${theme.colors.accent.danger}20`,
-                  border: `1px solid ${theme.colors.accent.danger}`,
-                  borderRadius: theme.radius.lg,
-                  color: theme.colors.accent.danger,
-                  fontSize: theme.fontSize.sm,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: theme.spacing.sm,
-                }}
-              >
-                <span>⚠️</span>
+              <div style={styles.errorBox}>
+                <AlertCircle size={18} />
                 <span>{error}</span>
               </div>
             )}
 
-            <button
+            <Button
               type="submit"
-              disabled={loading}
-              style={{
-                width: "100%",
-                padding: `${theme.spacing.md} ${theme.spacing.lg}`,
-                backgroundColor: loading ? theme.colors.background.hover : theme.colors.accent.primary,
-                color: loading ? theme.colors.text.primary : '#ffffff',
-                border: "none",
-                borderRadius: theme.radius.lg,
-                fontSize: theme.fontSize.base,
-                fontWeight: theme.fontWeight.semibold,
-                cursor: loading ? "not-allowed" : "pointer",
-                transition: "all 0.2s",
-                boxShadow: loading ? "none" : theme.shadows.md,
-              }}
-              onMouseEnter={(e) => {
-                if (!loading) {
-                  e.target.style.backgroundColor = theme.colors.accent.primaryHover;
-                  e.target.style.transform = "translateY(-1px)";
-                  e.target.style.boxShadow = theme.shadows.lg;
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!loading) {
-                  e.target.style.backgroundColor = theme.colors.accent.primary;
-                  e.target.style.transform = "translateY(0)";
-                  e.target.style.boxShadow = theme.shadows.md;
-                }
-              }}
+              loading={loading}
+              fullWidth
+              size="lg"
             >
               {loading ? "Signing in..." : "Sign In"}
-            </button>
+            </Button>
           </form>
+
+          <div style={styles.footer}>
+            <p style={{ margin: 0 }}>
+              Need help?{" "}
+              <a href="mailto:support@maxsupport.com" style={styles.footerLink}>
+                Contact Support
+              </a>
+            </p>
+          </div>
         </div>
       </div>
     </div>
