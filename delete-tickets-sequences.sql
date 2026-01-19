@@ -3,12 +3,15 @@
 -- Run this in Supabase SQL Editor
 
 -- ============================================
+-- FIRST: Verify what tables exist in your schema
+-- ============================================
+-- Uncomment and run this first to see your actual tables:
+-- SELECT table_name FROM information_schema.tables
+-- WHERE table_schema = 'public' ORDER BY table_name;
+
+-- ============================================
 -- DELETE TICKETS AND RELATED DATA
 -- ============================================
-
--- Delete ticket comments (if they exist as a separate table)
--- Note: Based on the schema, comments might be stored differently
--- DELETE FROM ticket_comments;
 
 -- Delete ticket attachments first (child table)
 DELETE FROM ticket_attachments;
@@ -23,23 +26,17 @@ DELETE FROM tickets;
 -- Delete SMS messages (references sequence_sessions)
 DELETE FROM sms_messages;
 
--- Delete sequence sessions (references sequences and vans)
+-- Delete sequence sessions
 DELETE FROM sequence_sessions;
 
--- Delete topic patterns (references sequences)
+-- Delete topic patterns (trigger patterns for sequences)
 DELETE FROM topic_patterns;
 
--- Delete sequence tools (references sequences)
-DELETE FROM sequence_tools;
+-- Delete session events
+DELETE FROM session_events;
 
--- Delete sequence parts (references sequences)
-DELETE FROM sequence_parts;
-
--- Delete sequence steps (references sequences)
-DELETE FROM sequence_steps;
-
--- Delete sequences (main table)
-DELETE FROM sequences;
+-- Delete sessions
+DELETE FROM sessions;
 
 -- ============================================
 -- VERIFICATION QUERIES
@@ -50,33 +47,29 @@ SELECT 'tickets' as table_name, COUNT(*) as remaining_rows FROM tickets
 UNION ALL
 SELECT 'ticket_attachments', COUNT(*) FROM ticket_attachments
 UNION ALL
-SELECT 'sequences', COUNT(*) FROM sequences
-UNION ALL
 SELECT 'sequence_sessions', COUNT(*) FROM sequence_sessions
 UNION ALL
-SELECT 'sequence_steps', COUNT(*) FROM sequence_steps
-UNION ALL
-SELECT 'sequence_tools', COUNT(*) FROM sequence_tools
-UNION ALL
-SELECT 'sequence_parts', COUNT(*) FROM sequence_parts
+SELECT 'sms_messages', COUNT(*) FROM sms_messages
 UNION ALL
 SELECT 'topic_patterns', COUNT(*) FROM topic_patterns
 UNION ALL
-SELECT 'sms_messages', COUNT(*) FROM sms_messages;
+SELECT 'session_events', COUNT(*) FROM session_events
+UNION ALL
+SELECT 'sessions', COUNT(*) FROM sessions;
 
 -- ============================================
 -- NOTES
 -- ============================================
--- This script deletes data in the following order:
--- 1. Ticket attachments (child of tickets)
--- 2. Tickets (main table)
--- 3. SMS messages (child of sequence_sessions)
--- 4. Sequence sessions (child of sequences)
--- 5. Topic patterns (references sequences)
--- 6. Sequence tools (child of sequences)
--- 7. Sequence parts (child of sequences)
--- 8. Sequence steps (child of sequences)
--- 9. Sequences (main table)
+-- Tables deleted:
+-- 1. ticket_attachments (child of tickets)
+-- 2. tickets (main tickets table)
+-- 3. sms_messages (SMS conversation messages)
+-- 4. sequence_sessions (active troubleshooting sessions)
+-- 5. topic_patterns (trigger patterns linking issues to sequences)
+-- 6. session_events (session event logs)
+-- 7. sessions (main sessions table)
 --
--- This order respects foreign key constraints and ensures clean deletion.
--- The verification queries at the end will show 0 rows for all tables if successful.
+-- Note: Sequences themselves are managed via database functions
+-- (fn_delete_sequence, etc.) and may be stored differently.
+-- If you need to delete sequence definitions, use the admin UI
+-- or call the fn_delete_sequence function for each sequence.
