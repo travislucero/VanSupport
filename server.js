@@ -2500,6 +2500,151 @@ app.put(
   }
 );
 
+// 14. GET /api/tickets/:uuid/similar - Find similar resolved tickets
+app.get(
+  "/api/tickets/:uuid/similar",
+  authenticateToken,
+  requireRole(["manager", "admin"]),
+  async (req, res) => {
+    try {
+      const { uuid } = req.params;
+      const limit = parseInt(req.query.limit) || 5; // Default to 5 suggestions
+
+      console.log("🔍 Find Similar Tickets - Searching for ticket:", uuid);
+
+      // First, get the current ticket's details
+      const { data: currentTicket, error: currentError } = await supabase
+        .from("tickets")
+        .select("subject, description, issue_summary, category_name")
+        .eq("id", uuid)
+        .single();
+
+      if (currentError) {
+        console.error("🔍 Find Similar Tickets - Error fetching current ticket:", currentError);
+        return res.status(500).json({ error: currentError.message });
+      }
+
+      if (!currentTicket) {
+        console.log("🔍 Find Similar Tickets - Current ticket not found:", uuid);
+        return res.status(404).json({ error: "Ticket not found" });
+      }
+
+      // Extract keywords from current ticket for searching
+      const searchText = [
+        currentTicket.subject,
+        currentTicket.description,
+        currentTicket.issue_summary,
+        currentTicket.category_name
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      console.log("🔍 Find Similar Tickets - Search text prepared");
+
+      // Get all resolved tickets
+      const { data: resolvedTickets, error: resolvedError } = await supabase
+        .from("tickets")
+        .select(`
+          id,
+          ticket_number,
+          subject,
+          description,
+          issue_summary,
+          category_name,
+          resolution,
+          resolved_at,
+          resolved_by,
+          priority
+        `)
+        .eq("status", "resolved")
+        .neq("id", uuid) // Exclude the current ticket
+        .not("resolution", "is", null) // Only tickets with resolution text
+        .order("resolved_at", { ascending: false })
+        .limit(100); // Get last 100 resolved tickets to search through
+
+      if (resolvedError) {
+        console.error("🔍 Find Similar Tickets - Error fetching resolved tickets:", resolvedError);
+        return res.status(500).json({ error: resolvedError.message });
+      }
+
+      if (!resolvedTickets || resolvedTickets.length === 0) {
+        console.log("🔍 Find Similar Tickets - No resolved tickets found");
+        return res.json([]);
+      }
+
+      // Calculate similarity scores for each resolved ticket
+      const scoredTickets = resolvedTickets.map((ticket) => {
+        const ticketText = [
+          ticket.subject,
+          ticket.description,
+          ticket.issue_summary,
+          ticket.category_name
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+
+        // Simple keyword-based similarity scoring
+        let score = 0;
+
+        // Exact category match gets high score
+        if (currentTicket.category_name && ticket.category_name &&
+            currentTicket.category_name.toLowerCase() === ticket.category_name.toLowerCase()) {
+          score += 30;
+        }
+
+        // Extract words from search text (remove common words)
+        const commonWords = ['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'is', 'was', 'are', 'been', 'be', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'can', 'of', 'with', 'from', 'by', 'about', 'as', 'into', 'through', 'during', 'before', 'after', 'above', 'below', 'between', 'under', 'again', 'further', 'then', 'once', 'here', 'there', 'when', 'where', 'why', 'how', 'all', 'both', 'each', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 'it', 'its', 'this', 'that', 'these', 'those'];
+        const words = searchText
+          .split(/\W+/)
+          .filter(word => word.length > 3 && !commonWords.includes(word));
+
+        // Count matching words
+        words.forEach(word => {
+          if (ticketText.includes(word)) {
+            score += 2;
+          }
+        });
+
+        // Check for phrase matches (2-3 word sequences)
+        const phrases = [];
+        for (let i = 0; i < words.length - 1; i++) {
+          phrases.push(words[i] + " " + words[i + 1]);
+        }
+        phrases.forEach(phrase => {
+          if (ticketText.includes(phrase)) {
+            score += 10;
+          }
+        });
+
+        return {
+          ...ticket,
+          similarity_score: score
+        };
+      });
+
+      // Sort by similarity score and take top matches
+      const similarTickets = scoredTickets
+        .filter(ticket => ticket.similarity_score > 0)
+        .sort((a, b) => b.similarity_score - a.similarity_score)
+        .slice(0, limit)
+        .map(({ similarity_score, ...ticket }) => ticket); // Remove score from response
+
+      console.log(
+        "🔍 Find Similar Tickets - Found",
+        similarTickets.length,
+        "similar tickets"
+      );
+
+      res.json(similarTickets);
+    } catch (err) {
+      console.error("🔍 Find Similar Tickets - Error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
 // ADMIN ENDPOINTS (Admin Only)
 
 // 13. GET /api/tickets/all - Get all tickets (with filters)

@@ -24,7 +24,8 @@ import {
   ChevronUp,
   Image,
   Camera,
-  Play
+  Play,
+  Lightbulb
 } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import Card from '../components/Card';
@@ -71,6 +72,11 @@ const TechTicketDetail = () => {
   // Lightbox state for viewing full-size images and videos
   const [lightboxImage, setLightboxImage] = useState(null);
   const [lightboxVideo, setLightboxVideo] = useState(null);
+
+  // Similar tickets state
+  const [showSimilarModal, setShowSimilarModal] = useState(false);
+  const [similarTickets, setSimilarTickets] = useState([]);
+  const [loadingSimilar, setLoadingSimilar] = useState(false);
 
   // Fetch ticket detail
   const fetchTicket = useCallback(async (silent = false) => {
@@ -129,6 +135,29 @@ const TechTicketDetail = () => {
   const getCommentAttachments = useCallback((commentId) => {
     return attachments.filter(att => att.comment_id === commentId);
   }, [attachments]);
+
+  // Fetch similar tickets
+  const fetchSimilarTickets = async () => {
+    setLoadingSimilar(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/tickets/${uuid}/similar?limit=5`, {
+        credentials: 'include'
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch similar tickets');
+      }
+
+      const data = await response.json();
+      setSimilarTickets(data);
+      setShowSimilarModal(true);
+    } catch (error) {
+      console.error('Error fetching similar tickets:', error);
+      showToast('Failed to load similar tickets', 'error');
+    } finally {
+      setLoadingSimilar(false);
+    }
+  };
 
   // Initial fetch
   useEffect(() => {
@@ -724,6 +753,32 @@ const TechTicketDetail = () => {
                   Close Ticket
                 </button>
               )}
+
+              {/* Similar Tickets Button */}
+              <button
+                onClick={fetchSimilarTickets}
+                disabled={loadingSimilar}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: theme.spacing.xs,
+                  padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
+                  backgroundColor: '#8b5cf6',
+                  border: 'none',
+                  borderRadius: theme.radius.md,
+                  color: '#ffffff',
+                  fontSize: theme.fontSize.sm,
+                  fontWeight: theme.fontWeight.medium,
+                  cursor: loadingSimilar ? 'not-allowed' : 'pointer',
+                  opacity: loadingSimilar ? 0.5 : 1,
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => !loadingSimilar && (e.currentTarget.style.backgroundColor = '#7c3aed')}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#8b5cf6')}
+              >
+                <Lightbulb className="w-4 h-4" />
+                {loadingSimilar ? 'Searching...' : 'Suggest Solutions'}
+              </button>
             </div>
           </div>
         </Card>
@@ -1560,6 +1615,295 @@ const TechTicketDetail = () => {
               borderRadius: theme.radius.lg
             }}
           />
+        </div>
+      )}
+
+      {/* Similar Tickets Modal */}
+      {showSimilarModal && (
+        <div
+          onClick={() => setShowSimilarModal(false)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '20px'
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: '#ffffff',
+              borderRadius: theme.radius.lg,
+              maxWidth: '900px',
+              width: '100%',
+              maxHeight: '80vh',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
+            }}
+          >
+            {/* Modal Header */}
+            <div style={{
+              padding: theme.spacing.lg,
+              borderBottom: `1px solid ${theme.colors.border.medium}`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+                <Lightbulb className="w-6 h-6" style={{ color: '#8b5cf6' }} />
+                <h2 style={{
+                  fontSize: theme.fontSize.xl,
+                  fontWeight: theme.fontWeight.bold,
+                  color: theme.colors.text.primary,
+                  margin: 0
+                }}>
+                  Similar Resolved Tickets
+                </h2>
+              </div>
+              <button
+                onClick={() => setShowSimilarModal(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: theme.colors.text.tertiary,
+                  padding: theme.spacing.xs,
+                  borderRadius: theme.radius.md,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = theme.colors.background.secondary;
+                  e.currentTarget.style.color = theme.colors.text.primary;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                  e.currentTarget.style.color = theme.colors.text.tertiary;
+                }}
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{
+              padding: theme.spacing.lg,
+              overflowY: 'auto',
+              flex: 1
+            }}>
+              {similarTickets.length === 0 ? (
+                <div style={{
+                  textAlign: 'center',
+                  padding: `${theme.spacing.xl} 0`,
+                  color: theme.colors.text.tertiary
+                }}>
+                  <Lightbulb className="w-16 h-16 mx-auto mb-4 opacity-20" />
+                  <p style={{ fontSize: theme.fontSize.lg, marginBottom: theme.spacing.sm }}>
+                    No similar tickets found
+                  </p>
+                  <p style={{ fontSize: theme.fontSize.sm }}>
+                    There are no resolved tickets similar to this one.
+                  </p>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.lg }}>
+                  {similarTickets.map((similarTicket) => (
+                    <div
+                      key={similarTicket.id}
+                      style={{
+                        padding: theme.spacing.lg,
+                        backgroundColor: theme.colors.background.secondary,
+                        borderRadius: theme.radius.lg,
+                        border: `1px solid ${theme.colors.border.medium}`,
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = '#8b5cf6';
+                        e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(139, 92, 246, 0.1), 0 2px 4px -1px rgba(139, 92, 246, 0.06)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = theme.colors.border.medium;
+                        e.currentTarget.style.boxShadow = 'none';
+                      }}
+                    >
+                      {/* Ticket Header */}
+                      <div style={{ marginBottom: theme.spacing.md }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, marginBottom: theme.spacing.xs }}>
+                          <a
+                            href={`/tickets/${similarTicket.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              fontSize: theme.fontSize.lg,
+                              fontWeight: theme.fontWeight.bold,
+                              color: theme.colors.accent.primary,
+                              textDecoration: 'none',
+                              transition: 'color 0.2s'
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.color = '#2c5282')}
+                            onMouseLeave={(e) => (e.currentTarget.style.color = theme.colors.accent.primary)}
+                          >
+                            Ticket #{similarTicket.ticket_number}
+                          </a>
+                          <Badge color="green" style={{ fontSize: theme.fontSize.xs }}>
+                            <CheckCircle className="w-3 h-3 mr-1" />
+                            Resolved
+                          </Badge>
+                        </div>
+                        <h3 style={{
+                          fontSize: theme.fontSize.md,
+                          fontWeight: theme.fontWeight.semibold,
+                          color: theme.colors.text.primary,
+                          marginBottom: theme.spacing.xs
+                        }}>
+                          {similarTicket.subject}
+                        </h3>
+                        {similarTicket.category_name && (
+                          <Badge color="blue" style={{ fontSize: theme.fontSize.xs }}>
+                            {similarTicket.category_name}
+                          </Badge>
+                        )}
+                      </div>
+
+                      {/* Description */}
+                      {similarTicket.description && (
+                        <div style={{ marginBottom: theme.spacing.md }}>
+                          <h4 style={{
+                            fontSize: theme.fontSize.xs,
+                            fontWeight: theme.fontWeight.semibold,
+                            color: theme.colors.text.secondary,
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.05em',
+                            marginBottom: theme.spacing.xs
+                          }}>
+                            Description
+                          </h4>
+                          <p style={{
+                            fontSize: theme.fontSize.sm,
+                            color: theme.colors.text.primary,
+                            whiteSpace: 'pre-wrap',
+                            lineHeight: '1.6',
+                            margin: 0
+                          }}>
+                            {similarTicket.description.length > 200
+                              ? similarTicket.description.substring(0, 200) + '...'
+                              : similarTicket.description}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Resolution */}
+                      {similarTicket.resolution && (
+                        <div style={{
+                          padding: theme.spacing.md,
+                          backgroundColor: '#f0fdf4',
+                          borderRadius: theme.radius.md,
+                          border: '1px solid #86efac'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs, marginBottom: theme.spacing.xs }}>
+                            <CheckCircle className="w-4 h-4" style={{ color: '#059669' }} />
+                            <h4 style={{
+                              fontSize: theme.fontSize.xs,
+                              fontWeight: theme.fontWeight.semibold,
+                              color: '#059669',
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.05em',
+                              margin: 0
+                            }}>
+                              Resolution
+                            </h4>
+                          </div>
+                          <p style={{
+                            fontSize: theme.fontSize.sm,
+                            color: '#166534',
+                            whiteSpace: 'pre-wrap',
+                            lineHeight: '1.6',
+                            margin: 0
+                          }}>
+                            {similarTicket.resolution}
+                          </p>
+                          {similarTicket.resolved_at && (
+                            <p style={{
+                              fontSize: theme.fontSize.xs,
+                              color: '#15803d',
+                              marginTop: theme.spacing.xs,
+                              margin: 0
+                            }}>
+                              Resolved {getRelativeTime(similarTicket.resolved_at)}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* View Full Ticket Link */}
+                      <div style={{ marginTop: theme.spacing.md, textAlign: 'right' }}>
+                        <a
+                          href={`/tickets/${similarTicket.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            fontSize: theme.fontSize.sm,
+                            color: theme.colors.accent.primary,
+                            textDecoration: 'none',
+                            fontWeight: theme.fontWeight.medium,
+                            transition: 'color 0.2s'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.color = '#2c5282';
+                            e.currentTarget.style.textDecoration = 'underline';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.color = theme.colors.accent.primary;
+                            e.currentTarget.style.textDecoration = 'none';
+                          }}
+                        >
+                          View full ticket →
+                        </a>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{
+              padding: theme.spacing.lg,
+              borderTop: `1px solid ${theme.colors.border.medium}`,
+              display: 'flex',
+              justifyContent: 'flex-end'
+            }}>
+              <button
+                onClick={() => setShowSimilarModal(false)}
+                style={{
+                  padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
+                  backgroundColor: theme.colors.accent.primary,
+                  border: 'none',
+                  borderRadius: theme.radius.md,
+                  color: '#ffffff',
+                  fontSize: theme.fontSize.sm,
+                  fontWeight: theme.fontWeight.medium,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#2c5282')}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = theme.colors.accent.primary)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
