@@ -1,0 +1,47 @@
+1. Chat with Your Data (Natural Language Queries)
+
+  Allow users to ask questions like:
+  - "How many tickets were opened last week?"
+  - "What's the most common issue with 2022 Sprinters?"
+  - "Which sequences have the lowest first-contact resolution rate?"
+
+  Implementation: LLM converts natural language → SQL/API queries → presents results conversationally
+
+  2. AI-Powered Sequence Suggestion (Semantic Matching)
+
+  When a ticket is created, AI analyzes the description and suggests the best troubleshooting sequence. This would:
+  - Replace/augment the regex pattern matching with semantic understanding
+  - Consider van make/model/year history
+  - Provide confidence scores for multiple suggestions
+
+  3. Automatic Pattern Generation
+
+  Analyze resolved tickets to:
+  - Identify common issue descriptions that don't match existing patterns
+  - Generate regex patterns automatically for admin review
+  - Track pattern effectiveness over time
+
+  4. Smart Ticket Triage
+
+  - Auto-categorize incoming tickets
+  - Auto-prioritize based on urgency signals in description
+  - Suggest technician assignment based on expertise and workload
+
+  5. Resolution Suggestions
+
+  When a tech views a ticket, show:
+  - Similar past tickets and their successful resolutions
+  - Draft responses based on common solutions
+  - Relevant knowledge base articles
+
+  6. Proactive Insights & Trend Detection
+
+  - "2023 Sprinters showing 40% increase in AC issues this month"
+  - Predict potential fleet-wide problems before they escalate
+  - Identify chronic problem patterns humans might miss
+
+  7. AI-Assisted Sequence Creation
+
+  - Describe a troubleshooting workflow in natural language
+  - AI generates the sequence steps, success/failure triggers
+  - Converts plain English patterns to optimized regex
