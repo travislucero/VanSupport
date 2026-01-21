@@ -145,6 +145,25 @@ const requirePermission = (requiredPermission) => {
   };
 };
 
+// UUID validation regex and middleware
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const validateUuid = (req, res, next) => {
+  const { uuid } = req.params;
+  if (!uuid || !UUID_REGEX.test(uuid)) {
+    return res.status(400).json({ error: "Invalid UUID format" });
+  }
+  next();
+};
+
+// Similarity scoring constants
+const SIMILARITY_SCORES = {
+  EXACT_CATEGORY_MATCH: 30,
+  SINGLE_WORD_MATCH: 2,
+  PHRASE_MATCH: 10
+};
+const MAX_TICKETS_TO_SEARCH = 100;
+
 // Helper function to trigger comment notification webhook
 const triggerCommentNotification = async (ticketId, commentId) => {
   try {
@@ -1679,7 +1698,7 @@ app.delete(
 // PUBLIC ENDPOINTS (No Auth Required)
 
 // 1. GET /api/tickets/public/:uuid - Get ticket detail for customer view
-app.get("/api/tickets/public/:uuid", async (req, res) => {
+app.get("/api/tickets/public/:uuid", validateUuid, async (req, res) => {
   try {
     const { uuid } = req.params;
     console.log(
@@ -1695,7 +1714,7 @@ app.get("/api/tickets/public/:uuid", async (req, res) => {
 
     if (error) {
       console.error("🎫 Get Public Ticket Detail - Supabase error:", error);
-      return res.status(500).json({ error: error.message });
+      return res.status(500).json({ error: "Unable to process request" });
     }
 
     // Handle array response from Supabase - return first item
@@ -1718,7 +1737,7 @@ app.get("/api/tickets/public/:uuid", async (req, res) => {
 });
 
 // 2. POST /api/tickets/public/:uuid/comments - Add customer comment
-app.post("/api/tickets/public/:uuid/comments", async (req, res) => {
+app.post("/api/tickets/public/:uuid/comments", validateUuid, async (req, res) => {
   try {
     const { uuid } = req.params;
     const { comment_text, author_name } = req.body;
@@ -1743,7 +1762,7 @@ app.post("/api/tickets/public/:uuid/comments", async (req, res) => {
 
     if (error) {
       console.error("🎫 Add Customer Comment - Supabase error:", error);
-      return res.status(500).json({ error: error.message });
+      return res.status(500).json({ error: "Unable to process request" });
     }
 
     console.log("🎫 Add Customer Comment - Success");
@@ -1764,7 +1783,7 @@ app.post("/api/tickets/public/:uuid/comments", async (req, res) => {
 });
 
 // 3. PUT /api/tickets/public/:uuid/resolve - Customer marks ticket resolved
-app.put("/api/tickets/public/:uuid/resolve", async (req, res) => {
+app.put("/api/tickets/public/:uuid/resolve", validateUuid, async (req, res) => {
   try {
     const { uuid } = req.params;
     const { resolution } = req.body;
@@ -1793,7 +1812,7 @@ app.put("/api/tickets/public/:uuid/resolve", async (req, res) => {
         "🎫 Customer Resolve Ticket - Error adding resolution:",
         commentError
       );
-      return res.status(500).json({ error: commentError.message });
+      return res.status(500).json({ error: "Unable to process request" });
     }
 
     // Then update status to resolved
@@ -1807,7 +1826,7 @@ app.put("/api/tickets/public/:uuid/resolve", async (req, res) => {
 
     if (error) {
       console.error("🎫 Customer Resolve Ticket - Supabase error:", error);
-      return res.status(500).json({ error: error.message });
+      return res.status(500).json({ error: "Unable to process request" });
     }
 
     console.log("🎫 Customer Resolve Ticket - Success");
@@ -1819,7 +1838,7 @@ app.put("/api/tickets/public/:uuid/resolve", async (req, res) => {
 });
 
 // 4. POST /api/tickets/public/:uuid/reopen - Reopen closed ticket
-app.post("/api/tickets/public/:uuid/reopen", async (req, res) => {
+app.post("/api/tickets/public/:uuid/reopen", validateUuid, async (req, res) => {
   try {
     const { uuid } = req.params;
     const { reason, reopened_by_name } = req.body;
@@ -1841,7 +1860,7 @@ app.post("/api/tickets/public/:uuid/reopen", async (req, res) => {
 
     if (error) {
       console.error("🎫 Reopen Ticket - Supabase error:", error);
-      return res.status(500).json({ error: error.message });
+      return res.status(500).json({ error: "Unable to process request" });
     }
 
     console.log("🎫 Reopen Ticket - Success, new ticket created");
@@ -1855,6 +1874,7 @@ app.post("/api/tickets/public/:uuid/reopen", async (req, res) => {
 // 4b. POST /api/tickets/public/:uuid/attachments - Upload image attachment (public)
 app.post(
   "/api/tickets/public/:uuid/attachments",
+  validateUuid,
   upload.single("file"),
   async (req, res) => {
     try {
@@ -2223,6 +2243,7 @@ app.get(
   "/api/tickets/:uuid",
   authenticateToken,
   requireRole(["manager", "admin"]),
+  validateUuid,
   async (req, res) => {
     try {
       const { uuid } = req.params;
@@ -2232,6 +2253,7 @@ app.get(
         "for viewer: tech"
       );
 
+      // Use RPC function to get complete ticket data including comments and status_history
       const { data, error } = await supabase.rpc("fn_get_ticket_detail", {
         p_ticket_id: uuid,
         p_viewer_type: "tech",
@@ -2239,22 +2261,36 @@ app.get(
 
       if (error) {
         console.error("🎫 Get Tech Ticket Detail - Supabase error:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: "Unable to process request" });
       }
 
-      // Handle array response from Supabase - return first item
+      // Handle array response from RPC
       const ticketData = Array.isArray(data) ? data[0] : data;
+
+      console.log("🎫 DEBUG - Raw RPC response fields:", Object.keys(ticketData || {}));
+      console.log("🎫 DEBUG - assigned_to:", ticketData?.assigned_to);
+      console.log("🎫 DEBUG - assigned_to_name:", ticketData?.assigned_to_name);
+      console.log("🎫 DEBUG - assigned_to_user:", ticketData?.assigned_to_user);
 
       if (!ticketData) {
         console.log("🎫 Get Tech Ticket Detail - Ticket not found:", uuid);
         return res.status(404).json({ error: "Ticket not found" });
       }
 
+      // Transform the response to include flattened assignment information
+      // Handle multiple possible formats from RPC: assigned_to_name, assigned_to_user object, or just assigned_to UUID
+      const transformedTicket = {
+        ...ticketData,
+        assigned_to_name: ticketData.assigned_to_name || ticketData.assigned_to_user?.email || null,
+        customer_name: ticketData.customer_name || ticketData.van?.owner_name || null,
+        customer_phone: ticketData.customer_phone || ticketData.van?.phone || null,
+      };
+
       console.log(
         "🎫 Get Tech Ticket Detail - Success, ticket #",
-        ticketData.ticket_number
+        transformedTicket.ticket_number
       );
-      res.json(ticketData);
+      res.json(transformedTicket);
     } catch (err) {
       console.error("🎫 Get Tech Ticket Detail - Error:", err);
       res.status(500).json({ error: "Internal server error" });
@@ -2267,6 +2303,7 @@ app.post(
   "/api/tickets/:uuid/assign",
   authenticateToken,
   requireRole(["manager", "admin"]),
+  validateUuid,
   async (req, res) => {
     try {
       const { uuid } = req.params;
@@ -2290,7 +2327,7 @@ app.post(
 
       if (error) {
         console.error("🎫 Assign Ticket - Supabase error:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: "Unable to process request" });
       }
 
       console.log("🎫 Assign Ticket - Success");
@@ -2302,11 +2339,58 @@ app.post(
   }
 );
 
+// 9b. POST /api/tickets/:uuid/assign-to-me - Self-assign ticket (manager/admin only)
+app.post(
+  "/api/tickets/:uuid/assign-to-me",
+  authenticateToken,
+  requireRole(["manager", "admin"]),
+  validateUuid,
+  async (req, res) => {
+    try {
+      const { uuid } = req.params;
+      // Security: Always use the authenticated user's ID, ignore any body data
+      const assignToUserId = req.user.id;
+
+      console.log(
+        "🎫 Assign To Me - User",
+        assignToUserId,
+        "self-assigning ticket",
+        uuid
+      );
+
+      const { data, error } = await supabase.rpc("fn_assign_ticket", {
+        p_ticket_id: uuid,
+        p_tech_user_id: assignToUserId,
+        p_assigned_by_user_id: assignToUserId,
+      });
+
+      if (error) {
+        console.error("🎫 Assign To Me - Supabase error:", error);
+        // Check for specific error conditions
+        if (error.message && error.message.includes("not found")) {
+          return res.status(404).json({ error: "Ticket not found" });
+        }
+        if (error.message && error.message.includes("already assigned")) {
+          return res.status(409).json({ error: "Ticket already assigned" });
+        }
+        return res.status(500).json({ error: "Unable to process request" });
+      }
+
+      console.log("🎫 Assign To Me - Success for ticket", uuid);
+      res.json(data);
+    } catch (err) {
+      console.error("🎫 Assign To Me - Error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
 // 10. PUT /api/tickets/:uuid/status - Update ticket status
 app.put(
   "/api/tickets/:uuid/status",
   authenticateToken,
   requireRole(["manager", "admin"]),
+  validateUuid,
   async (req, res) => {
     try {
       const { uuid } = req.params;
@@ -2348,7 +2432,7 @@ app.put(
 
       if (error) {
         console.error("🎫 Update Ticket Status - Supabase error:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: "Unable to process request" });
       }
 
       console.log("🎫 Update Ticket Status - Success");
@@ -2365,6 +2449,7 @@ app.post(
   "/api/tickets/:uuid/comments",
   authenticateToken,
   requireRole(["manager", "admin"]),
+  validateUuid,
   async (req, res) => {
     try {
       const { uuid } = req.params;
@@ -2398,7 +2483,23 @@ app.post(
 
       if (error) {
         console.error("🎫 Add Tech Comment - Supabase error:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: "Unable to process request" });
+      }
+
+      // If this is a resolution comment, also update the ticket's resolution field
+      // This ensures the resolution text is available for the similar tickets feature
+      if (is_resolution) {
+        const { error: updateError } = await supabase
+          .from("tickets")
+          .update({ resolution: comment_text })
+          .eq("id", uuid);
+
+        if (updateError) {
+          console.error("🎫 Add Tech Comment - Failed to update ticket resolution field:", updateError);
+          // Don't fail the request - the comment was added successfully
+        } else {
+          console.log("🎫 Add Tech Comment - Also updated ticket.resolution field");
+        }
       }
 
       console.log("🎫 Add Tech Comment - Success");
@@ -2420,35 +2521,42 @@ app.post(
 );
 
 // 12. GET /api/tickets/:uuid/attachments - Get ticket attachments
-app.get("/api/tickets/:uuid/attachments", async (req, res) => {
-  try {
-    const { uuid } = req.params;
+app.get(
+  "/api/tickets/:uuid/attachments",
+  authenticateToken,
+  requireRole(["manager", "admin"]),
+  validateUuid,
+  async (req, res) => {
+    try {
+      const { uuid } = req.params;
 
-    console.log("📎 Get Ticket Attachments - Fetching for ticket:", uuid);
+      console.log("📎 Get Ticket Attachments - Fetching for ticket:", uuid);
 
-    // Use the database function to get attachments
-    const { data, error } = await supabase.rpc("fn_get_ticket_attachments", {
-      p_ticket_id: uuid,
-    });
+      // Use the database function to get attachments
+      const { data, error } = await supabase.rpc("fn_get_ticket_attachments", {
+        p_ticket_id: uuid,
+      });
 
-    if (error) {
-      console.error("📎 Get Ticket Attachments - Supabase error:", error);
-      return res.status(500).json({ error: error.message });
+      if (error) {
+        console.error("📎 Get Ticket Attachments - Supabase error:", error);
+        return res.status(500).json({ error: "Unable to process request" });
+      }
+
+      console.log("📎 Get Ticket Attachments - Success, found:", data?.length || 0, "attachments");
+      res.json(data || []);
+    } catch (err) {
+      console.error("📎 Get Ticket Attachments - Error:", err);
+      res.status(500).json({ error: "Internal server error" });
     }
-
-    console.log("📎 Get Ticket Attachments - Success, found:", data?.length || 0, "attachments");
-    res.json(data || []);
-  } catch (err) {
-    console.error("📎 Get Ticket Attachments - Error:", err);
-    res.status(500).json({ error: "Internal server error" });
   }
-});
+);
 
 // 13. PUT /api/tickets/:uuid/priority - Update ticket priority
 app.put(
   "/api/tickets/:uuid/priority",
   authenticateToken,
   requireRole(["manager", "admin"]),
+  validateUuid,
   async (req, res) => {
     try {
       const { uuid } = req.params;
@@ -2488,7 +2596,7 @@ app.put(
           return res.status(404).json({ error: "Ticket not found" });
         }
         console.error("🎫 Update Ticket Priority - Supabase error:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: "Unable to process request" });
       }
 
       console.log("🎫 Update Ticket Priority - Success");
@@ -2504,28 +2612,26 @@ app.put(
 app.get(
   "/api/tickets/:uuid/similar",
   authenticateToken,
-  requireRole(["manager", "admin"]),
+  requireRole(["tech", "manager", "admin"]),
+  validateUuid,
   async (req, res) => {
     try {
       const { uuid } = req.params;
-      const limit = parseInt(req.query.limit) || 5; // Default to 5 suggestions
-
-      console.log("🔍 Find Similar Tickets - Searching for ticket:", uuid);
+      const limit = Math.min(Math.max(parseInt(req.query.limit) || 5, 1), 20);
 
       // First, get the current ticket's details
       const { data: currentTicket, error: currentError } = await supabase
         .from("tickets")
-        .select("subject, description, issue_summary, category_name")
+        .select("subject, description, issue_summary")
         .eq("id", uuid)
         .single();
 
       if (currentError) {
-        console.error("🔍 Find Similar Tickets - Error fetching current ticket:", currentError);
-        return res.status(500).json({ error: currentError.message });
+        console.error("Find Similar Tickets - Error fetching current ticket:", currentError);
+        return res.status(500).json({ error: "Unable to process request" });
       }
 
       if (!currentTicket) {
-        console.log("🔍 Find Similar Tickets - Current ticket not found:", uuid);
         return res.status(404).json({ error: "Ticket not found" });
       }
 
@@ -2533,16 +2639,14 @@ app.get(
       const searchText = [
         currentTicket.subject,
         currentTicket.description,
-        currentTicket.issue_summary,
-        currentTicket.category_name
+        currentTicket.issue_summary
       ]
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
 
-      console.log("🔍 Find Similar Tickets - Search text prepared");
-
-      // Get all resolved tickets
+      // Get all resolved/closed tickets (resolution is optional)
+      // Include both "resolved" and "closed" statuses as both indicate handled tickets
       const { data: resolvedTickets, error: resolvedError } = await supabase
         .from("tickets")
         .select(`
@@ -2551,35 +2655,38 @@ app.get(
           subject,
           description,
           issue_summary,
-          category_name,
           resolution,
           resolved_at,
           resolved_by,
-          priority
+          priority,
+          status
         `)
-        .eq("status", "resolved")
-        .neq("id", uuid) // Exclude the current ticket
-        .not("resolution", "is", null) // Only tickets with resolution text
+        .in("status", ["resolved", "closed"])
+        .neq("id", uuid)
         .order("resolved_at", { ascending: false })
-        .limit(100); // Get last 100 resolved tickets to search through
+        .limit(MAX_TICKETS_TO_SEARCH);
 
       if (resolvedError) {
-        console.error("🔍 Find Similar Tickets - Error fetching resolved tickets:", resolvedError);
-        return res.status(500).json({ error: resolvedError.message });
+        console.error("Find Similar Tickets - Error fetching resolved tickets:", resolvedError);
+        return res.status(500).json({ error: "Unable to process request" });
       }
 
       if (!resolvedTickets || resolvedTickets.length === 0) {
-        console.log("🔍 Find Similar Tickets - No resolved tickets found");
         return res.json([]);
       }
+
+      // Extract words from search text (remove common words) - do this once before the loop
+      const commonWords = ['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'is', 'was', 'are', 'been', 'be', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'can', 'of', 'with', 'from', 'by', 'about', 'as', 'into', 'through', 'during', 'before', 'after', 'above', 'below', 'between', 'under', 'again', 'further', 'then', 'once', 'here', 'there', 'when', 'where', 'why', 'how', 'all', 'both', 'each', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 'it', 'its', 'this', 'that', 'these', 'those'];
+      const words = searchText
+        .split(/\W+/)
+        .filter(word => word.length > 3 && !commonWords.includes(word));
 
       // Calculate similarity scores for each resolved ticket
       const scoredTickets = resolvedTickets.map((ticket) => {
         const ticketText = [
           ticket.subject,
           ticket.description,
-          ticket.issue_summary,
-          ticket.category_name
+          ticket.issue_summary
         ]
           .filter(Boolean)
           .join(" ")
@@ -2588,22 +2695,10 @@ app.get(
         // Simple keyword-based similarity scoring
         let score = 0;
 
-        // Exact category match gets high score
-        if (currentTicket.category_name && ticket.category_name &&
-            currentTicket.category_name.toLowerCase() === ticket.category_name.toLowerCase()) {
-          score += 30;
-        }
-
-        // Extract words from search text (remove common words)
-        const commonWords = ['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'is', 'was', 'are', 'been', 'be', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'can', 'of', 'with', 'from', 'by', 'about', 'as', 'into', 'through', 'during', 'before', 'after', 'above', 'below', 'between', 'under', 'again', 'further', 'then', 'once', 'here', 'there', 'when', 'where', 'why', 'how', 'all', 'both', 'each', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 'it', 'its', 'this', 'that', 'these', 'those'];
-        const words = searchText
-          .split(/\W+/)
-          .filter(word => word.length > 3 && !commonWords.includes(word));
-
         // Count matching words
         words.forEach(word => {
           if (ticketText.includes(word)) {
-            score += 2;
+            score += SIMILARITY_SCORES.SINGLE_WORD_MATCH;
           }
         });
 
@@ -2614,7 +2709,7 @@ app.get(
         }
         phrases.forEach(phrase => {
           if (ticketText.includes(phrase)) {
-            score += 10;
+            score += SIMILARITY_SCORES.PHRASE_MATCH;
           }
         });
 
@@ -2631,15 +2726,56 @@ app.get(
         .slice(0, limit)
         .map(({ similarity_score, ...ticket }) => ticket); // Remove score from response
 
-      console.log(
-        "🔍 Find Similar Tickets - Found",
-        similarTickets.length,
-        "similar tickets"
-      );
-
       res.json(similarTickets);
     } catch (err) {
-      console.error("🔍 Find Similar Tickets - Error:", err);
+      console.error("Find Similar Tickets - Error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// 15. POST /api/tickets/:uuid/mark-read - Mark customer comments as read by tech
+app.post(
+  "/api/tickets/:uuid/mark-read",
+  authenticateToken,
+  requireRole(["manager", "admin"]),
+  validateUuid,
+  async (req, res) => {
+    try {
+      const { uuid } = req.params;
+
+      console.log(
+        "🎫 Mark Comments Read - Marking ticket",
+        uuid,
+        "as read by user",
+        req.user.id
+      );
+
+      // Update the tech_comments_read_at timestamp on the ticket
+      // This marks all current customer comments as read by the technician
+      const { data, error } = await supabase
+        .from("tickets")
+        .update({
+          tech_comments_read_at: new Date().toISOString(),
+        })
+        .eq("id", uuid)
+        .select("id")
+        .single();
+
+      if (error) {
+        // Check if it's a not found error
+        if (error.code === "PGRST116") {
+          console.log("🎫 Mark Comments Read - Ticket not found:", uuid);
+          return res.status(404).json({ error: "Ticket not found" });
+        }
+        console.error("🎫 Mark Comments Read - Supabase error:", error);
+        return res.status(500).json({ error: "Unable to process request" });
+      }
+
+      console.log("🎫 Mark Comments Read - Success");
+      res.json({ success: true });
+    } catch (err) {
+      console.error("🎫 Mark Comments Read - Error:", err);
       res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -2647,7 +2783,7 @@ app.get(
 
 // ADMIN ENDPOINTS (Admin Only)
 
-// 13. GET /api/tickets/all - Get all tickets (with filters)
+// 16. GET /api/tickets/all - Get all tickets (with filters)
 app.get(
   "/api/tickets/all",
   authenticateToken,

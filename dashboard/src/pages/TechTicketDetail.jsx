@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Ticket,
@@ -39,12 +39,55 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 // Auto-refresh interval for comments (10 seconds)
 const COMMENT_REFRESH_INTERVAL = 10000;
 
+// CSS keyframes for the resolution checkbox shine effect
+// Creates a subtle pulsing glow that draws attention without being annoying
+const shineKeyframes = `
+@keyframes resolutionShine {
+  0% {
+    background-position: -200% center;
+    box-shadow: 0 0 0 0 rgba(5, 150, 105, 0);
+  }
+  15% {
+    box-shadow: 0 0 12px 2px rgba(5, 150, 105, 0.4);
+  }
+  30% {
+    background-position: 200% center;
+    box-shadow: 0 0 8px 1px rgba(5, 150, 105, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 0 0 rgba(5, 150, 105, 0);
+  }
+  65% {
+    box-shadow: 0 0 10px 2px rgba(5, 150, 105, 0.35);
+  }
+  80% {
+    box-shadow: 0 0 6px 1px rgba(5, 150, 105, 0.2);
+  }
+  100% {
+    background-position: -200% center;
+    box-shadow: 0 0 0 0 rgba(5, 150, 105, 0);
+  }
+}
+`;
+
+// Inject keyframes into document head if not already present
+if (typeof document !== 'undefined') {
+  const styleId = 'resolution-shine-keyframes';
+  if (!document.getElementById(styleId)) {
+    const styleEl = document.createElement('style');
+    styleEl.id = styleId;
+    styleEl.textContent = shineKeyframes;
+    document.head.appendChild(styleEl);
+  }
+}
+
 const TechTicketDetail = () => {
   const { uuid } = useParams();
   const navigate = useNavigate();
   const { showToast } = useToast();
   const { user, logout, hasRole } = useAuth();
   const commentsEndRef = useRef(null);
+  const commentFormRef = useRef(null);
 
   const [ticket, setTicket] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -70,13 +113,25 @@ const TechTicketDetail = () => {
   const [attachments, setAttachments] = useState([]);
 
   // Lightbox state for viewing full-size images and videos
-  const [lightboxImage, setLightboxImage] = useState(null);
-  const [lightboxVideo, setLightboxVideo] = useState(null);
+  // Combined into single state object for cleaner state management
+  const [lightboxMedia, setLightboxMedia] = useState({ type: null, url: null });
 
   // Similar tickets state
   const [showSimilarModal, setShowSimilarModal] = useState(false);
   const [similarTickets, setSimilarTickets] = useState([]);
   const [loadingSimilar, setLoadingSimilar] = useState(false);
+  const [highlightResolution, setHighlightResolution] = useState(false);
+
+  // Resolution modal state
+  const [showResolveModal, setShowResolveModal] = useState(false);
+  const [resolutionText, setResolutionText] = useState('');
+  const [skipResolution, setSkipResolution] = useState(false);
+  const [submittingResolution, setSubmittingResolution] = useState(false);
+  const [resolutionCommentPosted, setResolutionCommentPosted] = useState(false);
+
+
+  // Mobile detection state for responsive modals
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   // Fetch ticket detail
   const fetchTicket = useCallback(async (silent = false) => {
@@ -124,20 +179,27 @@ const TechTicketDetail = () => {
       if (response.ok) {
         const data = await response.json();
         setAttachments(data || []);
-        console.log('📎 Attachments fetched:', data?.length || 0);
       }
     } catch (error) {
       console.error('Error fetching attachments:', error);
     }
   }, [uuid]);
 
-  // Helper function to get attachments for a specific comment
-  const getCommentAttachments = useCallback((commentId) => {
-    return attachments.filter(att => att.comment_id === commentId);
+  // Pre-compute attachments by comment ID using Map for O(1) lookups
+  // This replaces the O(n*m) filter approach with O(n) preprocessing + O(1) access
+  const attachmentsByCommentId = useMemo(() => {
+    const map = new Map();
+    attachments.forEach(att => {
+      if (!map.has(att.comment_id)) {
+        map.set(att.comment_id, []);
+      }
+      map.get(att.comment_id).push(att);
+    });
+    return map;
   }, [attachments]);
 
   // Fetch similar tickets
-  const fetchSimilarTickets = async () => {
+  const fetchSimilarTickets = useCallback(async () => {
     setLoadingSimilar(true);
     try {
       const response = await fetch(`${API_BASE_URL}/api/tickets/${uuid}/similar?limit=5`, {
@@ -145,7 +207,16 @@ const TechTicketDetail = () => {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to fetch similar tickets');
+        // Provide specific error messages based on HTTP status
+        if (response.status === 403) {
+          showToast('You do not have permission to view similar tickets', 'error');
+          return;
+        }
+        if (response.status === 404) {
+          showToast('Ticket not found', 'error');
+          return;
+        }
+        throw new Error(`Failed to fetch similar tickets: ${response.status}`);
       }
 
       const data = await response.json();
@@ -157,7 +228,29 @@ const TechTicketDetail = () => {
     } finally {
       setLoadingSimilar(false);
     }
-  };
+  }, [uuid, showToast]);
+
+  // Handle using a similar ticket's resolution
+  const handleUseSolution = useCallback((resolution) => {
+    // Copy resolution text to comment textarea
+    setCommentText(resolution);
+    // Auto-check the "Mark as Resolution" checkbox
+    setIsResolution(true);
+    // Close the similar tickets modal
+    setShowSimilarModal(false);
+    // Trigger the highlight animation
+    setHighlightResolution(true);
+    // Stop the animation after 3 seconds
+    setTimeout(() => {
+      setHighlightResolution(false);
+    }, 3000);
+    // Scroll to the comment form after a brief delay to allow modal to close
+    setTimeout(() => {
+      commentFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 100);
+    // Show feedback toast
+    showToast('Resolution copied - review and submit when ready', 'success');
+  }, [showToast]);
 
   // Initial fetch
   useEffect(() => {
@@ -185,6 +278,35 @@ const TechTicketDetail = () => {
       }).catch(err => console.error('Error marking comments read:', err));
     }
   }, [ticket?.id]);
+
+  // Close modals on Escape key press
+  useEffect(() => {
+    const handleEscape = (e) => {
+      if (e.key === 'Escape') {
+        // Don't close resolve modal if submission is in progress
+        if (showResolveModal && !submittingResolution) {
+          setShowResolveModal(false);
+        }
+        if (showSimilarModal) {
+          setShowSimilarModal(false);
+        }
+        if (lightboxMedia.type) {
+          setLightboxMedia({ type: null, url: null });
+        }
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [showResolveModal, showSimilarModal, lightboxMedia.type, submittingResolution]);
+
+  // Track window resize for responsive modal styling
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Scroll to new comments
   const scrollToNewComments = () => {
@@ -285,7 +407,36 @@ const TechTicketDetail = () => {
         throw new Error('Failed to add comment');
       }
 
-      showToast('Comment added successfully', 'success');
+      // If marked as resolution, also update ticket status to resolved
+      if (isResolution && ticket?.status !== 'resolved') {
+        try {
+          const statusResponse = await fetch(`${API_BASE_URL}/api/tickets/${uuid}/status`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            credentials: 'include',
+            body: JSON.stringify({
+              status: 'resolved',
+              reason: 'Resolution comment added'
+            })
+          });
+
+          if (!statusResponse.ok) {
+            // Comment was added but status update failed - still show partial success
+            console.error('Failed to update ticket status to resolved');
+            showToast('Resolution added but failed to update ticket status', 'warning');
+          } else {
+            showToast('Resolution added and ticket resolved', 'success');
+          }
+        } catch (statusError) {
+          console.error('Error updating ticket status:', statusError);
+          showToast('Resolution added but failed to update ticket status', 'warning');
+        }
+      } else {
+        showToast('Comment added successfully', 'success');
+      }
+
       setCommentText('');
       setIsResolution(false);
       setIsEditing(false);
@@ -307,26 +458,117 @@ const TechTicketDetail = () => {
   const handleAssignToMe = async () => {
     setUpdating(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/tickets/${uuid}/assign`, {
+      const response = await fetch(`${API_BASE_URL}/api/tickets/${uuid}/assign-to-me`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        credentials: 'include',
-        body: JSON.stringify({})
+        credentials: 'include'
       });
 
       if (!response.ok) {
-        throw new Error('Failed to assign ticket');
+        // Provide specific error messages based on HTTP status
+        let errorMessage;
+        switch (response.status) {
+          case 403:
+            errorMessage = 'You do not have permission to assign this ticket';
+            break;
+          case 404:
+            errorMessage = 'Ticket not found. It may have been deleted.';
+            break;
+          case 409:
+            errorMessage = 'This ticket has already been assigned to someone else';
+            break;
+          default:
+            errorMessage = 'Failed to assign ticket. Please try again.';
+        }
+        throw new Error(errorMessage);
       }
 
       showToast('Ticket assigned to you', 'success');
       await fetchTicket();
     } catch (error) {
       console.error('Error assigning ticket:', error);
-      showToast('Failed to assign ticket', 'error');
+      showToast(error.message || 'Failed to assign ticket', 'error');
     } finally {
       setUpdating(false);
+    }
+  };
+
+  // Handle resolve ticket button click
+  // Shows modal if no resolution exists, otherwise resolves directly
+  const handleResolveClick = () => {
+    const hasResolution = ticket.resolution || ticket.comments?.some(c => c.is_resolution);
+    if (!hasResolution) {
+      // Show modal to collect resolution
+      setResolutionText('');
+      setSkipResolution(false);
+      setResolutionCommentPosted(false);
+      setShowResolveModal(true);
+    } else {
+      // Resolution already exists, resolve directly
+      handleQuickStatusUpdate('resolved');
+    }
+  };
+
+  // Submit resolution from modal
+  const handleSubmitResolution = async () => {
+    setSubmittingResolution(true);
+    try {
+      // If resolution text provided and not skipping, add resolution comment first
+      // Track if comment was already posted to prevent duplicates on retry
+      if (resolutionText.trim() && !skipResolution && !resolutionCommentPosted) {
+        const commentResponse = await fetch(`${API_BASE_URL}/api/tickets/${uuid}/comments`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            comment_text: resolutionText,
+            is_resolution: true
+          })
+        });
+
+        if (!commentResponse.ok) {
+          throw new Error('Failed to add resolution comment');
+        }
+        // Mark comment as posted to prevent duplicates if status update fails
+        setResolutionCommentPosted(true);
+      }
+
+      // Update status to resolved
+      const statusResponse = await fetch(`${API_BASE_URL}/api/tickets/${uuid}/status`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          status: 'resolved'
+        })
+      });
+
+      if (!statusResponse.ok) {
+        throw new Error('Failed to update status');
+      }
+
+      showToast('Ticket resolved successfully', 'success');
+      setShowResolveModal(false);
+      setResolutionText('');
+      setSkipResolution(false);
+      setResolutionCommentPosted(false);
+      await fetchTicket();
+    } catch (error) {
+      console.error('Error resolving ticket:', error);
+      // Provide more specific error message if comment posted but status failed
+      if (resolutionCommentPosted && error.message === 'Failed to update status') {
+        showToast('Resolution comment saved. Failed to update status - please try again.', 'error');
+      } else {
+        showToast(error.message || 'Failed to resolve ticket', 'error');
+      }
+    } finally {
+      setSubmittingResolution(false);
     }
   };
 
@@ -619,7 +861,7 @@ const TechTicketDetail = () => {
               gap: theme.spacing.sm,
               flexWrap: 'wrap'
             }}>
-              {!ticket.assigned_to && (
+              {(!ticket.assigned_to_name || ticket.assigned_to_name !== user?.email) && (
                 <button
                   onClick={handleAssignToMe}
                   disabled={updating}
@@ -642,7 +884,7 @@ const TechTicketDetail = () => {
                   onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = theme.colors.accent.primary)}
                 >
                   <UserCheck className="w-4 h-4" />
-                  {updating ? 'Assigning...' : 'Assign to Me'}
+                  {updating ? 'Assigning...' : (ticket.assigned_to_name ? 'Reassign to Me' : 'Assign to Me')}
                 </button>
               )}
 
@@ -702,7 +944,7 @@ const TechTicketDetail = () => {
 
               {ticket.status !== 'resolved' && ticket.status !== 'closed' && (
                 <button
-                  onClick={() => handleQuickStatusUpdate('resolved')}
+                  onClick={handleResolveClick}
                   disabled={updating}
                   style={{
                     display: 'flex',
@@ -763,7 +1005,7 @@ const TechTicketDetail = () => {
                   alignItems: 'center',
                   gap: theme.spacing.xs,
                   padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
-                  backgroundColor: '#8b5cf6',
+                  backgroundColor: theme.colors.chart.purple,
                   border: 'none',
                   borderRadius: theme.radius.md,
                   color: '#ffffff',
@@ -773,8 +1015,8 @@ const TechTicketDetail = () => {
                   opacity: loadingSimilar ? 0.5 : 1,
                   transition: 'all 0.2s'
                 }}
-                onMouseEnter={(e) => !loadingSimilar && (e.currentTarget.style.backgroundColor = '#7c3aed')}
-                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#8b5cf6')}
+                onMouseEnter={(e) => !loadingSimilar && (e.currentTarget.style.opacity = '0.9')}
+                onMouseLeave={(e) => (e.currentTarget.style.opacity = loadingSimilar ? '0.5' : '1')}
               >
                 <Lightbulb className="w-4 h-4" />
                 {loadingSimilar ? 'Searching...' : 'Suggest Solutions'}
@@ -1002,12 +1244,12 @@ const TechTicketDetail = () => {
 
         {/* Resolution Card (conditional) */}
         {(ticket.status === 'resolved' || ticket.status === 'closed') && ticket.resolution && (
-          <Card style={{ backgroundColor: '#f0fdf4', borderColor: '#86efac', marginBottom: '24px' }}>
+          <Card style={{ backgroundColor: theme.colors.accent.successLight, borderColor: theme.colors.accent.success, marginBottom: '24px' }}>
             <div style={{ padding: theme.spacing.lg }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, marginBottom: theme.spacing.md }}>
-                <CheckCircle className="w-5 h-5" style={{ color: '#059669' }} />
+                <CheckCircle className="w-5 h-5" style={{ color: theme.colors.accent.success }} />
                 <h3 style={{
-                  color: '#059669',
+                  color: theme.colors.accent.success,
                   fontSize: theme.fontSize.sm,
                   fontWeight: theme.fontWeight.semibold,
                   textTransform: 'uppercase',
@@ -1018,7 +1260,7 @@ const TechTicketDetail = () => {
                 </h3>
               </div>
               <div style={{
-                color: '#166534',
+                color: theme.colors.chart.green,
                 fontSize: theme.fontSize.sm,
                 whiteSpace: 'pre-wrap',
                 marginBottom: theme.spacing.sm,
@@ -1027,7 +1269,7 @@ const TechTicketDetail = () => {
                 {ticket.resolution}
               </div>
               {ticket.resolved_by && (
-                <p style={{ color: '#15803d', fontSize: theme.fontSize.xs, margin: 0 }}>
+                <p style={{ color: theme.colors.accent.success, fontSize: theme.fontSize.xs, margin: 0 }}>
                   Resolved by {ticket.resolved_by} {ticket.resolved_at && ` • ${getRelativeTime(ticket.resolved_at)}`}
                 </p>
               )}
@@ -1140,7 +1382,7 @@ const TechTicketDetail = () => {
 
                               {/* Attachments for this comment */}
                               {(() => {
-                                const commentAttachments = getCommentAttachments(comment.id);
+                                const commentAttachments = attachmentsByCommentId.get(comment.id) || [];
                                 if (commentAttachments.length === 0) return null;
 
                                 return (
@@ -1162,7 +1404,7 @@ const TechTicketDetail = () => {
                                         }}>
                                           {isVideo ? (
                                             <div
-                                              onClick={() => setLightboxVideo(attachment.public_url)}
+                                              onClick={() => setLightboxMedia({ type: 'video', url: attachment.public_url })}
                                               style={{
                                                 position: 'relative',
                                                 cursor: 'pointer',
@@ -1228,7 +1470,7 @@ const TechTicketDetail = () => {
                                             <img
                                               src={attachment.public_url}
                                               alt={attachment.original_filename || 'Attachment'}
-                                              onClick={() => setLightboxImage(attachment.public_url)}
+                                              onClick={() => setLightboxMedia({ type: 'image', url: attachment.public_url })}
                                               style={{
                                                 maxWidth: '200px',
                                                 maxHeight: '150px',
@@ -1299,10 +1541,13 @@ const TechTicketDetail = () => {
                 </div>
 
                 {/* Add Comment Form */}
-                <div style={{
-                  paddingTop: theme.spacing.lg,
-                  borderTop: `1px solid ${theme.colors.border.medium}`
-                }}>
+                <div
+                  ref={commentFormRef}
+                  style={{
+                    paddingTop: theme.spacing.lg,
+                    borderTop: `1px solid ${theme.colors.border.medium}`
+                  }}
+                >
                   <h4 style={{
                     fontWeight: theme.fontWeight.medium,
                     color: theme.colors.text.primary,
@@ -1345,28 +1590,73 @@ const TechTicketDetail = () => {
                     </div>
 
                     {(ticket.status === 'resolved' || ticket.status === 'in_progress') && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+                      <div
+                        onClick={() => setIsResolution(!isResolution)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: theme.spacing.md,
+                          padding: theme.spacing.md,
+                          backgroundColor: isResolution ? theme.colors.accent.successLight : theme.colors.background.tertiary,
+                          border: `2px solid ${isResolution ? theme.colors.accent.success : theme.colors.border.medium}`,
+                          borderRadius: theme.radius.lg,
+                          cursor: 'pointer',
+                          transition: 'all 0.3s ease',
+                          // Shine animation: pulsing glow effect using the CSS keyframes
+                          animation: highlightResolution ? 'resolutionShine 1.2s ease-in-out 2' : 'none',
+                          // Shimmer gradient overlay that sweeps across during animation
+                          backgroundImage: highlightResolution
+                            ? `linear-gradient(90deg, transparent 0%, rgba(5, 150, 105, 0.15) 25%, rgba(5, 150, 105, 0.3) 50%, rgba(5, 150, 105, 0.15) 75%, transparent 100%)`
+                            : 'none',
+                          backgroundSize: highlightResolution ? '200% 100%' : 'auto',
+                          transform: highlightResolution ? 'scale(1.02)' : 'scale(1)',
+                          position: 'relative',
+                          overflow: 'hidden'
+                        }}
+                      >
+                        <div style={{
+                          width: '24px',
+                          height: '24px',
+                          borderRadius: theme.radius.md,
+                          border: `2px solid ${isResolution ? theme.colors.accent.success : theme.colors.border.medium}`,
+                          backgroundColor: isResolution ? theme.colors.accent.success : 'transparent',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                          transition: 'all 0.2s'
+                        }}>
+                          {isResolution && (
+                            <CheckCircle className="w-4 h-4" style={{ color: '#ffffff' }} />
+                          )}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{
+                            fontSize: theme.fontSize.sm,
+                            fontWeight: theme.fontWeight.semibold,
+                            color: isResolution ? theme.colors.accent.success : theme.colors.text.primary,
+                            marginBottom: theme.spacing.xs
+                          }}>
+                            Mark as Resolution
+                          </div>
+                          <div style={{
+                            fontSize: theme.fontSize.xs,
+                            color: isResolution ? theme.colors.chart.green : theme.colors.text.tertiary
+                          }}>
+                            This comment will be saved as the official resolution for this ticket
+                          </div>
+                        </div>
                         <input
                           type="checkbox"
                           id="isResolution"
                           checked={isResolution}
                           onChange={(e) => setIsResolution(e.target.checked)}
                           style={{
-                            width: '16px',
-                            height: '16px',
-                            cursor: 'pointer'
+                            position: 'absolute',
+                            opacity: 0,
+                            pointerEvents: 'none'
                           }}
                         />
-                        <label
-                          htmlFor="isResolution"
-                          style={{
-                            fontSize: theme.fontSize.sm,
-                            color: theme.colors.text.secondary,
-                            cursor: 'pointer'
-                          }}
-                        >
-                          This is the resolution
-                        </label>
                       </div>
                     )}
 
@@ -1513,10 +1803,10 @@ const TechTicketDetail = () => {
         )}
       </div>
 
-      {/* Lightbox Modal for full-size image viewing */}
-      {lightboxImage && (
+      {/* Lightbox Modal for full-size media viewing (images and videos) */}
+      {lightboxMedia.type && (
         <div
-          onClick={() => setLightboxImage(null)}
+          onClick={() => setLightboxMedia({ type: null, url: null })}
           style={{
             position: 'fixed',
             top: 0,
@@ -1532,59 +1822,8 @@ const TechTicketDetail = () => {
           }}
         >
           <button
-            onClick={() => setLightboxImage(null)}
-            style={{
-              position: 'absolute',
-              top: '20px',
-              right: '20px',
-              background: 'rgba(255, 255, 255, 0.2)',
-              border: 'none',
-              borderRadius: '50%',
-              width: '40px',
-              height: '40px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              color: '#ffffff'
-            }}
-          >
-            <X size={24} />
-          </button>
-          <img
-            src={lightboxImage}
-            alt="Full size"
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              maxWidth: '90vw',
-              maxHeight: '90vh',
-              objectFit: 'contain',
-              borderRadius: theme.radius.lg
-            }}
-          />
-        </div>
-      )}
-
-      {/* Lightbox Modal for full-size video viewing */}
-      {lightboxVideo && (
-        <div
-          onClick={() => setLightboxVideo(null)}
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.9)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 9999,
-            cursor: 'pointer'
-          }}
-        >
-          <button
-            onClick={() => setLightboxVideo(null)}
+            onClick={() => setLightboxMedia({ type: null, url: null })}
+            aria-label="Close media viewer"
             style={{
               position: 'absolute',
               top: '20px',
@@ -1604,17 +1843,31 @@ const TechTicketDetail = () => {
           >
             <X size={24} />
           </button>
-          <video
-            src={lightboxVideo}
-            controls
-            autoPlay
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              maxWidth: '90vw',
-              maxHeight: '90vh',
-              borderRadius: theme.radius.lg
-            }}
-          />
+          {lightboxMedia.type === 'image' ? (
+            <img
+              src={lightboxMedia.url}
+              alt="Full size"
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                maxWidth: '90vw',
+                maxHeight: '90vh',
+                objectFit: 'contain',
+                borderRadius: theme.radius.lg
+              }}
+            />
+          ) : (
+            <video
+              src={lightboxMedia.url}
+              controls
+              autoPlay
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                maxWidth: '90vw',
+                maxHeight: '90vh',
+                borderRadius: theme.radius.lg
+              }}
+            />
+          )}
         </div>
       )}
 
@@ -1632,22 +1885,25 @@ const TechTicketDetail = () => {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            zIndex: 9999,
-            padding: '20px'
+            zIndex: theme.zIndex.modal,
+            padding: isMobile ? 0 : theme.spacing.xl
           }}
         >
           <div
             onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="similar-tickets-title"
             style={{
-              backgroundColor: '#ffffff',
-              borderRadius: theme.radius.lg,
-              maxWidth: '900px',
+              backgroundColor: theme.colors.background.secondary,
+              borderRadius: isMobile ? 0 : theme.radius.lg,
+              maxWidth: isMobile ? '100%' : '900px',
               width: '100%',
-              maxHeight: '80vh',
+              maxHeight: isMobile ? '100vh' : '80vh',
               overflow: 'hidden',
               display: 'flex',
               flexDirection: 'column',
-              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
+              boxShadow: theme.shadows.xl
             }}
           >
             {/* Modal Header */}
@@ -1659,18 +1915,22 @@ const TechTicketDetail = () => {
               justifyContent: 'space-between'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
-                <Lightbulb className="w-6 h-6" style={{ color: '#8b5cf6' }} />
-                <h2 style={{
-                  fontSize: theme.fontSize.xl,
-                  fontWeight: theme.fontWeight.bold,
-                  color: theme.colors.text.primary,
-                  margin: 0
-                }}>
+                <Lightbulb className="w-6 h-6" style={{ color: theme.colors.chart.purple }} />
+                <h2
+                  id="similar-tickets-title"
+                  style={{
+                    fontSize: theme.fontSize.xl,
+                    fontWeight: theme.fontWeight.bold,
+                    color: theme.colors.text.primary,
+                    margin: 0
+                  }}
+                >
                   Similar Resolved Tickets
                 </h2>
               </div>
               <button
                 onClick={() => setShowSimilarModal(false)}
+                aria-label="Close similar tickets modal"
                 style={{
                   background: 'none',
                   border: 'none',
@@ -1721,16 +1981,26 @@ const TechTicketDetail = () => {
                   {similarTickets.map((similarTicket) => (
                     <div
                       key={similarTicket.id}
+                      onClick={() => {
+                        if (similarTicket.resolution) {
+                          handleUseSolution(similarTicket.resolution);
+                        } else {
+                          // If no resolution, just close the modal
+                          setShowSimilarModal(false);
+                          showToast('This ticket has no resolution to copy', 'warning');
+                        }
+                      }}
                       style={{
                         padding: theme.spacing.lg,
                         backgroundColor: theme.colors.background.secondary,
                         borderRadius: theme.radius.lg,
                         border: `1px solid ${theme.colors.border.medium}`,
-                        transition: 'all 0.2s'
+                        transition: 'all 0.2s',
+                        cursor: 'pointer'
                       }}
                       onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = '#8b5cf6';
-                        e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(139, 92, 246, 0.1), 0 2px 4px -1px rgba(139, 92, 246, 0.06)';
+                        e.currentTarget.style.borderColor = theme.colors.chart.purple;
+                        e.currentTarget.style.boxShadow = `0 4px 6px -1px rgba(124, 58, 237, 0.1), 0 2px 4px -1px rgba(124, 58, 237, 0.06)`;
                       }}
                       onMouseLeave={(e) => {
                         e.currentTarget.style.borderColor = theme.colors.border.medium;
@@ -1740,22 +2010,15 @@ const TechTicketDetail = () => {
                       {/* Ticket Header */}
                       <div style={{ marginBottom: theme.spacing.md }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, marginBottom: theme.spacing.xs }}>
-                          <a
-                            href={`/tickets/${similarTicket.id}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                          <span
                             style={{
                               fontSize: theme.fontSize.lg,
                               fontWeight: theme.fontWeight.bold,
-                              color: theme.colors.accent.primary,
-                              textDecoration: 'none',
-                              transition: 'color 0.2s'
+                              color: theme.colors.accent.primary
                             }}
-                            onMouseEnter={(e) => (e.currentTarget.style.color = '#2c5282')}
-                            onMouseLeave={(e) => (e.currentTarget.style.color = theme.colors.accent.primary)}
                           >
                             Ticket #{similarTicket.ticket_number}
-                          </a>
+                          </span>
                           <Badge color="green" style={{ fontSize: theme.fontSize.xs }}>
                             <CheckCircle className="w-3 h-3 mr-1" />
                             Resolved
@@ -1804,19 +2067,19 @@ const TechTicketDetail = () => {
                       )}
 
                       {/* Resolution */}
-                      {similarTicket.resolution && (
+                      {similarTicket.resolution ? (
                         <div style={{
                           padding: theme.spacing.md,
-                          backgroundColor: '#f0fdf4',
+                          backgroundColor: theme.colors.accent.successLight,
                           borderRadius: theme.radius.md,
-                          border: '1px solid #86efac'
+                          border: `1px solid ${theme.colors.accent.success}`
                         }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs, marginBottom: theme.spacing.xs }}>
-                            <CheckCircle className="w-4 h-4" style={{ color: '#059669' }} />
+                            <CheckCircle className="w-4 h-4" style={{ color: theme.colors.accent.success }} />
                             <h4 style={{
                               fontSize: theme.fontSize.xs,
                               fontWeight: theme.fontWeight.semibold,
-                              color: '#059669',
+                              color: theme.colors.accent.success,
                               textTransform: 'uppercase',
                               letterSpacing: '0.05em',
                               margin: 0
@@ -1826,55 +2089,247 @@ const TechTicketDetail = () => {
                           </div>
                           <p style={{
                             fontSize: theme.fontSize.sm,
-                            color: '#166534',
+                            color: theme.colors.chart.green,
                             whiteSpace: 'pre-wrap',
                             lineHeight: '1.6',
                             margin: 0
                           }}>
                             {similarTicket.resolution}
                           </p>
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            marginTop: theme.spacing.md,
+                            paddingTop: theme.spacing.sm,
+                            borderTop: `1px solid ${theme.colors.accent.success}40`
+                          }}>
+                            {similarTicket.resolved_at && (
+                              <p style={{
+                                fontSize: theme.fontSize.xs,
+                                color: theme.colors.accent.success,
+                                margin: 0
+                              }}>
+                                Resolved {getRelativeTime(similarTicket.resolved_at)}
+                              </p>
+                            )}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleUseSolution(similarTicket.resolution);
+                              }}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: theme.spacing.xs,
+                                padding: `${theme.spacing.xs} ${theme.spacing.md}`,
+                                backgroundColor: theme.colors.accent.success,
+                                border: 'none',
+                                borderRadius: theme.radius.md,
+                                color: '#ffffff',
+                                fontSize: theme.fontSize.xs,
+                                fontWeight: theme.fontWeight.semibold,
+                                cursor: 'pointer',
+                                transition: 'all 0.2s',
+                                marginLeft: 'auto'
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.backgroundColor = '#047857';
+                                e.currentTarget.style.transform = 'scale(1.02)';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.backgroundColor = theme.colors.accent.success;
+                                e.currentTarget.style.transform = 'scale(1)';
+                              }}
+                            >
+                              <CheckCircle className="w-3 h-3" />
+                              Use Solution
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{
+                          padding: theme.spacing.md,
+                          backgroundColor: theme.colors.background.tertiary,
+                          borderRadius: theme.radius.md,
+                          border: `1px solid ${theme.colors.border.medium}`
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs, marginBottom: theme.spacing.xs }}>
+                            <AlertCircle className="w-4 h-4" style={{ color: theme.colors.text.tertiary }} />
+                            <h4 style={{
+                              fontSize: theme.fontSize.xs,
+                              fontWeight: theme.fontWeight.semibold,
+                              color: theme.colors.text.tertiary,
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.05em',
+                              margin: 0
+                            }}>
+                              Resolution
+                            </h4>
+                          </div>
+                          <p style={{
+                            fontSize: theme.fontSize.sm,
+                            color: theme.colors.text.tertiary,
+                            fontStyle: 'italic',
+                            margin: 0
+                          }}>
+                            No resolution recorded for this ticket.
+                          </p>
                           {similarTicket.resolved_at && (
                             <p style={{
                               fontSize: theme.fontSize.xs,
-                              color: '#15803d',
-                              marginTop: theme.spacing.xs,
-                              margin: 0
+                              color: theme.colors.text.tertiary,
+                              marginTop: theme.spacing.xs
                             }}>
-                              Resolved {getRelativeTime(similarTicket.resolved_at)}
+                              Closed {getRelativeTime(similarTicket.resolved_at)}
                             </p>
                           )}
                         </div>
                       )}
-
-                      {/* View Full Ticket Link */}
-                      <div style={{ marginTop: theme.spacing.md, textAlign: 'right' }}>
-                        <a
-                          href={`/tickets/${similarTicket.id}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{
-                            fontSize: theme.fontSize.sm,
-                            color: theme.colors.accent.primary,
-                            textDecoration: 'none',
-                            fontWeight: theme.fontWeight.medium,
-                            transition: 'color 0.2s'
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.color = '#2c5282';
-                            e.currentTarget.style.textDecoration = 'underline';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.color = theme.colors.accent.primary;
-                            e.currentTarget.style.textDecoration = 'none';
-                          }}
-                        >
-                          View full ticket →
-                        </a>
-                      </div>
                     </div>
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Resolution Modal */}
+      {showResolveModal && (
+        <div
+          onClick={() => !submittingResolution && setShowResolveModal(false)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: theme.zIndex.modal,
+            padding: theme.spacing.xl
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="resolve-modal-title"
+            style={{
+              backgroundColor: theme.colors.background.secondary,
+              borderRadius: theme.radius.lg,
+              maxWidth: '500px',
+              width: '100%',
+              overflow: 'hidden',
+              boxShadow: theme.shadows.xl
+            }}
+          >
+            {/* Modal Header */}
+            <div style={{
+              padding: theme.spacing.lg,
+              borderBottom: `1px solid ${theme.colors.border.medium}`
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+                <CheckCircle className="w-6 h-6" style={{ color: theme.colors.accent.success }} />
+                <h2
+                  id="resolve-modal-title"
+                  style={{
+                    fontSize: theme.fontSize.xl,
+                    fontWeight: theme.fontWeight.bold,
+                    color: theme.colors.text.primary,
+                    margin: 0
+                  }}
+                >
+                  Resolve Ticket
+                </h2>
+              </div>
+              <p style={{
+                fontSize: theme.fontSize.sm,
+                color: theme.colors.text.secondary,
+                marginTop: theme.spacing.sm,
+                marginBottom: 0
+              }}>
+                How did you resolve this issue? Your resolution helps the team handle similar tickets in the future.
+              </p>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: theme.spacing.lg }}>
+              <div style={{ marginBottom: theme.spacing.lg }}>
+                <textarea
+                  value={resolutionText}
+                  onChange={(e) => setResolutionText(e.target.value)}
+                  placeholder="Describe the steps you took to resolve this ticket..."
+                  rows={5}
+                  maxLength={2000}
+                  disabled={skipResolution || submittingResolution}
+                  style={{
+                    width: '100%',
+                    padding: theme.spacing.md,
+                    backgroundColor: skipResolution ? theme.colors.background.hover : theme.colors.background.tertiary,
+                    color: theme.colors.text.primary,
+                    border: `1px solid ${theme.colors.border.medium}`,
+                    borderRadius: theme.radius.md,
+                    fontSize: theme.fontSize.sm,
+                    outline: 'none',
+                    resize: 'vertical',
+                    fontFamily: 'inherit',
+                    lineHeight: '1.6',
+                    opacity: skipResolution ? 0.5 : 1,
+                    cursor: skipResolution ? 'not-allowed' : 'text'
+                  }}
+                />
+                <p style={{
+                  fontSize: theme.fontSize.xs,
+                  color: theme.colors.text.tertiary,
+                  marginTop: theme.spacing.xs,
+                  marginBottom: 0
+                }}>
+                  {resolutionText.length}/2000 characters
+                </p>
+              </div>
+
+              {/* Skip checkbox */}
+              <div
+                onClick={() => !submittingResolution && setSkipResolution(!skipResolution)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: theme.spacing.sm,
+                  padding: theme.spacing.md,
+                  backgroundColor: skipResolution ? theme.colors.background.hover : theme.colors.background.tertiary,
+                  border: `1px solid ${theme.colors.border.medium}`,
+                  borderRadius: theme.radius.md,
+                  cursor: submittingResolution ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                <div style={{
+                  width: '18px',
+                  height: '18px',
+                  borderRadius: theme.radius.xs,
+                  border: `2px solid ${skipResolution ? theme.colors.accent.primary : theme.colors.border.medium}`,
+                  backgroundColor: skipResolution ? theme.colors.accent.primary : 'transparent',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  transition: 'all 0.2s'
+                }}>
+                  {skipResolution && (
+                    <CheckCircle className="w-3 h-3" style={{ color: '#ffffff' }} />
+                  )}
+                </div>
+                <span style={{
+                  fontSize: theme.fontSize.sm,
+                  color: theme.colors.text.secondary
+                }}>
+                  Resolve without adding resolution notes
+                </span>
+              </div>
             </div>
 
             {/* Modal Footer */}
@@ -1882,25 +2337,52 @@ const TechTicketDetail = () => {
               padding: theme.spacing.lg,
               borderTop: `1px solid ${theme.colors.border.medium}`,
               display: 'flex',
-              justifyContent: 'flex-end'
+              justifyContent: 'flex-end',
+              gap: theme.spacing.sm
             }}>
               <button
-                onClick={() => setShowSimilarModal(false)}
+                onClick={() => setShowResolveModal(false)}
+                disabled={submittingResolution}
                 style={{
                   padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
-                  backgroundColor: theme.colors.accent.primary,
+                  backgroundColor: 'transparent',
+                  border: `1px solid ${theme.colors.border.medium}`,
+                  borderRadius: theme.radius.md,
+                  color: theme.colors.text.secondary,
+                  fontSize: theme.fontSize.sm,
+                  fontWeight: theme.fontWeight.medium,
+                  cursor: submittingResolution ? 'not-allowed' : 'pointer',
+                  opacity: submittingResolution ? 0.5 : 1,
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => !submittingResolution && (e.currentTarget.style.backgroundColor = theme.colors.background.tertiary)}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmitResolution}
+                disabled={submittingResolution || (!skipResolution && resolutionText.trim().length === 0)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: theme.spacing.xs,
+                  padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
+                  backgroundColor: theme.colors.accent.success,
                   border: 'none',
                   borderRadius: theme.radius.md,
                   color: '#ffffff',
                   fontSize: theme.fontSize.sm,
                   fontWeight: theme.fontWeight.medium,
-                  cursor: 'pointer',
+                  cursor: (submittingResolution || (!skipResolution && resolutionText.trim().length === 0)) ? 'not-allowed' : 'pointer',
+                  opacity: (submittingResolution || (!skipResolution && resolutionText.trim().length === 0)) ? 0.5 : 1,
                   transition: 'all 0.2s'
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#2c5282')}
-                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = theme.colors.accent.primary)}
+                onMouseEnter={(e) => !(submittingResolution || (!skipResolution && resolutionText.trim().length === 0)) && (e.currentTarget.style.backgroundColor = '#047857')}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = theme.colors.accent.success)}
               >
-                Close
+                <CheckCircle className="w-4 h-4" />
+                {submittingResolution ? 'Resolving...' : 'Resolve Ticket'}
               </button>
             </div>
           </div>
