@@ -39,6 +39,7 @@ export const theme = {
       secondary: '#5a8aa3',       // Lighter blue-gray
       secondaryHover: '#4a7a93',
       success: '#059669',         // Green
+      successHover: '#047857',    // Darker green for hover states
       successLight: '#d1fae5',    // Light green background
       warning: '#d97706',         // Orange
       warningLight: '#fef3c7',    // Light orange background

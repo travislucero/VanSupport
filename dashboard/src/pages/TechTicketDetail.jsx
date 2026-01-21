@@ -89,6 +89,10 @@ const TechTicketDetail = () => {
   const { user, logout, hasRole } = useAuth();
   const commentsEndRef = useRef(null);
   const commentFormRef = useRef(null);
+  const similarModalTriggerRef = useRef(null);
+  const similarModalCloseRef = useRef(null);
+  const resolveModalTriggerRef = useRef(null);
+  const resolveModalCloseRef = useRef(null);
 
   const [ticket, setTicket] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -287,9 +291,13 @@ const TechTicketDetail = () => {
         // Don't close resolve modal if submission is in progress
         if (showResolveModal && !submittingResolution) {
           setShowResolveModal(false);
+          // Return focus to trigger button when modal closes via Escape
+          resolveModalTriggerRef.current?.focus();
         }
         if (showSimilarModal) {
           setShowSimilarModal(false);
+          // Return focus to trigger button when modal closes via Escape
+          similarModalTriggerRef.current?.focus();
         }
         if (lightboxMedia.type) {
           setLightboxMedia({ type: null, url: null });
@@ -299,6 +307,72 @@ const TechTicketDetail = () => {
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);
   }, [showResolveModal, showSimilarModal, lightboxMedia.type, submittingResolution]);
+
+  // Similar Tickets Modal: Auto-focus close button and trap focus within modal
+  useEffect(() => {
+    if (!showSimilarModal) return;
+
+    // Auto-focus the close button when modal opens
+    similarModalCloseRef.current?.focus();
+
+    // Focus trap: keep focus within the modal
+    const handleFocusTrap = (e) => {
+      if (e.key !== 'Tab') return;
+
+      const modal = document.getElementById('similar-tickets-modal');
+      if (!modal) return;
+
+      const focusableElements = modal.querySelectorAll(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (e.shiftKey && document.activeElement === firstElement) {
+        e.preventDefault();
+        lastElement?.focus();
+      } else if (!e.shiftKey && document.activeElement === lastElement) {
+        e.preventDefault();
+        firstElement?.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleFocusTrap);
+    return () => document.removeEventListener('keydown', handleFocusTrap);
+  }, [showSimilarModal]);
+
+  // Resolve Modal: Auto-focus close button and trap focus within modal
+  useEffect(() => {
+    if (!showResolveModal) return;
+
+    // Auto-focus the close button when modal opens
+    resolveModalCloseRef.current?.focus();
+
+    // Focus trap: keep focus within the modal
+    const handleFocusTrap = (e) => {
+      if (e.key !== 'Tab') return;
+
+      const modal = document.getElementById('resolve-modal');
+      if (!modal) return;
+
+      const focusableElements = modal.querySelectorAll(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (e.shiftKey && document.activeElement === firstElement) {
+        e.preventDefault();
+        lastElement?.focus();
+      } else if (!e.shiftKey && document.activeElement === lastElement) {
+        e.preventDefault();
+        firstElement?.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleFocusTrap);
+    return () => document.removeEventListener('keydown', handleFocusTrap);
+  }, [showResolveModal]);
 
   // Track window resize for responsive modal styling
   useEffect(() => {
@@ -945,6 +1019,7 @@ const TechTicketDetail = () => {
 
               {ticket.status !== 'resolved' && ticket.status !== 'closed' && (
                 <button
+                  ref={resolveModalTriggerRef}
                   onClick={handleResolveClick}
                   disabled={updating}
                   style={{
@@ -965,7 +1040,7 @@ const TechTicketDetail = () => {
                   onMouseEnter={(e) => !updating && (e.currentTarget.style.backgroundColor = '#059669')}
                   onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#10b981')}
                 >
-                  <CheckCircle className="w-4 h-4" />
+                  <CheckCircle className="w-4 h-4" aria-hidden="true" />
                   Resolve Ticket
                 </button>
               )}
@@ -999,6 +1074,7 @@ const TechTicketDetail = () => {
 
               {/* Similar Tickets Button */}
               <button
+                ref={similarModalTriggerRef}
                 onClick={fetchSimilarTickets}
                 disabled={loadingSimilar}
                 style={{
@@ -1009,7 +1085,7 @@ const TechTicketDetail = () => {
                   backgroundColor: theme.colors.chart.purple,
                   border: 'none',
                   borderRadius: theme.radius.md,
-                  color: '#ffffff',
+                  color: theme.colors.text.inverse,
                   fontSize: theme.fontSize.sm,
                   fontWeight: theme.fontWeight.medium,
                   cursor: loadingSimilar ? 'not-allowed' : 'pointer',
@@ -1019,8 +1095,10 @@ const TechTicketDetail = () => {
                 onMouseEnter={(e) => !loadingSimilar && (e.currentTarget.style.opacity = '0.9')}
                 onMouseLeave={(e) => (e.currentTarget.style.opacity = loadingSimilar ? '0.5' : '1')}
               >
-                <Lightbulb className="w-4 h-4" />
-                {loadingSimilar ? 'Searching...' : 'Suggest Solutions'}
+                <Lightbulb className="w-4 h-4" aria-hidden="true" />
+                <span aria-live="polite">
+                  {loadingSimilar ? 'Searching...' : 'Suggest Solutions'}
+                </span>
               </button>
             </div>
           </div>
@@ -1875,7 +1953,10 @@ const TechTicketDetail = () => {
       {/* Similar Tickets Modal */}
       {showSimilarModal && (
         <div
-          onClick={() => setShowSimilarModal(false)}
+          onClick={() => {
+            setShowSimilarModal(false);
+            similarModalTriggerRef.current?.focus();
+          }}
           style={{
             position: 'fixed',
             top: 0,
@@ -1891,6 +1972,7 @@ const TechTicketDetail = () => {
           }}
         >
           <div
+            id="similar-tickets-modal"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
@@ -1916,7 +1998,7 @@ const TechTicketDetail = () => {
               justifyContent: 'space-between'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
-                <Lightbulb className="w-6 h-6" style={{ color: theme.colors.chart.purple }} />
+                <Lightbulb className="w-6 h-6" style={{ color: theme.colors.chart.purple }} aria-hidden="true" />
                 <h2
                   id="similar-tickets-title"
                   style={{
@@ -1930,7 +2012,11 @@ const TechTicketDetail = () => {
                 </h2>
               </div>
               <button
-                onClick={() => setShowSimilarModal(false)}
+                ref={similarModalCloseRef}
+                onClick={() => {
+                  setShowSimilarModal(false);
+                  similarModalTriggerRef.current?.focus();
+                }}
                 aria-label="Close similar tickets modal"
                 style={{
                   background: 'none',
@@ -1953,7 +2039,7 @@ const TechTicketDetail = () => {
                   e.currentTarget.style.color = theme.colors.text.tertiary;
                 }}
               >
-                <X size={24} />
+                <X size={24} aria-hidden="true" />
               </button>
             </div>
 
@@ -1969,7 +2055,7 @@ const TechTicketDetail = () => {
                   padding: `${theme.spacing.xl} 0`,
                   color: theme.colors.text.tertiary
                 }}>
-                  <Lightbulb className="w-16 h-16 mx-auto mb-4 opacity-20" />
+                  <Lightbulb className="w-16 h-16 mx-auto mb-4 opacity-20" aria-hidden="true" />
                   <p style={{ fontSize: theme.fontSize.lg, marginBottom: theme.spacing.sm }}>
                     No similar tickets found
                   </p>
@@ -2004,15 +2090,15 @@ const TechTicketDetail = () => {
                               Ticket #{similarTicket.ticket_number}
                             </span>
                             <Badge color="green" style={{ fontSize: theme.fontSize.xs }}>
-                              <CheckCircle className="w-3 h-3 mr-1" />
+                              <CheckCircle className="w-3 h-3 mr-1" aria-hidden="true" />
                               Resolved
                             </Badge>
                           </div>
                           <button
-                            onClick={(e) => {
-                              e.stopPropagation();
+                            onClick={() => {
                               navigate(`/tickets/${similarTicket.uuid}`);
                             }}
+                            aria-label={`View full details for ticket #${similarTicket.ticket_number}`}
                             style={{
                               display: 'flex',
                               alignItems: 'center',
@@ -2030,14 +2116,14 @@ const TechTicketDetail = () => {
                             }}
                             onMouseEnter={(e) => {
                               e.currentTarget.style.backgroundColor = theme.colors.accent.primary;
-                              e.currentTarget.style.color = '#ffffff';
+                              e.currentTarget.style.color = theme.colors.text.inverse;
                             }}
                             onMouseLeave={(e) => {
                               e.currentTarget.style.backgroundColor = 'transparent';
                               e.currentTarget.style.color = theme.colors.accent.primary;
                             }}
                           >
-                            <ExternalLink className="w-3 h-3" />
+                            <ExternalLink className="w-3 h-3" aria-hidden="true" />
                             View Full Ticket
                           </button>
                         </div>
@@ -2098,7 +2184,7 @@ const TechTicketDetail = () => {
                           border: `1px solid ${theme.colors.accent.success}`
                         }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs, marginBottom: theme.spacing.xs }}>
-                            <CheckCircle className="w-4 h-4" style={{ color: theme.colors.accent.success }} />
+                            <CheckCircle className="w-4 h-4" style={{ color: theme.colors.accent.success }} aria-hidden="true" />
                             <h4 style={{
                               fontSize: theme.fontSize.xs,
                               fontWeight: theme.fontWeight.semibold,
@@ -2112,7 +2198,7 @@ const TechTicketDetail = () => {
                           </div>
                           <p style={{
                             fontSize: theme.fontSize.sm,
-                            color: theme.colors.chart.green,
+                            color: theme.colors.text.primary,
                             whiteSpace: 'pre-wrap',
                             lineHeight: '1.6',
                             margin: 0
@@ -2140,10 +2226,10 @@ const TechTicketDetail = () => {
                                 </p>
                               )}
                               <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
+                                onClick={() => {
                                   handleUseSolution(similarTicket.resolution);
                                 }}
+                                aria-label={`Use resolution from ticket #${similarTicket.ticket_number}`}
                                 style={{
                                   display: 'flex',
                                   alignItems: 'center',
@@ -2152,7 +2238,7 @@ const TechTicketDetail = () => {
                                   backgroundColor: theme.colors.accent.success,
                                   border: 'none',
                                   borderRadius: theme.radius.md,
-                                  color: '#ffffff',
+                                  color: theme.colors.text.inverse,
                                   fontSize: theme.fontSize.sm,
                                   fontWeight: theme.fontWeight.semibold,
                                   cursor: 'pointer',
@@ -2160,7 +2246,7 @@ const TechTicketDetail = () => {
                                   marginLeft: 'auto'
                                 }}
                                 onMouseEnter={(e) => {
-                                  e.currentTarget.style.backgroundColor = '#047857';
+                                  e.currentTarget.style.backgroundColor = theme.colors.accent.successHover;
                                   e.currentTarget.style.transform = 'scale(1.02)';
                                 }}
                                 onMouseLeave={(e) => {
@@ -2168,7 +2254,7 @@ const TechTicketDetail = () => {
                                   e.currentTarget.style.transform = 'scale(1)';
                                 }}
                               >
-                                <CheckCircle className="w-3 h-3" />
+                                <CheckCircle className="w-3 h-3" aria-hidden="true" />
                                 Use This Solution
                               </button>
                             </div>
@@ -2191,7 +2277,7 @@ const TechTicketDetail = () => {
                           border: `1px solid ${theme.colors.border.medium}`
                         }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs, marginBottom: theme.spacing.xs }}>
-                            <AlertCircle className="w-4 h-4" style={{ color: theme.colors.text.tertiary }} />
+                            <AlertCircle className="w-4 h-4" style={{ color: theme.colors.text.tertiary }} aria-hidden="true" />
                             <h4 style={{
                               fontSize: theme.fontSize.xs,
                               fontWeight: theme.fontWeight.semibold,
@@ -2234,7 +2320,12 @@ const TechTicketDetail = () => {
       {/* Resolution Modal */}
       {showResolveModal && (
         <div
-          onClick={() => !submittingResolution && setShowResolveModal(false)}
+          onClick={() => {
+            if (!submittingResolution) {
+              setShowResolveModal(false);
+              resolveModalTriggerRef.current?.focus();
+            }
+          }}
           style={{
             position: 'fixed',
             top: 0,
@@ -2250,6 +2341,7 @@ const TechTicketDetail = () => {
           }}
         >
           <div
+            id="resolve-modal"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
@@ -2269,7 +2361,7 @@ const TechTicketDetail = () => {
               borderBottom: `1px solid ${theme.colors.border.medium}`
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
-                <CheckCircle className="w-6 h-6" style={{ color: theme.colors.accent.success }} />
+                <CheckCircle className="w-6 h-6" style={{ color: theme.colors.accent.success }} aria-hidden="true" />
                 <h2
                   id="resolve-modal-title"
                   style={{
@@ -2299,6 +2391,8 @@ const TechTicketDetail = () => {
                   value={resolutionText}
                   onChange={(e) => setResolutionText(e.target.value)}
                   placeholder="Describe the steps you took to resolve this ticket..."
+                  aria-label="Resolution description"
+                  aria-describedby="resolution-char-count"
                   rows={5}
                   maxLength={2000}
                   disabled={skipResolution || submittingResolution}
@@ -2318,19 +2412,32 @@ const TechTicketDetail = () => {
                     cursor: skipResolution ? 'not-allowed' : 'text'
                   }}
                 />
-                <p style={{
-                  fontSize: theme.fontSize.xs,
-                  color: theme.colors.text.tertiary,
-                  marginTop: theme.spacing.xs,
-                  marginBottom: 0
-                }}>
+                <p
+                  id="resolution-char-count"
+                  style={{
+                    fontSize: theme.fontSize.xs,
+                    color: theme.colors.text.tertiary,
+                    marginTop: theme.spacing.xs,
+                    marginBottom: 0
+                  }}
+                >
                   {resolutionText.length}/2000 characters
                 </p>
               </div>
 
               {/* Skip checkbox */}
               <div
+                role="checkbox"
+                aria-checked={skipResolution}
+                aria-label="Skip writing a resolution"
+                tabIndex={submittingResolution ? -1 : 0}
                 onClick={() => !submittingResolution && setSkipResolution(!skipResolution)}
+                onKeyDown={(e) => {
+                  if ((e.key === ' ' || e.key === 'Enter') && !submittingResolution) {
+                    e.preventDefault();
+                    setSkipResolution(!skipResolution);
+                  }
+                }}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -2343,18 +2450,21 @@ const TechTicketDetail = () => {
                   transition: 'all 0.2s'
                 }}
               >
-                <div style={{
-                  width: '18px',
-                  height: '18px',
-                  borderRadius: theme.radius.xs,
-                  border: `2px solid ${skipResolution ? theme.colors.accent.primary : theme.colors.border.medium}`,
-                  backgroundColor: skipResolution ? theme.colors.accent.primary : 'transparent',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0,
-                  transition: 'all 0.2s'
-                }}>
+                <div
+                  aria-hidden="true"
+                  style={{
+                    width: '18px',
+                    height: '18px',
+                    borderRadius: theme.radius.xs,
+                    border: `2px solid ${skipResolution ? theme.colors.accent.primary : theme.colors.border.medium}`,
+                    backgroundColor: skipResolution ? theme.colors.accent.primary : 'transparent',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                    transition: 'all 0.2s'
+                  }}
+                >
                   {skipResolution && (
                     <CheckCircle className="w-3 h-3" style={{ color: '#ffffff' }} />
                   )}
@@ -2377,7 +2487,11 @@ const TechTicketDetail = () => {
               gap: theme.spacing.sm
             }}>
               <button
-                onClick={() => setShowResolveModal(false)}
+                ref={resolveModalCloseRef}
+                onClick={() => {
+                  setShowResolveModal(false);
+                  resolveModalTriggerRef.current?.focus();
+                }}
                 disabled={submittingResolution}
                 style={{
                   padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
