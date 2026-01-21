@@ -25,7 +25,8 @@ import {
   Image,
   Camera,
   Play,
-  Lightbulb
+  Lightbulb,
+  ExternalLink
 } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import Card from '../components/Card';
@@ -1981,48 +1982,64 @@ const TechTicketDetail = () => {
                   {similarTickets.map((similarTicket) => (
                     <div
                       key={similarTicket.id}
-                      onClick={() => {
-                        if (similarTicket.resolution) {
-                          handleUseSolution(similarTicket.resolution);
-                        } else {
-                          // If no resolution, just close the modal
-                          setShowSimilarModal(false);
-                          showToast('This ticket has no resolution to copy', 'warning');
-                        }
-                      }}
                       style={{
                         padding: theme.spacing.lg,
                         backgroundColor: theme.colors.background.secondary,
                         borderRadius: theme.radius.lg,
                         border: `1px solid ${theme.colors.border.medium}`,
-                        transition: 'all 0.2s',
-                        cursor: 'pointer'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = theme.colors.chart.purple;
-                        e.currentTarget.style.boxShadow = `0 4px 6px -1px rgba(124, 58, 237, 0.1), 0 2px 4px -1px rgba(124, 58, 237, 0.06)`;
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = theme.colors.border.medium;
-                        e.currentTarget.style.boxShadow = 'none';
+                        transition: 'all 0.2s'
                       }}
                     >
                       {/* Ticket Header */}
                       <div style={{ marginBottom: theme.spacing.md }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, marginBottom: theme.spacing.xs }}>
-                          <span
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.spacing.xs }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+                            <span
+                              style={{
+                                fontSize: theme.fontSize.lg,
+                                fontWeight: theme.fontWeight.bold,
+                                color: theme.colors.accent.primary
+                              }}
+                            >
+                              Ticket #{similarTicket.ticket_number}
+                            </span>
+                            <Badge color="green" style={{ fontSize: theme.fontSize.xs }}>
+                              <CheckCircle className="w-3 h-3 mr-1" />
+                              Resolved
+                            </Badge>
+                          </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/tickets/${similarTicket.uuid}`);
+                            }}
                             style={{
-                              fontSize: theme.fontSize.lg,
-                              fontWeight: theme.fontWeight.bold,
-                              color: theme.colors.accent.primary
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: theme.spacing.xs,
+                              padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
+                              backgroundColor: 'transparent',
+                              border: `1px solid ${theme.colors.accent.primary}`,
+                              borderRadius: theme.radius.md,
+                              color: theme.colors.accent.primary,
+                              fontSize: theme.fontSize.xs,
+                              fontWeight: theme.fontWeight.medium,
+                              cursor: 'pointer',
+                              transition: 'all 0.2s',
+                              whiteSpace: 'nowrap'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor = theme.colors.accent.primary;
+                              e.currentTarget.style.color = '#ffffff';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = 'transparent';
+                              e.currentTarget.style.color = theme.colors.accent.primary;
                             }}
                           >
-                            Ticket #{similarTicket.ticket_number}
-                          </span>
-                          <Badge color="green" style={{ fontSize: theme.fontSize.xs }}>
-                            <CheckCircle className="w-3 h-3 mr-1" />
-                            Resolved
-                          </Badge>
+                            <ExternalLink className="w-3 h-3" />
+                            View Full Ticket
+                          </button>
                         </div>
                         <h3 style={{
                           fontSize: theme.fontSize.md,
@@ -2041,7 +2058,13 @@ const TechTicketDetail = () => {
 
                       {/* Description */}
                       {similarTicket.description && (
-                        <div style={{ marginBottom: theme.spacing.md }}>
+                        <div style={{
+                          marginBottom: theme.spacing.md,
+                          padding: theme.spacing.md,
+                          backgroundColor: theme.colors.background.tertiary,
+                          borderRadius: theme.radius.md,
+                          border: `1px solid ${theme.colors.border.light}`
+                        }}>
                           <h4 style={{
                             fontSize: theme.fontSize.xs,
                             fontWeight: theme.fontWeight.semibold,
@@ -2050,7 +2073,7 @@ const TechTicketDetail = () => {
                             letterSpacing: '0.05em',
                             marginBottom: theme.spacing.xs
                           }}>
-                            Description
+                            Original Issue
                           </h4>
                           <p style={{
                             fontSize: theme.fontSize.sm,
@@ -2059,8 +2082,8 @@ const TechTicketDetail = () => {
                             lineHeight: '1.6',
                             margin: 0
                           }}>
-                            {similarTicket.description.length > 200
-                              ? similarTicket.description.substring(0, 200) + '...'
+                            {similarTicket.description.length > 400
+                              ? similarTicket.description.substring(0, 400) + '...'
                               : similarTicket.description}
                           </p>
                         </div>
@@ -2097,54 +2120,67 @@ const TechTicketDetail = () => {
                             {similarTicket.resolution}
                           </p>
                           <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
                             marginTop: theme.spacing.md,
                             paddingTop: theme.spacing.sm,
                             borderTop: `1px solid ${theme.colors.accent.success}40`
                           }}>
-                            {similarTicket.resolved_at && (
-                              <p style={{
-                                fontSize: theme.fontSize.xs,
-                                color: theme.colors.accent.success,
-                                margin: 0
-                              }}>
-                                Resolved {getRelativeTime(similarTicket.resolved_at)}
-                              </p>
-                            )}
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleUseSolution(similarTicket.resolution);
-                              }}
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: theme.spacing.xs,
-                                padding: `${theme.spacing.xs} ${theme.spacing.md}`,
-                                backgroundColor: theme.colors.accent.success,
-                                border: 'none',
-                                borderRadius: theme.radius.md,
-                                color: '#ffffff',
-                                fontSize: theme.fontSize.xs,
-                                fontWeight: theme.fontWeight.semibold,
-                                cursor: 'pointer',
-                                transition: 'all 0.2s',
-                                marginLeft: 'auto'
-                              }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.backgroundColor = '#047857';
-                                e.currentTarget.style.transform = 'scale(1.02)';
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.backgroundColor = theme.colors.accent.success;
-                                e.currentTarget.style.transform = 'scale(1)';
-                              }}
-                            >
-                              <CheckCircle className="w-3 h-3" />
-                              Use Solution
-                            </button>
+                            <div style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              marginBottom: theme.spacing.xs
+                            }}>
+                              {similarTicket.resolved_at && (
+                                <p style={{
+                                  fontSize: theme.fontSize.xs,
+                                  color: theme.colors.accent.success,
+                                  margin: 0
+                                }}>
+                                  Resolved {getRelativeTime(similarTicket.resolved_at)}
+                                </p>
+                              )}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleUseSolution(similarTicket.resolution);
+                                }}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: theme.spacing.xs,
+                                  padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                                  backgroundColor: theme.colors.accent.success,
+                                  border: 'none',
+                                  borderRadius: theme.radius.md,
+                                  color: '#ffffff',
+                                  fontSize: theme.fontSize.sm,
+                                  fontWeight: theme.fontWeight.semibold,
+                                  cursor: 'pointer',
+                                  transition: 'all 0.2s',
+                                  marginLeft: 'auto'
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.backgroundColor = '#047857';
+                                  e.currentTarget.style.transform = 'scale(1.02)';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.backgroundColor = theme.colors.accent.success;
+                                  e.currentTarget.style.transform = 'scale(1)';
+                                }}
+                              >
+                                <CheckCircle className="w-3 h-3" />
+                                Use This Solution
+                              </button>
+                            </div>
+                            <p style={{
+                              fontSize: theme.fontSize.xs,
+                              color: theme.colors.accent.success,
+                              fontStyle: 'italic',
+                              margin: 0,
+                              marginTop: theme.spacing.xs
+                            }}>
+                              Click to copy this resolution to your comment box
+                            </p>
                           </div>
                         </div>
                       ) : (
