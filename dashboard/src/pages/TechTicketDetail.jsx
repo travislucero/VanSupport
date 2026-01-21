@@ -2096,6 +2096,7 @@ const TechTicketDetail = () => {
                           </div>
                           <button
                             onClick={() => {
+                              setShowSimilarModal(false);
                               navigate(`/tickets/${similarTicket.uuid}`);
                             }}
                             aria-label={`View full details for ticket #${similarTicket.ticket_number}`}
