@@ -20,8 +20,8 @@ import { AuthProvider, useAuth } from './hooks/useAuth.jsx'
 import { ToastProvider } from './hooks/useToast.jsx'
 
 // Protected Route Component
-function ProtectedRoute({ children, requireAdmin = false, requireManager = false, requireViewer = false }) {
-  const { isAuthenticated, authLoading, hasRole } = useAuth();
+function ProtectedRoute({ children, requireAdmin = false, requireManager = false, requireTechnician = false }) {
+  const { isAuthenticated, authLoading, hasRole, isSiteAdmin } = useAuth();
 
   if (authLoading) {
     return <div>Loading...</div>;
@@ -29,6 +29,11 @@ function ProtectedRoute({ children, requireAdmin = false, requireManager = false
 
   if (!isAuthenticated) {
     return <Navigate to="/" replace />;
+  }
+
+  // Site admin bypasses all role checks
+  if (isSiteAdmin()) {
+    return children;
   }
 
   // Check role requirements
@@ -40,7 +45,8 @@ function ProtectedRoute({ children, requireAdmin = false, requireManager = false
     return <Navigate to="/" replace />;
   }
 
-  if (requireViewer && !(hasRole('viewer') || hasRole('manager') || hasRole('admin'))) {
+  // Technician access: technician, manager, or admin can access
+  if (requireTechnician && !(hasRole('technician') || hasRole('manager') || hasRole('admin'))) {
     return <Navigate to="/" replace />;
   }
 
@@ -57,7 +63,7 @@ createRoot(document.getElementById('root')).render(
             <Route
               path="/sequences"
               element={
-                <ProtectedRoute requireViewer={true}>
+                <ProtectedRoute requireTechnician={true}>
                   <Sequences />
                 </ProtectedRoute>
               }
@@ -81,7 +87,7 @@ createRoot(document.getElementById('root')).render(
             <Route
               path="/patterns"
               element={
-                <ProtectedRoute requireManager={true}>
+                <ProtectedRoute requireAdmin={true}>
                   <TriggerPatterns />
                 </ProtectedRoute>
               }
@@ -89,7 +95,7 @@ createRoot(document.getElementById('root')).render(
             <Route
               path="/tickets"
               element={
-                <ProtectedRoute requireManager={true}>
+                <ProtectedRoute requireTechnician={true}>
                   <TicketDashboard />
                 </ProtectedRoute>
               }
@@ -97,7 +103,7 @@ createRoot(document.getElementById('root')).render(
             <Route
               path="/active-sequences"
               element={
-                <ProtectedRoute requireManager={true}>
+                <ProtectedRoute requireTechnician={true}>
                   <ActiveSequences />
                 </ProtectedRoute>
               }
@@ -105,7 +111,7 @@ createRoot(document.getElementById('root')).render(
             <Route
               path="/tickets/new"
               element={
-                <ProtectedRoute requireManager={true}>
+                <ProtectedRoute requireTechnician={true}>
                   <CreateTicket />
                 </ProtectedRoute>
               }
@@ -113,7 +119,7 @@ createRoot(document.getElementById('root')).render(
             <Route
               path="/tickets/:uuid"
               element={
-                <ProtectedRoute requireManager={true}>
+                <ProtectedRoute requireTechnician={true}>
                   <TechTicketDetail />
                 </ProtectedRoute>
               }
@@ -131,7 +137,7 @@ createRoot(document.getElementById('root')).render(
             <Route
               path="/vans"
               element={
-                <ProtectedRoute requireViewer={true}>
+                <ProtectedRoute requireTechnician={true}>
                   <Vans />
                 </ProtectedRoute>
               }
@@ -139,7 +145,7 @@ createRoot(document.getElementById('root')).render(
             <Route
               path="/owners"
               element={
-                <ProtectedRoute requireViewer={true}>
+                <ProtectedRoute requireTechnician={true}>
                   <Owners />
                 </ProtectedRoute>
               }
@@ -147,7 +153,7 @@ createRoot(document.getElementById('root')).render(
             <Route
               path="/users"
               element={
-                <ProtectedRoute requireManager={true}>
+                <ProtectedRoute requireAdmin={true}>
                   <Users />
                 </ProtectedRoute>
               }

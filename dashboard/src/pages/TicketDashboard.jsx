@@ -43,7 +43,7 @@ const SEARCH_DEBOUNCE_DELAY = 500;
 const TicketDashboard = () => {
   const navigate = useNavigate();
   const { showToast } = useToast();
-  const { user, logout, hasRole } = useAuth();
+  const { user, logout, hasRole, isSiteAdmin } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Tab state
@@ -718,7 +718,7 @@ const TicketDashboard = () => {
         {draggingTicketId ? 'Dragging ticket. Drop on My Tickets section to assign it to yourself.' : ''}
       </div>
 
-      <Sidebar user={user} onLogout={logout} hasRole={hasRole} />
+      <Sidebar user={user} onLogout={logout} hasRole={hasRole} isSiteAdmin={isSiteAdmin} />
 
       <div style={{ marginLeft: '260px', flex: 1, padding: theme.spacing['2xl'], position: 'relative', zIndex: 1 }}>
         {/* Page Header */}
@@ -781,31 +781,34 @@ const TicketDashboard = () => {
                 Refresh
               </button>
 
-              <button
-                onClick={() => navigate('/tickets/new')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: theme.spacing.sm,
-                  padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
-                  backgroundColor: theme.colors.accent.primary,
-                  border: 'none',
-                  borderRadius: theme.radius.md,
-                  color: theme.colors.text.inverse,
-                  fontSize: theme.fontSize.sm,
-                  fontWeight: theme.fontWeight.medium,
-                  cursor: 'pointer',
-                  boxShadow: theme.shadows.sm,
-                  transition: theme.transitions.fast,
-                  height: '40px',
-                  boxSizing: 'border-box'
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = theme.colors.accent.primaryHover)}
-                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = theme.colors.accent.primary)}
-              >
-                <Plus size={18} />
-                Create New Ticket
-              </button>
+              {/* Create New Ticket - available to all authenticated users */}
+              {(isSiteAdmin() || hasRole('admin') || hasRole('manager') || hasRole('technician')) && (
+                <button
+                  onClick={() => navigate('/tickets/new')}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: theme.spacing.sm,
+                    padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
+                    backgroundColor: theme.colors.accent.primary,
+                    border: 'none',
+                    borderRadius: theme.radius.md,
+                    color: theme.colors.text.inverse,
+                    fontSize: theme.fontSize.sm,
+                    fontWeight: theme.fontWeight.medium,
+                    cursor: 'pointer',
+                    boxShadow: theme.shadows.sm,
+                    transition: theme.transitions.fast,
+                    height: '40px',
+                    boxSizing: 'border-box'
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = theme.colors.accent.primaryHover)}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = theme.colors.accent.primary)}
+                >
+                  <Plus size={18} />
+                  Create New Ticket
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -1221,44 +1224,47 @@ const TicketDashboard = () => {
                               }}>
                                 {getRelativeTime(ticket.created_at)}
                               </td>
-                              <td
-                                style={{
-                                  padding: `${theme.spacing.lg} ${theme.spacing.xl}`,
-                                  whiteSpace: 'nowrap'
-                                }}
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <button
-                                  onClick={() => handleAssignToMe(ticket.ticket_id, ticket.ticket_number)}
-                                  disabled={assigningTicket === ticket.ticket_id}
+                              {/* Assign button - only for manager+ */}
+                              {(isSiteAdmin() || hasRole('admin') || hasRole('manager')) && (
+                                <td
                                   style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: theme.spacing.sm,
-                                    padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-                                    backgroundColor: theme.colors.accent.primary,
-                                    color: theme.colors.text.inverse,
-                                    fontSize: theme.fontSize.sm,
-                                    fontWeight: theme.fontWeight.medium,
-                                    border: 'none',
-                                    borderRadius: theme.radius.md,
-                                    cursor: assigningTicket === ticket.ticket_id ? 'not-allowed' : 'pointer',
-                                    opacity: assigningTicket === ticket.ticket_id ? 0.5 : 1,
-                                    transition: theme.transitions.fast
+                                    padding: `${theme.spacing.lg} ${theme.spacing.xl}`,
+                                    whiteSpace: 'nowrap'
                                   }}
-                                  onMouseEnter={(e) => {
-                                    if (assigningTicket !== ticket.ticket_id) {
-                                      e.currentTarget.style.backgroundColor = theme.colors.accent.primaryHover;
-                                    }
-                                  }}
-                                  onMouseLeave={(e) => {
-                                    e.currentTarget.style.backgroundColor = theme.colors.accent.primary;
-                                  }}
+                                  onClick={(e) => e.stopPropagation()}
                                 >
-                                  <UserPlus size={16} />
-                                  {assigningTicket === ticket.ticket_id ? 'Assigning...' : 'Assign to Me'}
-                                </button>
-                              </td>
+                                  <button
+                                    onClick={() => handleAssignToMe(ticket.ticket_id, ticket.ticket_number)}
+                                    disabled={assigningTicket === ticket.ticket_id}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: theme.spacing.sm,
+                                      padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                                      backgroundColor: theme.colors.accent.primary,
+                                      color: theme.colors.text.inverse,
+                                      fontSize: theme.fontSize.sm,
+                                      fontWeight: theme.fontWeight.medium,
+                                      border: 'none',
+                                      borderRadius: theme.radius.md,
+                                      cursor: assigningTicket === ticket.ticket_id ? 'not-allowed' : 'pointer',
+                                      opacity: assigningTicket === ticket.ticket_id ? 0.5 : 1,
+                                      transition: theme.transitions.fast
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      if (assigningTicket !== ticket.ticket_id) {
+                                        e.currentTarget.style.backgroundColor = theme.colors.accent.primaryHover;
+                                      }
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      e.currentTarget.style.backgroundColor = theme.colors.accent.primary;
+                                    }}
+                                  >
+                                    <UserPlus size={16} />
+                                    {assigningTicket === ticket.ticket_id ? 'Assigning...' : 'Assign to Me'}
+                                  </button>
+                                </td>
+                              )}
                             </tr>
                           );
                         })

@@ -103,11 +103,22 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
+// Helper function to check if user is a site admin (bypasses all access checks)
+const isSiteAdmin = (user) => {
+  if (!user || !user.roles) return false;
+  return user.roles.some((role) => role.name === "site_admin");
+};
+
 // Role-based authorization middleware
 const requireRole = (allowedRoles) => {
   return (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({ error: "Authentication required" });
+    }
+
+    // Site admin bypasses all role checks
+    if (isSiteAdmin(req.user)) {
+      return next();
     }
 
     // Check if user has any of the allowed roles
@@ -135,6 +146,11 @@ const requirePermission = (requiredPermission) => {
   return (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({ error: "Authentication required" });
+    }
+
+    // Site admin bypasses all permission checks
+    if (isSiteAdmin(req.user)) {
+      return next();
     }
 
     const userPermissions = req.user.permissions || [];
@@ -418,6 +434,13 @@ app.post(
           .json({ error: "Email and password are required" });
       }
 
+      // Only site_admin can create users with site_admin role
+      if (roles && roles.includes("site_admin") && !isSiteAdmin(req.user)) {
+        return res
+          .status(403)
+          .json({ error: "Only site administrators can assign the site_admin role" });
+      }
+
       // Hash password
       const password_hash = await bcrypt.hash(password, 10);
 
@@ -467,6 +490,29 @@ app.put(
     try {
       const { userId } = req.params;
       const { roles } = req.body;
+
+      // Only site_admin can assign site_admin role
+      if (roles && roles.includes("site_admin") && !isSiteAdmin(req.user)) {
+        return res
+          .status(403)
+          .json({ error: "Only site administrators can assign the site_admin role" });
+      }
+
+      // Check if target user is a site_admin - only site_admin can modify site_admin users
+      const { data: targetUserRoles } = await supabase
+        .from("user_roles")
+        .select("roles(name)")
+        .eq("user_id", userId);
+
+      const targetIsSiteAdmin = targetUserRoles?.some(
+        (ur) => ur.roles?.name === "site_admin"
+      );
+
+      if (targetIsSiteAdmin && !isSiteAdmin(req.user)) {
+        return res
+          .status(403)
+          .json({ error: "Only site administrators can modify another site administrator's roles" });
+      }
 
       // Delete existing roles
       await supabase.from("user_roles").delete().eq("user_id", userId);
@@ -546,6 +592,22 @@ app.delete(
           .json({ error: "Cannot delete your own account" });
       }
 
+      // Check if target user is a site_admin - only site_admin can delete site_admin users
+      const { data: targetUserRoles } = await supabase
+        .from("user_roles")
+        .select("roles(name)")
+        .eq("user_id", userId);
+
+      const targetIsSiteAdmin = targetUserRoles?.some(
+        (ur) => ur.roles?.name === "site_admin"
+      );
+
+      if (targetIsSiteAdmin && !isSiteAdmin(req.user)) {
+        return res
+          .status(403)
+          .json({ error: "Only site administrators can delete another site administrator" });
+      }
+
       // Delete user (cascade will delete user_roles)
       const { error } = await supabase.from("users").delete().eq("id", userId);
 
@@ -579,7 +641,12 @@ app.get(
         return res.status(500).json({ error: error.message });
       }
 
-      res.json(roles);
+      // Filter out site_admin role for non-site_admin users
+      const filteredRoles = isSiteAdmin(req.user)
+        ? roles
+        : roles.filter((role) => role.name !== "site_admin");
+
+      res.json(filteredRoles);
     } catch (err) {
       console.error("Error fetching roles:", err);
       res.status(500).json({ error: "Internal server error" });
@@ -587,13 +654,13 @@ app.get(
   }
 );
 
-// Sequence management endpoints (Manager+ access required)
+// Sequence management endpoints
 
-// 1. GET /api/sequences - List all sequences
+// 1. GET /api/sequences - List all sequences (technician can view)
 app.get(
   "/api/sequences",
   authenticateToken,
-  requireRole(["manager", "admin"]),
+  requireRole(["technician", "manager", "admin"]),
   async (req, res) => {
     try {
       console.log("📋 List Sequences - Fetching all sequences");
@@ -620,14 +687,14 @@ app.get(
   }
 );
 
-// Active Sequences endpoints (Manager+ access required)
+// Active Sequences endpoints
 // IMPORTANT: These must be defined BEFORE /api/sequences/:key to avoid route conflicts
 
-// GET /api/sequences/active - Get all active SMS troubleshooting sequences
+// GET /api/sequences/active - Get all active SMS troubleshooting sequences (technician can view)
 app.get(
   "/api/sequences/active",
   authenticateToken,
-  requireRole(["manager", "admin"]),
+  requireRole(["technician", "manager", "admin"]),
   async (req, res) => {
     try {
       console.log("📱 Get Active Sequences - Fetching active sequences");
@@ -1423,13 +1490,13 @@ app.get(
   }
 );
 
-// Trigger Pattern Management endpoints (Manager+ access required)
+// Trigger Pattern Management endpoints (Admin only)
 
 // 1. GET /api/patterns - List all trigger patterns
 app.get(
   "/api/patterns",
   authenticateToken,
-  requireRole(["manager", "admin"]),
+  requireRole(["admin"]),
   async (req, res) => {
     try {
       const { sequence_key } = req.query;
@@ -1473,7 +1540,7 @@ app.get(
 app.get(
   "/api/patterns/:id",
   authenticateToken,
-  requireRole(["manager", "admin"]),
+  requireRole(["admin"]),
   async (req, res) => {
     try {
       const { id } = req.params;
@@ -1508,7 +1575,7 @@ app.get(
 app.post(
   "/api/patterns",
   authenticateToken,
-  requireRole(["manager", "admin"]),
+  requireRole(["admin"]),
   async (req, res) => {
     try {
       const {
@@ -1586,7 +1653,7 @@ app.post(
 app.put(
   "/api/patterns/:id",
   authenticateToken,
-  requireRole(["manager", "admin"]),
+  requireRole(["admin"]),
   async (req, res) => {
     try {
       const { id } = req.params;
@@ -1666,7 +1733,7 @@ app.put(
 app.put(
   "/api/patterns/:id/toggle",
   authenticateToken,
-  requireRole(["manager", "admin"]),
+  requireRole(["admin"]),
   async (req, res) => {
     try {
       const { id } = req.params;
@@ -1710,7 +1777,7 @@ app.put(
 app.delete(
   "/api/patterns/:id",
   authenticateToken,
-  requireRole(["manager", "admin"]),
+  requireRole(["admin"]),
   async (req, res) => {
     try {
       const { id } = req.params;
@@ -2186,13 +2253,13 @@ app.post("/api/tickets/create", async (req, res) => {
   }
 });
 
-// TECH ENDPOINTS (Manager+ Auth Required)
+// TECH ENDPOINTS
 
-// 6. GET /api/tickets/unassigned - Get unassigned ticket queue
+// 6. GET /api/tickets/unassigned - Get unassigned ticket queue (technician can view)
 app.get(
   "/api/tickets/unassigned",
   authenticateToken,
-  requireRole(["manager", "admin"]),
+  requireRole(["technician", "manager", "admin"]),
   async (req, res) => {
     try {
       // Parse pagination parameters
@@ -2267,11 +2334,11 @@ app.get(
   }
 );
 
-// 7. GET /api/tickets/my-tickets - Get current user's assigned tickets
+// 7. GET /api/tickets/my-tickets - Get current user's assigned tickets (technician can view)
 app.get(
   "/api/tickets/my-tickets",
   authenticateToken,
-  requireRole(["manager", "admin"]),
+  requireRole(["technician", "manager", "admin"]),
   async (req, res) => {
     try {
       // Parse pagination parameters
@@ -2339,11 +2406,11 @@ app.get(
   }
 );
 
-// 7b. GET /api/tickets/closed - Get closed/resolved/cancelled tickets with filtering and pagination
+// 7b. GET /api/tickets/closed - Get closed/resolved/cancelled tickets with filtering and pagination (technician can view)
 app.get(
   "/api/tickets/closed",
   authenticateToken,
-  requireRole(["manager", "admin"]),
+  requireRole(["technician", "manager", "admin"]),
   async (req, res) => {
     try {
       // Parse query parameters with defaults
@@ -2528,11 +2595,11 @@ app.get(
   }
 );
 
-// 8. GET /api/tickets/:uuid - Get ticket detail for tech view
+// 8. GET /api/tickets/:uuid - Get ticket detail for tech view (technician can view)
 app.get(
   "/api/tickets/:uuid",
   authenticateToken,
-  requireRole(["manager", "admin"]),
+  requireRole(["technician", "manager", "admin"]),
   validateUuid,
   async (req, res) => {
     try {
@@ -2734,11 +2801,11 @@ app.put(
   }
 );
 
-// 11. POST /api/tickets/:uuid/comments - Add tech comment
+// 11. POST /api/tickets/:uuid/comments - Add tech comment (technician can comment)
 app.post(
   "/api/tickets/:uuid/comments",
   authenticateToken,
-  requireRole(["manager", "admin"]),
+  requireRole(["technician", "manager", "admin"]),
   validateUuid,
   async (req, res) => {
     try {
@@ -2810,11 +2877,11 @@ app.post(
   }
 );
 
-// 12. GET /api/tickets/:uuid/attachments - Get ticket attachments
+// 12. GET /api/tickets/:uuid/attachments - Get ticket attachments (technician can view)
 app.get(
   "/api/tickets/:uuid/attachments",
   authenticateToken,
-  requireRole(["manager", "admin"]),
+  requireRole(["technician", "manager", "admin"]),
   validateUuid,
   async (req, res) => {
     try {
@@ -2898,11 +2965,11 @@ app.put(
   }
 );
 
-// 14. GET /api/tickets/:uuid/similar - Find similar resolved tickets
+// 14. GET /api/tickets/:uuid/similar - Find similar resolved tickets (technician can view)
 app.get(
   "/api/tickets/:uuid/similar",
   authenticateToken,
-  requireRole(["tech", "manager", "admin"]),
+  requireRole(["technician", "manager", "admin"]),
   validateUuid,
   async (req, res) => {
     try {
@@ -3024,11 +3091,11 @@ app.get(
   }
 );
 
-// 15. POST /api/tickets/:uuid/mark-read - Mark customer comments as read by tech
+// 15. POST /api/tickets/:uuid/mark-read - Mark customer comments as read by tech (technician can mark read)
 app.post(
   "/api/tickets/:uuid/mark-read",
   authenticateToken,
-  requireRole(["manager", "admin"]),
+  requireRole(["technician", "manager", "admin"]),
   validateUuid,
   async (req, res) => {
     try {
@@ -5017,9 +5084,17 @@ app.post(
         return res.status(400).json({ error: "Invalid role specified" });
       }
 
-      // Security: Only admins can create admin users
+      // Security: Only site_admin can create site_admin users
+      if (role_name === "site_admin" && !isSiteAdmin(req.user)) {
+        return res.status(403).json({
+          error: "Only site administrators can create site_admin users",
+        });
+      }
+
+      // Security: Only site_admin or users with manage_roles permission can create admin users
       if (
         role_name === "admin" &&
+        !isSiteAdmin(req.user) &&
         !req.user.permissions.includes("manage_roles")
       ) {
         return res.status(403).json({
@@ -5101,8 +5176,31 @@ app.put(
         });
       }
 
+      // Security: Check if target user is a site_admin - only site_admin can modify site_admin users
+      const { data: targetUserRoles } = await supabase
+        .from("user_roles")
+        .select("roles(name)")
+        .eq("user_id", id);
+
+      const targetIsSiteAdmin = targetUserRoles?.some(
+        (ur) => ur.roles?.name === "site_admin"
+      );
+
+      if (targetIsSiteAdmin && !isSiteAdmin(req.user)) {
+        return res.status(403).json({
+          error: "Only site administrators can modify another site administrator",
+        });
+      }
+
       // If changing role
       if (role_name) {
+        // Security: Only site_admin can assign site_admin role
+        if (role_name === "site_admin" && !isSiteAdmin(req.user)) {
+          return res.status(403).json({
+            error: "Only site administrators can assign the site_admin role",
+          });
+        }
+
         // Check if role exists
         const { data: roleData, error: roleError } = await supabase
           .from("roles")
@@ -5114,9 +5212,10 @@ app.put(
           return res.status(400).json({ error: "Invalid role specified" });
         }
 
-        // Security: Only admins can assign admin role
+        // Security: Only site_admin or users with manage_roles permission can assign admin role
         if (
           role_name === "admin" &&
+          !isSiteAdmin(req.user) &&
           !req.user.permissions.includes("manage_roles")
         ) {
           return res.status(403).json({
@@ -5179,6 +5278,22 @@ app.delete(
         });
       }
 
+      // Security: Check if target user is a site_admin - only site_admin can deactivate site_admin users
+      const { data: targetUserRoles } = await supabase
+        .from("user_roles")
+        .select("roles(name)")
+        .eq("user_id", id);
+
+      const targetIsSiteAdmin = targetUserRoles?.some(
+        (ur) => ur.roles?.name === "site_admin"
+      );
+
+      if (targetIsSiteAdmin && !isSiteAdmin(req.user)) {
+        return res.status(403).json({
+          error: "Only site administrators can deactivate another site administrator",
+        });
+      }
+
       // Soft delete - just mark as inactive
       const { error } = await supabase
         .from("users")
@@ -5218,6 +5333,22 @@ app.put(
       if (id === req.user.id) {
         return res.status(403).json({
           error: "Use the profile settings to change your own password",
+        });
+      }
+
+      // Security: Check if target user is a site_admin - only site_admin can reset site_admin passwords
+      const { data: targetUserRoles } = await supabase
+        .from("user_roles")
+        .select("roles(name)")
+        .eq("user_id", id);
+
+      const targetIsSiteAdmin = targetUserRoles?.some(
+        (ur) => ur.roles?.name === "site_admin"
+      );
+
+      if (targetIsSiteAdmin && !isSiteAdmin(req.user)) {
+        return res.status(403).json({
+          error: "Only site administrators can reset another site administrator's password",
         });
       }
 

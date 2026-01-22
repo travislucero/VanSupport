@@ -8,8 +8,11 @@ import { theme } from '../styles/theme';
 import { List, Plus, Edit, Trash2, ToggleLeft, ToggleRight, Search, Loader } from 'lucide-react';
 
 function Sequences() {
-  const { user, logout, hasRole } = useAuth();
+  const { user, logout, hasRole, isSiteAdmin } = useAuth();
   const navigate = useNavigate();
+
+  // Check if user can manage sequences (site_admin, admin, or manager)
+  const canManageSequences = isSiteAdmin() || hasRole('admin') || hasRole('manager');
 
   const [sequences, setSequences] = useState([]);
   const [filteredSequences, setFilteredSequences] = useState([]);
@@ -137,7 +140,7 @@ function Sequences() {
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: theme.colors.background.primary }}>
-      <Sidebar user={user} onLogout={logout} hasRole={hasRole} />
+      <Sidebar user={user} onLogout={logout} hasRole={hasRole} isSiteAdmin={isSiteAdmin} />
 
       <div style={{ marginLeft: '260px', flex: 1, padding: theme.spacing['2xl'] }}>
         {/* Header */}
@@ -162,29 +165,31 @@ function Sequences() {
               </p>
             </div>
 
-            {/* Create New Button */}
-            <button
-              onClick={() => navigate('/sequences/create')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: theme.spacing.sm,
-                padding: `${theme.spacing.md} ${theme.spacing.lg}`,
-                backgroundColor: theme.colors.accent.primary,
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: theme.radius.md,
-                fontSize: theme.fontSize.base,
-                fontWeight: theme.fontWeight.medium,
-                cursor: 'pointer',
-                transition: 'background-color 0.2s',
-              }}
-              onMouseEnter={(e) => e.target.style.backgroundColor = theme.colors.accent.primaryHover}
-              onMouseLeave={(e) => e.target.style.backgroundColor = theme.colors.accent.primary}
-            >
-              <Plus size={20} />
-              Create New Sequence
-            </button>
+            {/* Create New Button - only for manager+ */}
+            {canManageSequences && (
+              <button
+                onClick={() => navigate('/sequences/create')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: theme.spacing.sm,
+                  padding: `${theme.spacing.md} ${theme.spacing.lg}`,
+                  backgroundColor: theme.colors.accent.primary,
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: theme.radius.md,
+                  fontSize: theme.fontSize.base,
+                  fontWeight: theme.fontWeight.medium,
+                  cursor: 'pointer',
+                  transition: 'background-color 0.2s',
+                }}
+                onMouseEnter={(e) => e.target.style.backgroundColor = theme.colors.accent.primaryHover}
+                onMouseLeave={(e) => e.target.style.backgroundColor = theme.colors.accent.primary}
+              >
+                <Plus size={20} />
+                Create New Sequence
+              </button>
+            )}
           </div>
         </div>
 
@@ -286,12 +291,16 @@ function Sequences() {
                     <th style={{ padding: theme.spacing.md, textAlign: 'center', color: theme.colors.text.primary, fontWeight: theme.fontWeight.semibold, fontSize: theme.fontSize.sm }}>
                       Steps
                     </th>
-                    <th style={{ padding: theme.spacing.md, textAlign: 'center', color: theme.colors.text.primary, fontWeight: theme.fontWeight.semibold, fontSize: theme.fontSize.sm }}>
-                      Status
-                    </th>
-                    <th style={{ padding: theme.spacing.md, textAlign: 'center', color: theme.colors.text.primary, fontWeight: theme.fontWeight.semibold, fontSize: theme.fontSize.sm }}>
-                      Actions
-                    </th>
+                    {canManageSequences && (
+                      <th style={{ padding: theme.spacing.md, textAlign: 'center', color: theme.colors.text.primary, fontWeight: theme.fontWeight.semibold, fontSize: theme.fontSize.sm }}>
+                        Status
+                      </th>
+                    )}
+                    {canManageSequences && (
+                      <th style={{ padding: theme.spacing.md, textAlign: 'center', color: theme.colors.text.primary, fontWeight: theme.fontWeight.semibold, fontSize: theme.fontSize.sm }}>
+                        Actions
+                      </th>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
@@ -300,12 +309,12 @@ function Sequences() {
                       key={sequence.sequence_key}
                       style={{
                         borderBottom: index < filteredSequences.length - 1 ? `1px solid ${theme.colors.border.light}` : 'none',
-                        cursor: 'pointer',
+                        cursor: canManageSequences ? 'pointer' : 'default',
                         transition: 'background-color 0.2s',
                       }}
-                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = theme.colors.background.hover}
+                      onMouseEnter={(e) => canManageSequences && (e.currentTarget.style.backgroundColor = theme.colors.background.hover)}
                       onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                      onClick={() => navigate(`/sequences/${sequence.sequence_key}`)}
+                      onClick={() => canManageSequences && navigate(`/sequences/${sequence.sequence_key}`)}
                     >
                       <td style={{ padding: theme.spacing.md }}>
                         <div style={{ fontSize: theme.fontSize.base, fontWeight: theme.fontWeight.medium, color: theme.colors.accent.primary }}>
@@ -354,69 +363,73 @@ function Sequences() {
                           {sequence.total_steps || 0}
                         </span>
                       </td>
-                      <td style={{ padding: theme.spacing.md, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
-                        <button
-                          onClick={() => toggleSequenceActive(sequence.sequence_key, sequence.is_active)}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: theme.spacing.xs,
-                            padding: theme.spacing.xs,
-                            color: sequence.is_active ? theme.colors.accent.success : theme.colors.text.tertiary,
-                            transition: 'color 0.2s',
-                          }}
-                          title={sequence.is_active ? 'Active - Click to disable' : 'Inactive - Click to enable'}
-                        >
-                          {sequence.is_active ? <ToggleRight size={24} /> : <ToggleLeft size={24} />}
-                        </button>
-                      </td>
-                      <td style={{ padding: theme.spacing.md, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
-                        <div style={{ display: 'flex', gap: theme.spacing.sm, justifyContent: 'center' }}>
+                      {canManageSequences && (
+                        <td style={{ padding: theme.spacing.md, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
                           <button
-                            onClick={() => navigate(`/sequences/${sequence.sequence_key}`)}
+                            onClick={() => toggleSequenceActive(sequence.sequence_key, sequence.is_active)}
                             style={{
                               background: 'none',
                               border: 'none',
                               cursor: 'pointer',
-                              padding: theme.spacing.xs,
-                              color: theme.colors.accent.primary,
-                              display: 'flex',
+                              display: 'inline-flex',
                               alignItems: 'center',
-                              justifyContent: 'center',
-                              borderRadius: theme.radius.sm,
-                              transition: 'background-color 0.2s',
-                            }}
-                            onMouseEnter={(e) => e.target.style.backgroundColor = theme.colors.background.tertiary}
-                            onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
-                            title="Edit sequence"
-                          >
-                            <Edit size={18} />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteClick(sequence)}
-                            style={{
-                              background: 'none',
-                              border: 'none',
-                              cursor: 'pointer',
+                              gap: theme.spacing.xs,
                               padding: theme.spacing.xs,
-                              color: theme.colors.accent.danger,
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              borderRadius: theme.radius.sm,
-                              transition: 'background-color 0.2s',
+                              color: sequence.is_active ? theme.colors.accent.success : theme.colors.text.tertiary,
+                              transition: 'color 0.2s',
                             }}
-                            onMouseEnter={(e) => e.target.style.backgroundColor = theme.colors.background.tertiary}
-                            onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
-                            title="Delete sequence"
+                            title={sequence.is_active ? 'Active - Click to disable' : 'Inactive - Click to enable'}
                           >
-                            <Trash2 size={18} />
+                            {sequence.is_active ? <ToggleRight size={24} /> : <ToggleLeft size={24} />}
                           </button>
-                        </div>
-                      </td>
+                        </td>
+                      )}
+                      {canManageSequences && (
+                        <td style={{ padding: theme.spacing.md, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                          <div style={{ display: 'flex', gap: theme.spacing.sm, justifyContent: 'center' }}>
+                            <button
+                              onClick={() => navigate(`/sequences/${sequence.sequence_key}`)}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                cursor: 'pointer',
+                                padding: theme.spacing.xs,
+                                color: theme.colors.accent.primary,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                borderRadius: theme.radius.sm,
+                                transition: 'background-color 0.2s',
+                              }}
+                              onMouseEnter={(e) => e.target.style.backgroundColor = theme.colors.background.tertiary}
+                              onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                              title="Edit sequence"
+                            >
+                              <Edit size={18} />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteClick(sequence)}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                cursor: 'pointer',
+                                padding: theme.spacing.xs,
+                                color: theme.colors.accent.danger,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                borderRadius: theme.radius.sm,
+                                transition: 'background-color 0.2s',
+                              }}
+                              onMouseEnter={(e) => e.target.style.backgroundColor = theme.colors.background.tertiary}
+                              onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                              title="Delete sequence"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>

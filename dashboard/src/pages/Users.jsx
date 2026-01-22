@@ -25,7 +25,7 @@ import {
 } from '../utils/validators';
 
 function Users() {
-  const { user, logout, hasPermission, hasRole } = useAuth();
+  const { user, logout, hasPermission, hasRole, isSiteAdmin } = useAuth();
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -100,9 +100,8 @@ function Users() {
         // If roles endpoint doesn't exist, use default roles
         setRoles([
           { name: 'admin', description: 'Full system access' },
-          { name: 'manager', description: 'Management access' },
-          { name: 'technician', description: 'Technical access' },
-          { name: 'viewer', description: 'Read-only access' },
+          { name: 'manager', description: 'Operational access' },
+          { name: 'technician', description: 'View-only field access' },
         ]);
         return;
       }
@@ -115,9 +114,8 @@ function Users() {
       // Fallback to default roles
       setRoles([
         { name: 'admin', description: 'Full system access' },
-        { name: 'manager', description: 'Management access' },
-        { name: 'technician', description: 'Technical access' },
-        { name: 'viewer', description: 'Read-only access' },
+        { name: 'manager', description: 'Operational access' },
+        { name: 'technician', description: 'View-only field access' },
       ]);
     }
   };
@@ -617,11 +615,13 @@ function Users() {
           }}
         >
           <option value="">Select role...</option>
-          {roles.map(role => (
-            <option key={role.name} value={role.name}>
-              {role.name.charAt(0).toUpperCase() + role.name.slice(1)} - {role.description}
-            </option>
-          ))}
+          {roles
+            .filter(role => isSiteAdmin() || role.name !== 'site_admin')
+            .map(role => (
+              <option key={role.name} value={role.name}>
+                {role.name.charAt(0).toUpperCase() + role.name.slice(1)} - {role.description}
+              </option>
+            ))}
         </select>
         {formErrors.role_name && (
           <p style={{ color: theme.colors.accent.danger, fontSize: theme.fontSize.xs, marginTop: theme.spacing.xs }}>
@@ -635,9 +635,9 @@ function Users() {
         )}
       </div>
     </div>
-  ), [userForm, formErrors, handleFormFieldChange, roles, editingUser, user]);
+  ), [userForm, formErrors, handleFormFieldChange, roles, editingUser, user, isSiteAdmin]);
 
-  const canManageUsers = hasPermission('manage_users');
+  const canManageUsers = hasPermission('manage_users') || isSiteAdmin();
 
   return (
     <div style={{
@@ -645,7 +645,7 @@ function Users() {
       minHeight: '100vh',
       backgroundColor: theme.colors.background.primary,
     }}>
-      <Sidebar user={user} onLogout={logout} hasRole={hasRole} />
+      <Sidebar user={user} onLogout={logout} hasRole={hasRole} isSiteAdmin={isSiteAdmin} />
 
       <main style={{
         flex: 1,
@@ -1034,85 +1034,105 @@ function Users() {
                           fontSize: theme.fontSize.sm,
                           textAlign: 'right',
                         }}>
-                          <div style={{ display: 'flex', gap: theme.spacing.sm, justifyContent: 'flex-end' }}>
-                            <button
-                              onClick={() => openEditModal(u)}
-                              style={{
-                                padding: theme.spacing.sm,
-                                backgroundColor: 'transparent',
-                                border: `1px solid ${theme.colors.border.light}`,
-                                borderRadius: theme.radius.sm,
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                color: theme.colors.text.secondary,
-                                transition: 'all 0.2s',
-                              }}
-                              onMouseEnter={(e) => {
-                                e.target.style.borderColor = theme.colors.accent.primary;
-                                e.target.style.color = theme.colors.accent.primary;
-                              }}
-                              onMouseLeave={(e) => {
-                                e.target.style.borderColor = theme.colors.border.light;
-                                e.target.style.color = theme.colors.text.secondary;
-                              }}
-                            >
-                              <Edit size={14} />
-                            </button>
-                            {u.id !== user.id && (
-                              <button
-                                onClick={() => openPasswordModal(u)}
-                                style={{
-                                  padding: theme.spacing.sm,
-                                  backgroundColor: 'transparent',
-                                  border: `1px solid ${theme.colors.border.light}`,
-                                  borderRadius: theme.radius.sm,
-                                  cursor: 'pointer',
-                                  display: 'flex',
-                                  alignItems: 'center',
+                          {/* Only site_admin can modify other site_admin users */}
+                          {(() => {
+                            const targetIsSiteAdmin = u.role?.name === 'site_admin';
+                            const canModifyThisUser = isSiteAdmin() || !targetIsSiteAdmin;
+
+                            if (!canModifyThisUser && u.id !== user.id) {
+                              return (
+                                <span style={{
+                                  fontSize: theme.fontSize.xs,
                                   color: theme.colors.text.secondary,
-                                  transition: 'all 0.2s',
-                                }}
-                                onMouseEnter={(e) => {
-                                  e.target.style.borderColor = theme.colors.accent.warning;
-                                  e.target.style.color = theme.colors.accent.warning;
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.target.style.borderColor = theme.colors.border.light;
-                                  e.target.style.color = theme.colors.text.secondary;
-                                }}
-                                title="Reset password"
-                              >
-                                <Key size={14} />
-                              </button>
-                            )}
-                            {u.is_active && u.id !== user.id && (
-                              <button
-                                onClick={() => openDeactivateModal(u)}
-                                style={{
-                                  padding: theme.spacing.sm,
-                                  backgroundColor: 'transparent',
-                                  border: `1px solid ${theme.colors.border.light}`,
-                                  borderRadius: theme.radius.sm,
-                                  cursor: 'pointer',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  color: theme.colors.text.secondary,
-                                  transition: 'all 0.2s',
-                                }}
-                                onMouseEnter={(e) => {
-                                  e.target.style.borderColor = theme.colors.accent.danger;
-                                  e.target.style.color = theme.colors.accent.danger;
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.target.style.borderColor = theme.colors.border.light;
-                                  e.target.style.color = theme.colors.text.secondary;
-                                }}
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            )}
-                          </div>
+                                  fontStyle: 'italic',
+                                }}>
+                                  Site admin
+                                </span>
+                              );
+                            }
+
+                            return (
+                              <div style={{ display: 'flex', gap: theme.spacing.sm, justifyContent: 'flex-end' }}>
+                                <button
+                                  onClick={() => openEditModal(u)}
+                                  style={{
+                                    padding: theme.spacing.sm,
+                                    backgroundColor: 'transparent',
+                                    border: `1px solid ${theme.colors.border.light}`,
+                                    borderRadius: theme.radius.sm,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    color: theme.colors.text.secondary,
+                                    transition: 'all 0.2s',
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.target.style.borderColor = theme.colors.accent.primary;
+                                    e.target.style.color = theme.colors.accent.primary;
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.target.style.borderColor = theme.colors.border.light;
+                                    e.target.style.color = theme.colors.text.secondary;
+                                  }}
+                                >
+                                  <Edit size={14} />
+                                </button>
+                                {u.id !== user.id && (
+                                  <button
+                                    onClick={() => openPasswordModal(u)}
+                                    style={{
+                                      padding: theme.spacing.sm,
+                                      backgroundColor: 'transparent',
+                                      border: `1px solid ${theme.colors.border.light}`,
+                                      borderRadius: theme.radius.sm,
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      color: theme.colors.text.secondary,
+                                      transition: 'all 0.2s',
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      e.target.style.borderColor = theme.colors.accent.warning;
+                                      e.target.style.color = theme.colors.accent.warning;
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      e.target.style.borderColor = theme.colors.border.light;
+                                      e.target.style.color = theme.colors.text.secondary;
+                                    }}
+                                    title="Reset password"
+                                  >
+                                    <Key size={14} />
+                                  </button>
+                                )}
+                                {u.is_active && u.id !== user.id && (
+                                  <button
+                                    onClick={() => openDeactivateModal(u)}
+                                    style={{
+                                      padding: theme.spacing.sm,
+                                      backgroundColor: 'transparent',
+                                      border: `1px solid ${theme.colors.border.light}`,
+                                      borderRadius: theme.radius.sm,
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      color: theme.colors.text.secondary,
+                                      transition: 'all 0.2s',
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      e.target.style.borderColor = theme.colors.accent.danger;
+                                      e.target.style.color = theme.colors.accent.danger;
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      e.target.style.borderColor = theme.colors.border.light;
+                                      e.target.style.color = theme.colors.text.secondary;
+                                    }}
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </td>
                       )}
                     </tr>

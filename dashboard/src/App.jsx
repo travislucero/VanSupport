@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   BarChart,
   Bar,
@@ -27,7 +28,8 @@ import Select from "./components/Select";
 import { theme } from "./styles/theme";
 
 function App() {
-  const { user, isAuthenticated, authLoading, logout, hasPermission, hasRole } = useAuth();
+  const { user, isAuthenticated, authLoading, logout, hasPermission, hasRole, isSiteAdmin } = useAuth();
+  const navigate = useNavigate();
   const [data, setData] = useState([]);
   const [summary, setSummary] = useState(null);
   const [issueDistribution, setIssueDistribution] = useState([]);
@@ -278,8 +280,36 @@ function App() {
     );
   }
 
+  // Redirect technicians to the tickets page - they don't need the analytics dashboard
+  useEffect(() => {
+    if (isAuthenticated && hasRole('technician') && !hasRole('manager') && !hasRole('admin') && !isSiteAdmin()) {
+      navigate('/tickets', { replace: true });
+    }
+  }, [isAuthenticated, hasRole, isSiteAdmin, navigate]);
+
   if (!isAuthenticated) {
     return <Login />;
+  }
+
+  // Show loading while redirecting technicians
+  if (hasRole('technician') && !hasRole('manager') && !hasRole('admin') && !isSiteAdmin()) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          minHeight: "100vh",
+          backgroundColor: theme.colors.background.page,
+          color: theme.colors.text.primary,
+          gap: theme.spacing.lg,
+        }}
+      >
+        <Loader2 size={40} style={{ animation: 'spin 1s linear infinite' }} color={theme.colors.accent.primary} />
+        <span style={{ fontSize: theme.fontSize.lg, color: theme.colors.text.secondary }}>Redirecting...</span>
+      </div>
+    );
   }
 
   if (loading) {
@@ -304,7 +334,7 @@ function App() {
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", backgroundColor: theme.colors.background.page }}>
-      <Sidebar user={user} onLogout={logout} hasRole={hasRole} />
+      <Sidebar user={user} onLogout={logout} hasRole={hasRole} isSiteAdmin={isSiteAdmin} />
 
       <div style={{ marginLeft: "260px", flex: 1, padding: theme.spacing['2xl'] }}>
         {/* Header */}
