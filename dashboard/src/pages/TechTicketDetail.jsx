@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  Ticket,
   ArrowLeft,
   User,
   Phone,
@@ -22,11 +21,12 @@ import {
   Truck,
   ChevronDown,
   ChevronUp,
-  Image,
   Camera,
   Play,
   Lightbulb,
-  ExternalLink
+  ExternalLink,
+  FileText,
+  Link2
 } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import Card from '../components/Card';
@@ -36,6 +36,138 @@ import { useAuth } from '../hooks/useAuth';
 import { theme } from '../styles/theme';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+
+// Reusable button styles generator for consistency
+const getButtonStyles = (variant, disabled = false) => {
+  const baseStyles = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.spacing.sm,
+    padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
+    borderRadius: theme.radius.md,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    opacity: disabled ? 0.5 : 1,
+    transition: `all ${theme.transitions.fast}`,
+    border: 'none',
+    whiteSpace: 'nowrap',
+  };
+
+  const variants = {
+    primary: {
+      backgroundColor: theme.colors.accent.primary,
+      color: theme.colors.text.inverse,
+    },
+    success: {
+      backgroundColor: theme.colors.accent.success,
+      color: theme.colors.text.inverse,
+    },
+    warning: {
+      backgroundColor: theme.colors.accent.warning,
+      color: theme.colors.text.inverse,
+    },
+    danger: {
+      backgroundColor: theme.colors.accent.danger,
+      color: theme.colors.text.inverse,
+    },
+    secondary: {
+      backgroundColor: theme.colors.background.tertiary,
+      color: theme.colors.text.secondary,
+      border: `1px solid ${theme.colors.border.medium}`,
+    },
+    ghost: {
+      backgroundColor: 'transparent',
+      color: theme.colors.text.secondary,
+    },
+    purple: {
+      backgroundColor: theme.colors.chart.purple,
+      color: theme.colors.text.inverse,
+    },
+  };
+
+  return { ...baseStyles, ...variants[variant] };
+};
+
+// Section header component for consistent styling
+const SectionHeader = ({ icon: Icon, title, badge, action }) => (
+  <div style={{
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: theme.spacing.lg,
+  }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+      {Icon && <Icon size={18} style={{ color: theme.colors.text.tertiary }} />}
+      <h3 style={{
+        color: theme.colors.text.primary,
+        fontSize: theme.fontSize.sm,
+        fontWeight: theme.fontWeight.semibold,
+        textTransform: 'uppercase',
+        letterSpacing: '0.05em',
+        margin: 0,
+      }}>
+        {title}
+      </h3>
+      {badge !== undefined && (
+        <Badge variant="primary" size="sm" soft>
+          {badge}
+        </Badge>
+      )}
+    </div>
+    {action}
+  </div>
+);
+
+// Info row component for displaying label-value pairs
+const InfoRow = ({ icon: Icon, label, value, href, isEmail }) => {
+  const content = href ? (
+    <a
+      href={href}
+      style={{
+        color: theme.colors.accent.primary,
+        fontSize: theme.fontSize.sm,
+        textDecoration: 'none',
+        wordBreak: isEmail ? 'break-all' : 'normal',
+        transition: `color ${theme.transitions.fast}`,
+      }}
+      onMouseEnter={(e) => (e.currentTarget.style.textDecoration = 'underline')}
+      onMouseLeave={(e) => (e.currentTarget.style.textDecoration = 'none')}
+    >
+      {value}
+    </a>
+  ) : (
+    <span style={{
+      color: theme.colors.text.primary,
+      fontSize: theme.fontSize.sm,
+      fontWeight: theme.fontWeight.medium,
+    }}>
+      {value}
+    </span>
+  );
+
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: theme.spacing.sm,
+      padding: `${theme.spacing.sm} 0`,
+    }}>
+      <Icon size={18} style={{ color: theme.colors.text.tertiary, flexShrink: 0 }} />
+      {label && (
+        <span style={{
+          color: theme.colors.text.tertiary,
+          fontSize: theme.fontSize.xs,
+          minWidth: '60px',
+        }}>
+          {label}:
+        </span>
+      )}
+      {content}
+    </div>
+  );
+};
 
 // Auto-refresh interval for comments (10 seconds)
 const COMMENT_REFRESH_INTERVAL = 10000;
@@ -93,6 +225,14 @@ const TechTicketDetail = () => {
   const similarModalCloseRef = useRef(null);
   const resolveModalTriggerRef = useRef(null);
   const resolveModalCloseRef = useRef(null);
+  const lightboxTriggerRef = useRef(null);
+  const lightboxCloseRef = useRef(null);
+
+  // Ref for tracking last comment count to avoid stale closures in fetchTicket
+  const lastCommentCountRef = useRef(0);
+
+  // Ref to track mounted state for safe setTimeout callbacks
+  const isMountedRef = useRef(true);
 
   const [ticket, setTicket] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -139,6 +279,8 @@ const TechTicketDetail = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   // Fetch ticket detail
+  // Uses lastCommentCountRef to avoid stale closure issues - the ref is always current
+  // while avoiding unnecessary callback recreation when comment count changes
   const fetchTicket = useCallback(async (silent = false) => {
     try {
       if (!silent) setLoading(true);
@@ -160,11 +302,13 @@ const TechTicketDetail = () => {
       const data = await response.json();
       setTicket(data);
 
-      // Check for new comments
+      // Check for new comments using ref to avoid stale closure
       const currentCommentCount = data.comments?.length || 0;
-      if (silent && lastCommentCount > 0 && currentCommentCount > lastCommentCount) {
+      if (silent && lastCommentCountRef.current > 0 && currentCommentCount > lastCommentCountRef.current) {
         setHasNewComments(true);
       }
+      // Update both ref (for comparison logic) and state (for display if needed)
+      lastCommentCountRef.current = currentCommentCount;
       setLastCommentCount(currentCommentCount);
     } catch (error) {
       console.error('Error fetching ticket:', error);
@@ -172,7 +316,7 @@ const TechTicketDetail = () => {
     } finally {
       setLoading(false);
     }
-  }, [uuid, navigate, showToast, lastCommentCount]);
+  }, [uuid, navigate, showToast]);
 
   // Fetch attachments for the ticket
   const fetchAttachments = useCallback(async () => {
@@ -236,6 +380,7 @@ const TechTicketDetail = () => {
   }, [uuid, showToast]);
 
   // Handle using a similar ticket's resolution
+  // Uses isMountedRef to prevent state updates after unmount (memory leak prevention)
   const handleUseSolution = useCallback((resolution) => {
     // Copy resolution text to comment textarea
     setCommentText(resolution);
@@ -245,17 +390,29 @@ const TechTicketDetail = () => {
     setShowSimilarModal(false);
     // Trigger the highlight animation
     setHighlightResolution(true);
-    // Stop the animation after 3 seconds
+    // Stop the animation after 3 seconds (check if mounted before updating state)
     setTimeout(() => {
-      setHighlightResolution(false);
+      if (isMountedRef.current) {
+        setHighlightResolution(false);
+      }
     }, 3000);
     // Scroll to the comment form after a brief delay to allow modal to close
     setTimeout(() => {
-      commentFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (isMountedRef.current) {
+        commentFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
     }, 100);
     // Show feedback toast
     showToast('Resolution copied - review and submit when ready', 'success');
   }, [showToast]);
+
+  // Cleanup: mark component as unmounted to prevent state updates from pending timeouts
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   // Initial fetch
   useEffect(() => {
@@ -301,6 +458,8 @@ const TechTicketDetail = () => {
         }
         if (lightboxMedia.type) {
           setLightboxMedia({ type: null, url: null });
+          // Return focus to trigger element when lightbox closes via Escape
+          lightboxTriggerRef.current?.focus();
         }
       }
     };
@@ -374,6 +533,39 @@ const TechTicketDetail = () => {
     return () => document.removeEventListener('keydown', handleFocusTrap);
   }, [showResolveModal]);
 
+  // Lightbox Modal: Auto-focus close button and trap focus within modal
+  useEffect(() => {
+    if (!lightboxMedia.type) return;
+
+    // Auto-focus the close button when lightbox opens
+    lightboxCloseRef.current?.focus();
+
+    // Focus trap: keep focus within the lightbox
+    const handleFocusTrap = (e) => {
+      if (e.key !== 'Tab') return;
+
+      const modal = document.getElementById('lightbox-modal');
+      if (!modal) return;
+
+      const focusableElements = modal.querySelectorAll(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"]), video'
+      );
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (e.shiftKey && document.activeElement === firstElement) {
+        e.preventDefault();
+        lastElement?.focus();
+      } else if (!e.shiftKey && document.activeElement === lastElement) {
+        e.preventDefault();
+        firstElement?.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleFocusTrap);
+    return () => document.removeEventListener('keydown', handleFocusTrap);
+  }, [lightboxMedia.type]);
+
   // Track window resize for responsive modal styling
   useEffect(() => {
     const handleResize = () => {
@@ -393,8 +585,8 @@ const TechTicketDetail = () => {
   };
 
   // Update priority
-  const handlePriorityChange = async (newPriority) => {
-    if (newPriority === ticket.priority) return;
+  const handlePriorityChange = useCallback(async (newPriority) => {
+    if (newPriority === ticket?.priority) return;
 
     setUpdatingPriority(true);
     try {
@@ -419,11 +611,11 @@ const TechTicketDetail = () => {
     } finally {
       setUpdatingPriority(false);
     }
-  };
+  }, [ticket?.priority, uuid, showToast, fetchTicket]);
 
   // Quick status update
-  const handleQuickStatusUpdate = async (newStatus) => {
-    if (newStatus === ticket.status) {
+  const handleQuickStatusUpdate = useCallback(async (newStatus) => {
+    if (newStatus === ticket?.status) {
       showToast('Status unchanged', 'info');
       return;
     }
@@ -453,10 +645,10 @@ const TechTicketDetail = () => {
     } finally {
       setUpdating(false);
     }
-  };
+  }, [ticket?.status, uuid, showToast, fetchTicket]);
 
   // Add comment
-  const handleAddComment = async (e) => {
+  const handleAddComment = useCallback(async (e) => {
     e.preventDefault();
 
     if (!commentText.trim() || commentText.trim().length < 10) {
@@ -527,10 +719,10 @@ const TechTicketDetail = () => {
     } finally {
       setAddingComment(false);
     }
-  };
+  }, [commentText, isResolution, ticket?.status, uuid, showToast, fetchTicket]);
 
   // Assign ticket to self
-  const handleAssignToMe = async () => {
+  const handleAssignToMe = useCallback(async () => {
     setUpdating(true);
     try {
       const response = await fetch(`${API_BASE_URL}/api/tickets/${uuid}/assign-to-me`, {
@@ -568,12 +760,12 @@ const TechTicketDetail = () => {
     } finally {
       setUpdating(false);
     }
-  };
+  }, [uuid, showToast, fetchTicket]);
 
   // Handle resolve ticket button click
   // Shows modal if no resolution exists, otherwise resolves directly
-  const handleResolveClick = () => {
-    const hasResolution = ticket.resolution || ticket.comments?.some(c => c.is_resolution);
+  const handleResolveClick = useCallback(() => {
+    const hasResolution = ticket?.resolution || ticket?.comments?.some(c => c.is_resolution);
     if (!hasResolution) {
       // Show modal to collect resolution
       setResolutionText('');
@@ -584,10 +776,10 @@ const TechTicketDetail = () => {
       // Resolution already exists, resolve directly
       handleQuickStatusUpdate('resolved');
     }
-  };
+  }, [ticket?.resolution, ticket?.comments, handleQuickStatusUpdate]);
 
   // Submit resolution from modal
-  const handleSubmitResolution = async () => {
+  const handleSubmitResolution = useCallback(async () => {
     setSubmittingResolution(true);
     try {
       // If resolution text provided and not skipping, add resolution comment first
@@ -645,42 +837,42 @@ const TechTicketDetail = () => {
     } finally {
       setSubmittingResolution(false);
     }
-  };
+  }, [resolutionText, skipResolution, resolutionCommentPosted, uuid, showToast, fetchTicket]);
 
-  // Get status badge config
+  // Get status badge config using Badge component variants
   const getStatusBadge = (status) => {
     const configs = {
-      open: { color: 'blue', icon: Clock, label: 'Open' },
-      assigned: { color: 'purple', icon: UserCheck, label: 'Assigned' },
-      in_progress: { color: 'yellow', icon: Wrench, label: 'In Progress' },
-      waiting_customer: { color: 'orange', icon: MessageCircle, label: 'Waiting Customer' },
-      resolved: { color: 'green', icon: CheckCircle, label: 'Resolved' },
-      closed: { color: 'gray', icon: X, label: 'Closed' },
-      cancelled: { color: 'red', icon: XCircle, label: 'Cancelled' }
+      open: { variant: 'info', icon: Clock, label: 'Open' },
+      assigned: { variant: 'secondary', icon: UserCheck, label: 'Assigned' },
+      in_progress: { variant: 'warning', icon: Wrench, label: 'In Progress' },
+      waiting_customer: { variant: 'warning', icon: MessageCircle, label: 'Waiting on Customer' },
+      resolved: { variant: 'success', icon: CheckCircle, label: 'Resolved' },
+      closed: { variant: 'default', icon: X, label: 'Closed' },
+      cancelled: { variant: 'danger', icon: XCircle, label: 'Cancelled' }
     };
-    return configs[status] || { color: 'gray', icon: Clock, label: status };
+    return configs[status] || { variant: 'default', icon: Clock, label: status };
   };
 
   // Get priority badge config
   const getPriorityBadge = (priority) => {
     const configs = {
-      urgent: { color: 'red', icon: AlertTriangle, label: 'Urgent' },
-      high: { color: 'orange', icon: ArrowUp, label: 'High' },
-      normal: { color: 'blue', icon: Minus, label: 'Normal' },
-      low: { color: 'gray', icon: ArrowDown, label: 'Low' }
+      urgent: { variant: 'danger', icon: AlertTriangle, label: 'Urgent' },
+      high: { variant: 'warning', icon: ArrowUp, label: 'High' },
+      normal: { variant: 'info', icon: Minus, label: 'Normal' },
+      low: { variant: 'default', icon: ArrowDown, label: 'Low' }
     };
-    return configs[priority] || { color: 'gray', icon: Minus, label: priority };
+    return configs[priority] || { variant: 'default', icon: Minus, label: priority };
   };
 
   // Get urgency badge config
   const getUrgencyBadge = (urgency) => {
     if (!urgency) return null;
     const configs = {
-      high: { color: 'red', label: 'High Urgency', pulse: true },
-      medium: { color: 'yellow', label: 'Medium Urgency', pulse: false },
-      low: { color: 'green', label: 'Low Urgency', pulse: false }
+      high: { variant: 'danger', label: 'High Urgency', pulse: true },
+      medium: { variant: 'warning', label: 'Medium Urgency', pulse: false },
+      low: { variant: 'success', label: 'Low Urgency', pulse: false }
     };
-    return configs[urgency] || { color: 'gray', label: urgency, pulse: false };
+    return configs[urgency] || { variant: 'default', label: urgency, pulse: false };
   };
 
   // Format relative time
@@ -727,15 +919,50 @@ const TechTicketDetail = () => {
     return backgrounds[authorType] || 'bg-gray-50';
   };
 
+  // Common page wrapper styles - responsive to mobile
+  const pageStyles = {
+    wrapper: {
+      display: 'flex',
+      minHeight: '100vh',
+      backgroundColor: theme.colors.background.page,
+    },
+    main: {
+      marginLeft: isMobile ? 0 : '260px',
+      flex: 1,
+      padding: isMobile ? theme.spacing.lg : theme.spacing['2xl'],
+      maxWidth: '1400px',
+    },
+  };
+
   if (loading) {
     return (
-      <div className="flex min-h-screen bg-gray-50">
+      <div style={pageStyles.wrapper}>
         <Sidebar user={user} onLogout={logout} hasRole={hasRole} />
-        <div style={{ marginLeft: '260px', flex: 1, padding: '2rem' }}>
-          <div className="animate-pulse space-y-6">
-            <div className="h-32 bg-gray-200 rounded-lg"></div>
-            <div className="h-64 bg-gray-200 rounded-lg"></div>
-            <div className="h-96 bg-gray-200 rounded-lg"></div>
+        <div style={pageStyles.main}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xl }}>
+            {/* Skeleton header */}
+            <div style={{
+              height: '180px',
+              backgroundColor: theme.colors.background.tertiary,
+              borderRadius: theme.radius.xl,
+              animation: 'pulse 2s ease-in-out infinite',
+            }} />
+            {/* Skeleton info card */}
+            <div style={{
+              height: '120px',
+              backgroundColor: theme.colors.background.tertiary,
+              borderRadius: theme.radius.xl,
+              animation: 'pulse 2s ease-in-out infinite',
+              animationDelay: '0.1s',
+            }} />
+            {/* Skeleton comments */}
+            <div style={{
+              height: '400px',
+              backgroundColor: theme.colors.background.tertiary,
+              borderRadius: theme.radius.xl,
+              animation: 'pulse 2s ease-in-out infinite',
+              animationDelay: '0.2s',
+            }} />
           </div>
         </div>
       </div>
@@ -744,17 +971,51 @@ const TechTicketDetail = () => {
 
   if (!ticket) {
     return (
-      <div className="flex min-h-screen bg-gray-50">
+      <div style={pageStyles.wrapper}>
         <Sidebar user={user} onLogout={logout} hasRole={hasRole} />
-        <div style={{ marginLeft: '260px', flex: 1, padding: '2rem' }} className="flex items-center justify-center min-h-screen">
-          <div className="text-center">
-            <AlertCircle className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Ticket Not Found</h2>
-            <p className="text-gray-500 mb-6">The ticket you're looking for doesn't exist.</p>
+        <div style={{
+          ...pageStyles.main,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}>
+          <div style={{ textAlign: 'center', maxWidth: '400px' }}>
+            <div style={{
+              width: '80px',
+              height: '80px',
+              borderRadius: theme.radius.full,
+              backgroundColor: theme.colors.background.tertiary,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto',
+              marginBottom: theme.spacing.xl,
+            }}>
+              <AlertCircle size={40} style={{ color: theme.colors.text.tertiary }} />
+            </div>
+            <h2 style={{
+              fontSize: theme.fontSize['2xl'],
+              fontWeight: theme.fontWeight.bold,
+              color: theme.colors.text.primary,
+              marginBottom: theme.spacing.sm,
+            }}>
+              Ticket Not Found
+            </h2>
+            <p style={{
+              color: theme.colors.text.tertiary,
+              fontSize: theme.fontSize.base,
+              marginBottom: theme.spacing.xl,
+              lineHeight: theme.lineHeight.relaxed,
+            }}>
+              The ticket you are looking for does not exist or you do not have permission to view it.
+            </p>
             <button
               onClick={() => navigate('/tickets')}
-              className="px-4 py-2 bg-[#1e3a5f] text-white rounded-lg hover:bg-[#2c5282] transition-colors"
+              style={getButtonStyles('primary')}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = theme.colors.accent.primaryHover)}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = theme.colors.accent.primary)}
             >
+              <ArrowLeft size={16} />
               Back to Tickets
             </button>
           </div>
@@ -769,28 +1030,58 @@ const TechTicketDetail = () => {
   const StatusIcon = statusConfig.icon;
   const PriorityIcon = priorityConfig.icon;
 
+  // Main content styles - responsive to mobile
+  const styles = {
+    page: {
+      display: 'flex',
+      minHeight: '100vh',
+      backgroundColor: theme.colors.background.page,
+    },
+    main: {
+      marginLeft: isMobile ? 0 : '260px',
+      flex: 1,
+      padding: isMobile ? theme.spacing.lg : theme.spacing['2xl'],
+      display: 'flex',
+      flexDirection: 'column',
+      gap: isMobile ? theme.spacing.lg : theme.spacing.xl,
+      maxWidth: '1400px',
+    },
+    newCommentsBanner: {
+      padding: isMobile ? theme.spacing.md : theme.spacing.lg,
+      backgroundColor: theme.colors.accent.primaryLight,
+      border: `1px solid ${theme.colors.accent.primary}20`,
+      borderRadius: theme.radius.lg,
+      display: 'flex',
+      alignItems: isMobile ? 'flex-start' : 'center',
+      justifyContent: 'space-between',
+      flexDirection: isMobile ? 'column' : 'row',
+      gap: theme.spacing.md,
+    },
+  };
+
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div style={styles.page}>
       <Sidebar user={user} onLogout={logout} hasRole={hasRole} />
 
-      <div style={{
-        marginLeft: '260px',
-        flex: 1,
-        padding: '2rem',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '24px'
-      }} className="max-w-7xl mx-auto">
+      <div style={styles.main}>
         {/* New Comments Banner */}
         {hasNewComments && (
-          <div className="mb-4 p-4 bg-blue-100 border border-blue-300 rounded-lg flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <MessageCircle className="w-5 h-5 text-blue-600" />
-              <span className="text-blue-900 font-medium">New comments available</span>
+          <div style={styles.newCommentsBanner}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+              <MessageCircle size={20} style={{ color: theme.colors.accent.primary }} />
+              <span style={{
+                color: theme.colors.accent.primary,
+                fontWeight: theme.fontWeight.medium,
+                fontSize: theme.fontSize.sm,
+              }}>
+                New comments available
+              </span>
             </div>
             <button
               onClick={scrollToNewComments}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+              style={getButtonStyles('primary')}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = theme.colors.accent.primaryHover)}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = theme.colors.accent.primary)}
             >
               View New Comments
             </button>
@@ -798,445 +1089,394 @@ const TechTicketDetail = () => {
         )}
 
         {/* Header Section - Redesigned */}
-        <Card style={{ marginBottom: '24px' }}>
+        <Card>
           <div style={{ padding: theme.spacing.xl }}>
             {/* Back Button */}
             <button
               onClick={() => navigate('/tickets')}
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: theme.spacing.sm,
-                color: theme.colors.text.secondary,
-                fontSize: theme.fontSize.sm,
+                ...getButtonStyles('ghost'),
+                padding: `${theme.spacing.xs} 0`,
                 marginBottom: theme.spacing.lg,
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                transition: 'color 0.2s'
+                gap: theme.spacing.xs,
               }}
               onMouseEnter={(e) => (e.currentTarget.style.color = theme.colors.text.primary)}
               onMouseLeave={(e) => (e.currentTarget.style.color = theme.colors.text.secondary)}
             >
-              <ArrowLeft className="w-4 h-4" />
+              <ArrowLeft size={16} />
               Back to Tickets
             </button>
 
             {/* Title & Subject */}
-            <div className="mb-4">
-              <h1 style={{
-                color: theme.colors.text.primary,
-                fontSize: theme.fontSize['3xl'],
-                fontWeight: theme.fontWeight.bold,
-                marginBottom: theme.spacing.xs
+            <div style={{ marginBottom: theme.spacing.xl }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: theme.spacing.md,
+                marginBottom: theme.spacing.sm,
               }}>
-                Ticket #{ticket.ticket_number}
-              </h1>
+                <h1 style={{
+                  color: theme.colors.text.primary,
+                  fontSize: theme.fontSize['2xl'],
+                  fontWeight: theme.fontWeight.bold,
+                  margin: 0,
+                  lineHeight: theme.lineHeight.tight,
+                }}>
+                  Ticket #{ticket.ticket_number}
+                </h1>
+                {/* Status badges inline with title */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: theme.spacing.sm,
+                  flexWrap: 'wrap',
+                }}>
+                  <Badge variant={statusConfig.variant} size="md" icon={<StatusIcon />}>
+                    {statusConfig.label}
+                  </Badge>
+                  {urgencyConfig && (
+                    <Badge
+                      variant={urgencyConfig.variant}
+                      size="md"
+                      style={{
+                        animation: urgencyConfig.pulse ? 'pulse 2s infinite' : 'none',
+                      }}
+                    >
+                      {urgencyConfig.label}
+                    </Badge>
+                  )}
+                </div>
+              </div>
+
               <h2 style={{
                 color: theme.colors.text.secondary,
-                fontSize: theme.fontSize.xl,
+                fontSize: theme.fontSize.lg,
                 fontWeight: theme.fontWeight.medium,
-                marginBottom: theme.spacing.xs
+                margin: 0,
+                marginBottom: theme.spacing.md,
+                lineHeight: theme.lineHeight.normal,
               }}>
                 {ticket.subject}
               </h2>
-              {ticket.van_info && (
+
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: theme.spacing.lg,
+                flexWrap: 'wrap',
+              }}>
+                {ticket.van_info && (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: theme.spacing.xs,
+                    color: theme.colors.text.tertiary,
+                    fontSize: theme.fontSize.sm,
+                  }}>
+                    <Truck size={14} />
+                    <span>{ticket.van_info}</span>
+                  </div>
+                )}
                 <div style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: theme.spacing.xs,
                   color: theme.colors.text.tertiary,
                   fontSize: theme.fontSize.sm,
-                  marginTop: theme.spacing.xs
                 }}>
-                  <Truck className="w-4 h-4" />
-                  <span>Van: {ticket.van_info}</span>
-                </div>
-              )}
-              <p style={{
-                color: theme.colors.text.tertiary,
-                fontSize: theme.fontSize.sm,
-                marginTop: theme.spacing.xs
-              }}>
-                Created {formatFullTimestamp(ticket.created_at)}
-              </p>
-            </div>
-
-            {/* Status, Urgency, Priority Badges - Single Row */}
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: theme.spacing.md,
-              marginBottom: theme.spacing.lg,
-              flexWrap: 'wrap'
-            }}>
-              <Badge color={statusConfig.color} style={{ fontSize: theme.fontSize.sm }}>
-                <StatusIcon className="w-4 h-4 mr-1" />
-                {statusConfig.label}
-              </Badge>
-
-              {urgencyConfig && (
-                <Badge
-                  color={urgencyConfig.color}
-                  style={{
-                    fontSize: theme.fontSize.sm,
-                    animation: urgencyConfig.pulse ? 'pulse 2s infinite' : 'none'
-                  }}
-                >
-                  {urgencyConfig.label}
-                </Badge>
-              )}
-
-              <div style={{ position: 'relative', display: 'inline-block' }}>
-                <select
-                  value={ticket.priority}
-                  onChange={(e) => handlePriorityChange(e.target.value)}
-                  disabled={updatingPriority}
-                  style={{
-                    padding: `${theme.spacing.xs} ${theme.spacing.md}`,
-                    paddingRight: theme.spacing.xl,
-                    backgroundColor: priorityConfig.color === 'red' ? '#fef2f2' :
-                                   priorityConfig.color === 'orange' ? '#fff7ed' :
-                                   priorityConfig.color === 'blue' ? '#eff6ff' : '#f9fafb',
-                    color: priorityConfig.color === 'red' ? '#991b1b' :
-                          priorityConfig.color === 'orange' ? '#9a3412' :
-                          priorityConfig.color === 'blue' ? '#1e40af' : '#374151',
-                    border: `1px solid ${priorityConfig.color === 'red' ? '#fecaca' :
-                                         priorityConfig.color === 'orange' ? '#fed7aa' :
-                                         priorityConfig.color === 'blue' ? '#bfdbfe' : '#e5e7eb'}`,
-                    borderRadius: theme.radius.full,
-                    fontSize: theme.fontSize.sm,
-                    fontWeight: theme.fontWeight.medium,
-                    cursor: updatingPriority ? 'not-allowed' : 'pointer',
-                    opacity: updatingPriority ? 0.5 : 1,
-                    outline: 'none',
-                    appearance: 'none'
-                  }}
-                >
-                  <option value="low">Low Priority</option>
-                  <option value="normal">Normal Priority</option>
-                  <option value="high">High Priority</option>
-                  <option value="urgent">Urgent Priority</option>
-                </select>
-                <div style={{
-                  position: 'absolute',
-                  right: theme.spacing.sm,
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  pointerEvents: 'none'
-                }}>
-                  <PriorityIcon className="w-4 h-4" />
+                  <Clock size={14} />
+                  <span>Created {formatFullTimestamp(ticket.created_at)}</span>
                 </div>
               </div>
             </div>
 
-            {/* Action Buttons */}
+            {/* Priority Selector and Actions Row */}
             <div style={{
               display: 'flex',
-              gap: theme.spacing.sm,
-              flexWrap: 'wrap'
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: theme.spacing.md,
+              paddingTop: theme.spacing.lg,
+              borderTop: `1px solid ${theme.colors.border.light}`,
             }}>
-              {(!ticket.assigned_to_name || ticket.assigned_to_name !== user?.email) && (
-                <button
-                  onClick={handleAssignToMe}
-                  disabled={updating}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: theme.spacing.xs,
-                    padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
-                    backgroundColor: theme.colors.accent.primary,
-                    border: 'none',
-                    borderRadius: theme.radius.md,
-                    color: '#ffffff',
-                    fontSize: theme.fontSize.sm,
-                    fontWeight: theme.fontWeight.medium,
-                    cursor: updating ? 'not-allowed' : 'pointer',
-                    opacity: updating ? 0.5 : 1,
-                    transition: 'all 0.2s'
-                  }}
-                  onMouseEnter={(e) => !updating && (e.currentTarget.style.backgroundColor = '#2c5282')}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = theme.colors.accent.primary)}
-                >
-                  <UserCheck className="w-4 h-4" />
-                  {updating ? 'Assigning...' : (ticket.assigned_to_name ? 'Reassign to Me' : 'Assign to Me')}
-                </button>
-              )}
-
-              {ticket.status !== 'in_progress' && ticket.status !== 'resolved' && ticket.status !== 'closed' && (
-                <button
-                  onClick={() => handleQuickStatusUpdate('in_progress')}
-                  disabled={updating}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: theme.spacing.xs,
-                    padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
-                    backgroundColor: '#fbbf24',
-                    border: 'none',
-                    borderRadius: theme.radius.md,
-                    color: '#78350f',
-                    fontSize: theme.fontSize.sm,
-                    fontWeight: theme.fontWeight.medium,
-                    cursor: updating ? 'not-allowed' : 'pointer',
-                    opacity: updating ? 0.5 : 1,
-                    transition: 'all 0.2s'
-                  }}
-                  onMouseEnter={(e) => !updating && (e.currentTarget.style.backgroundColor = '#f59e0b')}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#fbbf24')}
-                >
-                  <Wrench className="w-4 h-4" />
-                  Start Work
-                </button>
-              )}
-
-              {ticket.status === 'in_progress' && (
-                <button
-                  onClick={() => handleQuickStatusUpdate('waiting_customer')}
-                  disabled={updating}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: theme.spacing.xs,
-                    padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
-                    backgroundColor: '#fb923c',
-                    border: 'none',
-                    borderRadius: theme.radius.md,
-                    color: '#7c2d12',
-                    fontSize: theme.fontSize.sm,
-                    fontWeight: theme.fontWeight.medium,
-                    cursor: updating ? 'not-allowed' : 'pointer',
-                    opacity: updating ? 0.5 : 1,
-                    transition: 'all 0.2s'
-                  }}
-                  onMouseEnter={(e) => !updating && (e.currentTarget.style.backgroundColor = '#f97316')}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#fb923c')}
-                >
-                  <MessageCircle className="w-4 h-4" />
-                  Waiting on Customer
-                </button>
-              )}
-
-              {ticket.status !== 'resolved' && ticket.status !== 'closed' && (
-                <button
-                  ref={resolveModalTriggerRef}
-                  onClick={handleResolveClick}
-                  disabled={updating}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: theme.spacing.xs,
-                    padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
-                    backgroundColor: '#10b981',
-                    border: 'none',
-                    borderRadius: theme.radius.md,
-                    color: '#ffffff',
-                    fontSize: theme.fontSize.sm,
-                    fontWeight: theme.fontWeight.medium,
-                    cursor: updating ? 'not-allowed' : 'pointer',
-                    opacity: updating ? 0.5 : 1,
-                    transition: 'all 0.2s'
-                  }}
-                  onMouseEnter={(e) => !updating && (e.currentTarget.style.backgroundColor = '#059669')}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#10b981')}
-                >
-                  <CheckCircle className="w-4 h-4" aria-hidden="true" />
-                  Resolve Ticket
-                </button>
-              )}
-
-              {ticket.status === 'resolved' && (
-                <button
-                  onClick={() => handleQuickStatusUpdate('closed')}
-                  disabled={updating}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: theme.spacing.xs,
-                    padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
-                    backgroundColor: theme.colors.text.tertiary,
-                    border: 'none',
-                    borderRadius: theme.radius.md,
-                    color: '#ffffff',
-                    fontSize: theme.fontSize.sm,
-                    fontWeight: theme.fontWeight.medium,
-                    cursor: updating ? 'not-allowed' : 'pointer',
-                    opacity: updating ? 0.5 : 1,
-                    transition: 'all 0.2s'
-                  }}
-                  onMouseEnter={(e) => !updating && (e.currentTarget.style.backgroundColor = theme.colors.text.secondary)}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = theme.colors.text.tertiary)}
-                >
-                  <X className="w-4 h-4" />
-                  Close Ticket
-                </button>
-              )}
-
-              {/* Similar Tickets Button */}
-              <button
-                ref={similarModalTriggerRef}
-                onClick={fetchSimilarTickets}
-                disabled={loadingSimilar}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: theme.spacing.xs,
-                  padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
-                  backgroundColor: theme.colors.chart.purple,
-                  border: 'none',
-                  borderRadius: theme.radius.md,
-                  color: theme.colors.text.inverse,
+              {/* Priority dropdown */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: theme.spacing.sm,
+              }}>
+                <span style={{
+                  color: theme.colors.text.tertiary,
                   fontSize: theme.fontSize.sm,
                   fontWeight: theme.fontWeight.medium,
-                  cursor: loadingSimilar ? 'not-allowed' : 'pointer',
-                  opacity: loadingSimilar ? 0.5 : 1,
-                  transition: 'all 0.2s'
-                }}
-                onMouseEnter={(e) => !loadingSimilar && (e.currentTarget.style.opacity = '0.9')}
-                onMouseLeave={(e) => (e.currentTarget.style.opacity = loadingSimilar ? '0.5' : '1')}
-              >
-                <Lightbulb className="w-4 h-4" aria-hidden="true" />
-                <span aria-live="polite">
-                  {loadingSimilar ? 'Searching...' : 'Suggest Solutions'}
+                }}>
+                  Priority:
                 </span>
-              </button>
+                <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+                  <select
+                    aria-label="Priority"
+                    value={ticket.priority}
+                    onChange={(e) => handlePriorityChange(e.target.value)}
+                    disabled={updatingPriority}
+                    style={{
+                      padding: `${theme.spacing.xs} ${theme.spacing['2xl']} ${theme.spacing.xs} ${theme.spacing.md}`,
+                      backgroundColor: theme.colors.background.secondary,
+                      color: theme.colors.text.primary,
+                      border: `1px solid ${theme.colors.border.medium}`,
+                      borderRadius: theme.radius.md,
+                      fontSize: theme.fontSize.sm,
+                      fontWeight: theme.fontWeight.medium,
+                      cursor: updatingPriority ? 'not-allowed' : 'pointer',
+                      opacity: updatingPriority ? 0.5 : 1,
+                      outline: 'none',
+                      appearance: 'none',
+                      transition: `all ${theme.transitions.fast}`,
+                    }}
+                    onFocus={(e) => (e.currentTarget.style.borderColor = theme.colors.border.focus)}
+                    onBlur={(e) => (e.currentTarget.style.borderColor = theme.colors.border.medium)}
+                  >
+                    <option value="low">Low</option>
+                    <option value="normal">Normal</option>
+                    <option value="high">High</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
+                  <div style={{
+                    position: 'absolute',
+                    right: theme.spacing.sm,
+                    pointerEvents: 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}>
+                    <PriorityIcon size={14} style={{
+                      color: priorityConfig.variant === 'danger' ? theme.colors.accent.danger :
+                             priorityConfig.variant === 'warning' ? theme.colors.accent.warning :
+                             priorityConfig.variant === 'info' ? theme.colors.accent.info :
+                             theme.colors.text.tertiary
+                    }} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div style={{
+                display: 'flex',
+                gap: theme.spacing.sm,
+                flexWrap: 'wrap',
+              }}>
+                {(!ticket.assigned_to_name || ticket.assigned_to_name !== user?.email) && (
+                  <button
+                    onClick={handleAssignToMe}
+                    disabled={updating}
+                    style={getButtonStyles('primary', updating)}
+                    onMouseEnter={(e) => !updating && (e.currentTarget.style.backgroundColor = theme.colors.accent.primaryHover)}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = theme.colors.accent.primary)}
+                  >
+                    <UserCheck size={16} />
+                    {updating ? 'Assigning...' : (ticket.assigned_to_name ? 'Reassign to Me' : 'Assign to Me')}
+                  </button>
+                )}
+
+                {ticket.status !== 'in_progress' && ticket.status !== 'resolved' && ticket.status !== 'closed' && (
+                  <button
+                    onClick={() => handleQuickStatusUpdate('in_progress')}
+                    disabled={updating}
+                    style={getButtonStyles('warning', updating)}
+                    onMouseEnter={(e) => !updating && (e.currentTarget.style.opacity = '0.9')}
+                    onMouseLeave={(e) => (e.currentTarget.style.opacity = updating ? '0.5' : '1')}
+                  >
+                    <Wrench size={16} />
+                    Start Work
+                  </button>
+                )}
+
+                {ticket.status === 'in_progress' && (
+                  <button
+                    onClick={() => handleQuickStatusUpdate('waiting_customer')}
+                    disabled={updating}
+                    style={{
+                      ...getButtonStyles('secondary', updating),
+                      backgroundColor: theme.colors.accent.warningLight,
+                      color: theme.colors.accent.warning,
+                      border: `1px solid ${theme.colors.accent.warning}40`,
+                    }}
+                    onMouseEnter={(e) => !updating && (e.currentTarget.style.backgroundColor = theme.colors.accent.warning) && (e.currentTarget.style.color = theme.colors.text.inverse)}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = theme.colors.accent.warningLight;
+                      e.currentTarget.style.color = theme.colors.accent.warning;
+                    }}
+                  >
+                    <MessageCircle size={16} />
+                    Waiting on Customer
+                  </button>
+                )}
+
+                {ticket.status !== 'resolved' && ticket.status !== 'closed' && (
+                  <button
+                    ref={resolveModalTriggerRef}
+                    onClick={handleResolveClick}
+                    disabled={updating}
+                    style={getButtonStyles('success', updating)}
+                    onMouseEnter={(e) => !updating && (e.currentTarget.style.backgroundColor = theme.colors.accent.successHover)}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = theme.colors.accent.success)}
+                  >
+                    <CheckCircle size={16} aria-hidden="true" />
+                    Resolve Ticket
+                  </button>
+                )}
+
+                {ticket.status === 'resolved' && (
+                  <button
+                    onClick={() => handleQuickStatusUpdate('closed')}
+                    disabled={updating}
+                    style={{
+                      ...getButtonStyles('secondary', updating),
+                    }}
+                    onMouseEnter={(e) => !updating && (e.currentTarget.style.backgroundColor = theme.colors.background.hover)}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = theme.colors.background.tertiary)}
+                  >
+                    <X size={16} />
+                    Close Ticket
+                  </button>
+                )}
+
+                {/* Similar Tickets Button */}
+                <button
+                  ref={similarModalTriggerRef}
+                  onClick={fetchSimilarTickets}
+                  disabled={loadingSimilar}
+                  style={getButtonStyles('purple', loadingSimilar)}
+                  onMouseEnter={(e) => !loadingSimilar && (e.currentTarget.style.opacity = '0.9')}
+                  onMouseLeave={(e) => (e.currentTarget.style.opacity = loadingSimilar ? '0.5' : '1')}
+                >
+                  <Lightbulb size={16} aria-hidden="true" />
+                  <span aria-live="polite">
+                    {loadingSimilar ? 'Searching...' : 'Suggest Solutions'}
+                  </span>
+                </button>
+              </div>
             </div>
           </div>
         </Card>
 
         {/* Ticket Information - Full Width 3-Column Card */}
-        <Card style={{ marginBottom: '24px' }}>
-          <div style={{ padding: theme.spacing.lg }}>
-            <h3 style={{
-              color: theme.colors.text.secondary,
-              fontSize: theme.fontSize.xs,
-              fontWeight: theme.fontWeight.semibold,
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-              marginBottom: theme.spacing.lg
-            }}>
-              Ticket Information
-            </h3>
+        <Card>
+          <div style={{ padding: theme.spacing.xl }}>
+            <SectionHeader icon={User} title="Ticket Details" />
 
             {/* 3-Column Grid */}
             <div style={{
               display: 'grid',
-              gridTemplateColumns: '1fr 1fr 1fr',
-              gap: theme.spacing.xl
-            }}
-            className="lg:grid-cols-3 md:grid-cols-2 grid-cols-1">
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+              gap: theme.spacing.xl,
+            }}>
 
               {/* Column 1: Customer */}
-              <div>
+              <div style={{
+                padding: theme.spacing.lg,
+                backgroundColor: theme.colors.background.tertiary,
+                borderRadius: theme.radius.lg,
+              }}>
                 <h4 style={{
-                  color: theme.colors.text.secondary,
+                  color: theme.colors.text.tertiary,
                   fontSize: theme.fontSize.xs,
                   fontWeight: theme.fontWeight.semibold,
                   textTransform: 'uppercase',
                   letterSpacing: '0.05em',
-                  marginBottom: theme.spacing.md
+                  marginBottom: theme.spacing.md,
                 }}>
                   Customer
                 </h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
-                    <User className="w-5 h-5" style={{ color: theme.colors.text.tertiary }} />
-                    <span style={{ color: theme.colors.text.primary, fontSize: theme.fontSize.sm, fontWeight: theme.fontWeight.medium }}>
-                      {ticket.customer_name || 'N/A'}
-                    </span>
-                  </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
+                  <InfoRow icon={User} value={ticket.customer_name || 'N/A'} />
                   {ticket.customer_phone && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
-                      <Phone className="w-5 h-5" style={{ color: theme.colors.text.tertiary }} />
-                      <a
-                        href={`tel:${ticket.customer_phone}`}
-                        style={{
-                          color: theme.colors.accent.primary,
-                          fontSize: theme.fontSize.sm,
-                          textDecoration: 'none'
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.textDecoration = 'underline')}
-                        onMouseLeave={(e) => (e.currentTarget.style.textDecoration = 'none')}
-                      >
-                        {ticket.customer_phone}
-                      </a>
-                    </div>
+                    <InfoRow icon={Phone} value={ticket.customer_phone} href={`tel:${ticket.customer_phone}`} />
                   )}
                   {ticket.customer_email && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
-                      <Mail className="w-5 h-5" style={{ color: theme.colors.text.tertiary }} />
-                      <a
-                        href={`mailto:${ticket.customer_email}`}
-                        style={{
-                          color: theme.colors.accent.primary,
-                          fontSize: theme.fontSize.sm,
-                          textDecoration: 'none',
-                          wordBreak: 'break-all'
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.textDecoration = 'underline')}
-                        onMouseLeave={(e) => (e.currentTarget.style.textDecoration = 'none')}
-                      >
-                        {ticket.customer_email}
-                      </a>
-                    </div>
+                    <InfoRow icon={Mail} value={ticket.customer_email} href={`mailto:${ticket.customer_email}`} isEmail />
                   )}
                 </div>
               </div>
 
               {/* Column 2: Van */}
-              <div>
+              <div style={{
+                padding: theme.spacing.lg,
+                backgroundColor: theme.colors.background.tertiary,
+                borderRadius: theme.radius.lg,
+              }}>
                 <h4 style={{
-                  color: theme.colors.text.secondary,
+                  color: theme.colors.text.tertiary,
                   fontSize: theme.fontSize.xs,
                   fontWeight: theme.fontWeight.semibold,
                   textTransform: 'uppercase',
                   letterSpacing: '0.05em',
-                  marginBottom: theme.spacing.md
+                  marginBottom: theme.spacing.md,
                 }}>
-                  Van
+                  Vehicle
                 </h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
-                  {ticket.van_info ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
-                      <Truck className="w-5 h-5" style={{ color: theme.colors.text.tertiary }} />
-                      <span style={{ color: theme.colors.text.primary, fontSize: theme.fontSize.sm, fontWeight: theme.fontWeight.medium }}>
-                        {ticket.van_info}
-                      </span>
-                    </div>
-                  ) : (
-                    <span style={{ color: theme.colors.text.tertiary, fontSize: theme.fontSize.sm, fontStyle: 'italic' }}>
-                      No van assigned
-                    </span>
-                  )}
-                </div>
+                {ticket.van_info ? (
+                  <InfoRow icon={Truck} value={ticket.van_info} />
+                ) : (
+                  <span style={{
+                    color: theme.colors.text.tertiary,
+                    fontSize: theme.fontSize.sm,
+                    fontStyle: 'italic',
+                  }}>
+                    No vehicle assigned
+                  </span>
+                )}
               </div>
 
               {/* Column 3: Assignment */}
-              <div>
+              <div style={{
+                padding: theme.spacing.lg,
+                backgroundColor: theme.colors.background.tertiary,
+                borderRadius: theme.radius.lg,
+              }}>
                 <h4 style={{
-                  color: theme.colors.text.secondary,
+                  color: theme.colors.text.tertiary,
                   fontSize: theme.fontSize.xs,
                   fontWeight: theme.fontWeight.semibold,
                   textTransform: 'uppercase',
                   letterSpacing: '0.05em',
-                  marginBottom: theme.spacing.md
+                  marginBottom: theme.spacing.md,
                 }}>
-                  Assignment
+                  Assigned To
                 </h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
-                    <UserCheck className="w-5 h-5" style={{ color: theme.colors.text.tertiary }} />
-                    <span style={{ color: theme.colors.text.primary, fontSize: theme.fontSize.sm }}>
-                      {ticket.assigned_to_name || 'Unassigned'}
-                    </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+                  <div style={{
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: theme.radius.full,
+                    backgroundColor: ticket.assigned_to_name ? theme.colors.accent.primaryLight : theme.colors.background.hover,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}>
+                    <UserCheck size={16} style={{
+                      color: ticket.assigned_to_name ? theme.colors.accent.primary : theme.colors.text.tertiary,
+                    }} />
                   </div>
-                  {ticket.assigned_at && (
-                    <div style={{ paddingLeft: '28px' }}>
-                      <span style={{ color: theme.colors.text.tertiary, fontSize: theme.fontSize.xs }}>
-                        {getRelativeTime(ticket.assigned_at)}
-                      </span>
+                  <div>
+                    <div style={{
+                      color: theme.colors.text.primary,
+                      fontSize: theme.fontSize.sm,
+                      fontWeight: theme.fontWeight.medium,
+                    }}>
+                      {ticket.assigned_to_name || 'Unassigned'}
                     </div>
-                  )}
+                    {ticket.assigned_at && (
+                      <div style={{
+                        color: theme.colors.text.tertiary,
+                        fontSize: theme.fontSize.xs,
+                      }}>
+                        {getRelativeTime(ticket.assigned_at)}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -1245,23 +1485,18 @@ const TechTicketDetail = () => {
 
         {/* Description Card (conditional) */}
         {ticket.description && ticket.description !== ticket.subject && (
-          <Card style={{ marginBottom: '24px' }}>
-            <div style={{ padding: theme.spacing.lg }}>
-              <h3 style={{
-                color: theme.colors.text.secondary,
-                fontSize: theme.fontSize.xs,
-                fontWeight: theme.fontWeight.semibold,
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
-                marginBottom: theme.spacing.md
-              }}>
-                Description
-              </h3>
+          <Card>
+            <div style={{ padding: theme.spacing.xl }}>
+              <SectionHeader icon={FileText} title="Description" />
               <div style={{
                 color: theme.colors.text.primary,
                 fontSize: theme.fontSize.sm,
                 whiteSpace: 'pre-wrap',
-                lineHeight: '1.6'
+                lineHeight: theme.lineHeight.relaxed,
+                backgroundColor: theme.colors.background.tertiary,
+                padding: theme.spacing.lg,
+                borderRadius: theme.radius.lg,
+                borderLeft: `3px solid ${theme.colors.accent.primary}`,
               }}>
                 {ticket.description}
               </div>
@@ -1271,50 +1506,62 @@ const TechTicketDetail = () => {
 
         {/* Related Info Card (conditional) */}
         {(ticket.category_name || ticket.session_id || ticket.related_ticket_id) && (
-          <Card style={{ marginBottom: '24px' }}>
-            <div style={{ padding: theme.spacing.lg }}>
-              <h3 style={{
-                color: theme.colors.text.secondary,
-                fontSize: theme.fontSize.xs,
-                fontWeight: theme.fontWeight.semibold,
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
-                marginBottom: theme.spacing.md
+          <Card>
+            <div style={{ padding: theme.spacing.xl }}>
+              <SectionHeader icon={Link2} title="Related" />
+              <div style={{
+                display: 'flex',
+                gap: theme.spacing.lg,
+                flexWrap: 'wrap',
               }}>
-                Related
-              </h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
                 {ticket.category_name && (
-                  <div>
-                    <span style={{ color: theme.colors.text.tertiary, fontSize: theme.fontSize.xs }}>Category: </span>
-                    <span style={{ color: theme.colors.text.primary, fontSize: theme.fontSize.sm }}>{ticket.category_name}</span>
-                  </div>
+                  <Badge variant="primary" size="md" soft>
+                    {ticket.category_name}
+                  </Badge>
                 )}
                 {ticket.session_id && (
-                  <div>
-                    <span style={{ color: theme.colors.text.tertiary, fontSize: theme.fontSize.xs }}>Session: </span>
-                    <a
-                      href={`/sessions/${ticket.session_id}`}
-                      style={{ color: theme.colors.accent.primary, fontSize: theme.fontSize.sm, textDecoration: 'none' }}
-                      onMouseEnter={(e) => (e.currentTarget.style.textDecoration = 'underline')}
-                      onMouseLeave={(e) => (e.currentTarget.style.textDecoration = 'none')}
-                    >
-                      View
-                    </a>
-                  </div>
+                  <a
+                    href={`/sessions/${ticket.session_id}`}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: theme.spacing.xs,
+                      color: theme.colors.accent.primary,
+                      fontSize: theme.fontSize.sm,
+                      textDecoration: 'none',
+                      padding: `${theme.spacing.xs} ${theme.spacing.md}`,
+                      backgroundColor: theme.colors.accent.primaryLight,
+                      borderRadius: theme.radius.md,
+                      transition: `all ${theme.transitions.fast}`,
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = theme.colors.accent.primaryMuted)}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = theme.colors.accent.primaryLight)}
+                  >
+                    <ExternalLink size={14} />
+                    View Session
+                  </a>
                 )}
                 {ticket.related_ticket_id && (
-                  <div>
-                    <span style={{ color: theme.colors.text.tertiary, fontSize: theme.fontSize.xs }}>Ticket: </span>
-                    <a
-                      href={`/tickets/${ticket.related_ticket_id}`}
-                      style={{ color: theme.colors.accent.primary, fontSize: theme.fontSize.sm, textDecoration: 'none' }}
-                      onMouseEnter={(e) => (e.currentTarget.style.textDecoration = 'underline')}
-                      onMouseLeave={(e) => (e.currentTarget.style.textDecoration = 'none')}
-                    >
-                      #{ticket.related_ticket_number}
-                    </a>
-                  </div>
+                  <a
+                    href={`/tickets/${ticket.related_ticket_id}`}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: theme.spacing.xs,
+                      color: theme.colors.accent.primary,
+                      fontSize: theme.fontSize.sm,
+                      textDecoration: 'none',
+                      padding: `${theme.spacing.xs} ${theme.spacing.md}`,
+                      backgroundColor: theme.colors.accent.primaryLight,
+                      borderRadius: theme.radius.md,
+                      transition: `all ${theme.transitions.fast}`,
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = theme.colors.accent.primaryMuted)}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = theme.colors.accent.primaryLight)}
+                  >
+                    <ExternalLink size={14} />
+                    Related Ticket #{ticket.related_ticket_number}
+                  </a>
                 )}
               </div>
             </div>
@@ -1323,35 +1570,61 @@ const TechTicketDetail = () => {
 
         {/* Resolution Card (conditional) */}
         {(ticket.status === 'resolved' || ticket.status === 'closed') && ticket.resolution && (
-          <Card style={{ backgroundColor: theme.colors.accent.successLight, borderColor: theme.colors.accent.success, marginBottom: '24px' }}>
-            <div style={{ padding: theme.spacing.lg }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, marginBottom: theme.spacing.md }}>
-                <CheckCircle className="w-5 h-5" style={{ color: theme.colors.accent.success }} />
-                <h3 style={{
-                  color: theme.colors.accent.success,
-                  fontSize: theme.fontSize.sm,
-                  fontWeight: theme.fontWeight.semibold,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.05em',
-                  margin: 0
+          <Card style={{
+            backgroundColor: theme.colors.accent.successLight,
+            border: `1px solid ${theme.colors.accent.success}30`,
+          }}>
+            <div style={{ padding: theme.spacing.xl }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: theme.spacing.sm,
+                marginBottom: theme.spacing.lg,
+              }}>
+                <div style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: theme.radius.full,
+                  backgroundColor: theme.colors.accent.success,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                 }}>
-                  Resolution
-                </h3>
+                  <CheckCircle size={20} style={{ color: theme.colors.text.inverse }} />
+                </div>
+                <div>
+                  <h3 style={{
+                    color: theme.colors.accent.success,
+                    fontSize: theme.fontSize.base,
+                    fontWeight: theme.fontWeight.semibold,
+                    margin: 0,
+                  }}>
+                    Resolution
+                  </h3>
+                  {ticket.resolved_by && (
+                    <p style={{
+                      color: theme.colors.accent.success,
+                      fontSize: theme.fontSize.xs,
+                      margin: 0,
+                      opacity: 0.8,
+                    }}>
+                      by {ticket.resolved_by} {ticket.resolved_at && ` - ${getRelativeTime(ticket.resolved_at)}`}
+                    </p>
+                  )}
+                </div>
               </div>
               <div style={{
-                color: theme.colors.chart.green,
+                color: theme.colors.text.primary,
                 fontSize: theme.fontSize.sm,
                 whiteSpace: 'pre-wrap',
-                marginBottom: theme.spacing.sm,
-                lineHeight: '1.6'
+                lineHeight: theme.lineHeight.relaxed,
+                padding: theme.spacing.lg,
+                backgroundColor: theme.colors.background.secondary,
+                borderRadius: theme.radius.lg,
+                borderLeft: `3px solid ${theme.colors.accent.success}`,
               }}>
                 {ticket.resolution}
               </div>
-              {ticket.resolved_by && (
-                <p style={{ color: theme.colors.accent.success, fontSize: theme.fontSize.xs, margin: 0 }}>
-                  Resolved by {ticket.resolved_by} {ticket.resolved_at && ` • ${getRelativeTime(ticket.resolved_at)}`}
-                </p>
-              )}
             </div>
           </Card>
         )}
@@ -1360,421 +1633,507 @@ const TechTicketDetail = () => {
         <Card style={{
           display: 'flex',
           flexDirection: 'column',
-          flexGrow: 1
+          flexGrow: 1,
         }}>
-              <div style={{ padding: theme.spacing.lg }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, marginBottom: theme.spacing.lg }}>
-                  <MessageCircle className="w-5 h-5" style={{ color: theme.colors.text.secondary }} />
-                  <h3 style={{
-                    color: theme.colors.text.secondary,
-                    fontSize: theme.fontSize.xs,
-                    fontWeight: theme.fontWeight.semibold,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.05em',
-                    margin: 0
-                  }}>
-                    Activity & Comments
-                  </h3>
-                  <Badge color="blue">{ticket.comments?.length || 0}</Badge>
-                </div>
+          <div style={{ padding: theme.spacing.xl }}>
+            <SectionHeader
+              icon={MessageCircle}
+              title="Activity & Comments"
+              badge={ticket.comments?.length || 0}
+            />
 
-                {/* Comments List */}
+            {/* Comments List */}
+            <div style={{
+              maxHeight: '600px',
+              overflowY: 'auto',
+              marginBottom: theme.spacing.xl,
+              paddingRight: theme.spacing.sm,
+            }}>
+              {ticket.comments && ticket.comments.length > 0 ? (
                 <div style={{
-                  maxHeight: '500px',
-                  overflowY: 'auto',
-                  marginBottom: theme.spacing.lg,
-                  paddingRight: theme.spacing.sm
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: theme.spacing.md,
                 }}>
-                  {ticket.comments && ticket.comments.length > 0 ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
-                      {ticket.comments.map((comment) => (
-                        <div
-                          key={comment.id}
-                          style={{
-                            padding: theme.spacing.md,
-                            borderRadius: theme.radius.lg,
-                            backgroundColor: comment.author_type === 'customer' ? '#eff6ff' :
-                                           comment.author_type === 'tech' ? '#f9fafb' : '#fef9c3',
-                            border: `1px solid ${comment.author_type === 'customer' ? '#dbeafe' :
-                                                comment.author_type === 'tech' ? '#e5e7eb' : '#fef08a'}`
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'start', gap: theme.spacing.sm }}>
-                            {/* Avatar */}
-                            <div style={{
-                              width: '36px',
-                              height: '36px',
-                              borderRadius: theme.radius.full,
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              color: '#ffffff',
-                              fontWeight: theme.fontWeight.bold,
-                              fontSize: theme.fontSize.sm,
-                              backgroundColor: comment.author_type === 'customer' ? '#3b82f6' :
-                                             comment.author_type === 'tech' ? '#6b7280' : '#eab308',
-                              flexShrink: 0
-                            }}>
-                              {getAvatarInitial(comment.author_type)}
-                            </div>
+                  {ticket.comments.map((comment) => {
+                    const isCustomer = comment.author_type === 'customer';
+                    const isTech = comment.author_type === 'tech';
+                    const isSystem = comment.author_type === 'system';
 
-                            {/* Comment Content */}
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs, marginBottom: theme.spacing.xs, flexWrap: 'wrap' }}>
-                                <span style={{
-                                  color: theme.colors.text.primary,
-                                  fontSize: theme.fontSize.sm,
-                                  fontWeight: theme.fontWeight.semibold
-                                }}>
-                                  {comment.author_name}
-                                </span>
-                                <Badge color={
-                                  comment.author_type === 'customer' ? 'blue' :
-                                  comment.author_type === 'tech' ? 'gray' : 'yellow'
-                                } style={{ fontSize: theme.fontSize.xs }}>
-                                  {comment.author_type === 'customer' ? 'Customer' :
-                                   comment.author_type === 'tech' ? 'Tech' : 'System'}
-                                </Badge>
-                                {comment.is_resolution && (
-                                  <Badge color="green" style={{ fontSize: theme.fontSize.xs }}>
-                                    <CheckCircle className="w-3 h-3 mr-1" />
-                                    Resolution
-                                  </Badge>
-                                )}
-                                <span style={{
-                                  color: theme.colors.text.tertiary,
-                                  fontSize: theme.fontSize.xs
-                                }}>
-                                  • {getRelativeTime(comment.created_at)}
-                                </span>
-                              </div>
-                              <p style={{
-                                color: theme.colors.text.primary,
-                                fontSize: theme.fontSize.sm,
-                                whiteSpace: 'pre-wrap',
-                                lineHeight: '1.6',
-                                margin: 0,
-                                wordBreak: 'break-word'
-                              }}>
-                                {comment.comment_text}
-                              </p>
-
-                              {/* Attachments for this comment */}
-                              {(() => {
-                                const commentAttachments = attachmentsByCommentId.get(comment.id) || [];
-                                if (commentAttachments.length === 0) return null;
-
-                                return (
-                                  <div style={{
-                                    marginTop: theme.spacing.md,
-                                    display: 'flex',
-                                    flexWrap: 'wrap',
-                                    gap: theme.spacing.sm
-                                  }}>
-                                    {commentAttachments.map((attachment) => {
-                                      const isVideo = attachment.mime_type?.startsWith('video/');
-                                      const isImage = attachment.mime_type?.startsWith('image/');
-
-                                      return (
-                                        <div key={attachment.id} style={{
-                                          display: 'flex',
-                                          flexDirection: 'column',
-                                          gap: theme.spacing.xs
-                                        }}>
-                                          {isVideo ? (
-                                            <div
-                                              onClick={() => setLightboxMedia({ type: 'video', url: attachment.public_url })}
-                                              style={{
-                                                position: 'relative',
-                                                cursor: 'pointer',
-                                                borderRadius: theme.radius.md,
-                                                overflow: 'hidden',
-                                                border: `1px solid ${theme.colors.border.medium}`,
-                                                transition: 'transform 0.2s, box-shadow 0.2s'
-                                              }}
-                                              onMouseOver={(e) => {
-                                                e.currentTarget.style.transform = 'scale(1.02)';
-                                                e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
-                                              }}
-                                              onMouseOut={(e) => {
-                                                e.currentTarget.style.transform = 'scale(1)';
-                                                e.currentTarget.style.boxShadow = 'none';
-                                              }}
-                                            >
-                                              <video
-                                                src={attachment.public_url}
-                                                style={{
-                                                  maxWidth: '300px',
-                                                  maxHeight: '200px',
-                                                  display: 'block'
-                                                }}
-                                              />
-                                              <div
-                                                style={{
-                                                  position: 'absolute',
-                                                  top: 0,
-                                                  left: 0,
-                                                  right: 0,
-                                                  bottom: 0,
-                                                  backgroundColor: 'rgba(0, 0, 0, 0.3)',
-                                                  display: 'flex',
-                                                  alignItems: 'center',
-                                                  justifyContent: 'center',
-                                                  transition: 'background-color 0.2s'
-                                                }}
-                                                onMouseOver={(e) => {
-                                                  e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.6)';
-                                                }}
-                                                onMouseOut={(e) => {
-                                                  e.currentTarget.style.backgroundColor = 'rgba(0, 0, 0, 0.3)';
-                                                }}
-                                              >
-                                                <div
-                                                  style={{
-                                                    width: '50px',
-                                                    height: '50px',
-                                                    borderRadius: '50%',
-                                                    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center',
-                                                    boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
-                                                  }}
-                                                >
-                                                  <Play size={24} fill={theme.colors.accent.primary} color={theme.colors.accent.primary} />
-                                                </div>
-                                              </div>
-                                            </div>
-                                          ) : isImage ? (
-                                            <img
-                                              src={attachment.public_url}
-                                              alt={attachment.original_filename || 'Attachment'}
-                                              onClick={() => setLightboxMedia({ type: 'image', url: attachment.public_url })}
-                                              style={{
-                                                maxWidth: '200px',
-                                                maxHeight: '150px',
-                                                objectFit: 'cover',
-                                                borderRadius: theme.radius.md,
-                                                border: `1px solid ${theme.colors.border.medium}`,
-                                                cursor: 'pointer',
-                                                transition: 'transform 0.2s, box-shadow 0.2s'
-                                              }}
-                                              onMouseOver={(e) => {
-                                                e.target.style.transform = 'scale(1.02)';
-                                                e.target.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
-                                              }}
-                                              onMouseOut={(e) => {
-                                                e.target.style.transform = 'scale(1)';
-                                                e.target.style.boxShadow = 'none';
-                                              }}
-                                            />
-                                          ) : (
-                                            <a
-                                              href={attachment.public_url}
-                                              target="_blank"
-                                              rel="noopener noreferrer"
-                                              style={{
-                                                color: theme.colors.accent.primary,
-                                                fontSize: theme.fontSize.xs
-                                              }}
-                                            >
-                                              {attachment.original_filename || 'Download attachment'}
-                                            </a>
-                                          )}
-                                          <span style={{
-                                            fontSize: theme.fontSize.xs,
-                                            color: theme.colors.text.tertiary,
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '4px'
-                                          }}>
-                                            <Camera size={12} />
-                                            {attachment.uploaded_by_type === 'customer' ? 'Photo from customer' : 'Photo from technician'}
-                                          </span>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                );
-                              })()}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                      <div ref={commentsEndRef} />
-                    </div>
-                  ) : (
-                    <div style={{
-                      textAlign: 'center',
-                      padding: `${theme.spacing.xl} 0`,
-                      color: theme.colors.text.tertiary,
-                      fontSize: theme.fontSize.sm
-                    }}>
-                      <MessageCircle className="w-12 h-12 mx-auto mb-2 opacity-20" />
-                      <p style={{ fontStyle: 'italic', margin: 0 }}>No activity yet</p>
-                      <p style={{ fontSize: theme.fontSize.xs, marginTop: theme.spacing.xs }}>
-                        Be the first to add a comment
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Add Comment Form */}
-                <div
-                  ref={commentFormRef}
-                  style={{
-                    paddingTop: theme.spacing.lg,
-                    borderTop: `1px solid ${theme.colors.border.medium}`
-                  }}
-                >
-                  <h4 style={{
-                    fontWeight: theme.fontWeight.medium,
-                    color: theme.colors.text.primary,
-                    fontSize: theme.fontSize.sm,
-                    marginBottom: theme.spacing.md
-                  }}>
-                    Add Comment
-                  </h4>
-                  <form onSubmit={handleAddComment} style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
-                    <div>
-                      <textarea
-                        value={commentText}
-                        onChange={(e) => setCommentText(e.target.value)}
-                        onFocus={() => setIsEditing(true)}
-                        placeholder="Write a comment..."
-                        rows={4}
-                        maxLength={2000}
-                        required
-                        style={{
-                          width: '100%',
-                          padding: theme.spacing.md,
-                          backgroundColor: theme.colors.background.tertiary,
-                          color: theme.colors.text.primary,
-                          border: `1px solid ${theme.colors.border.medium}`,
-                          borderRadius: theme.radius.md,
-                          fontSize: theme.fontSize.sm,
-                          outline: 'none',
-                          resize: 'vertical',
-                          fontFamily: 'inherit',
-                          lineHeight: '1.6'
-                        }}
-                      />
-                      <p style={{
-                        fontSize: theme.fontSize.xs,
-                        color: theme.colors.text.tertiary,
-                        marginTop: theme.spacing.xs
-                      }}>
-                        {commentText.length}/2000 characters (minimum 10)
-                      </p>
-                    </div>
-
-                    {(ticket.status === 'resolved' || ticket.status === 'in_progress') && (
+                    return (
                       <div
-                        onClick={() => setIsResolution(!isResolution)}
+                        key={comment.id}
                         style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: theme.spacing.md,
-                          padding: theme.spacing.md,
-                          backgroundColor: isResolution ? theme.colors.accent.successLight : theme.colors.background.tertiary,
-                          border: `2px solid ${isResolution ? theme.colors.accent.success : theme.colors.border.medium}`,
+                          padding: theme.spacing.lg,
                           borderRadius: theme.radius.lg,
-                          cursor: 'pointer',
-                          transition: 'all 0.3s ease',
-                          // Shine animation: pulsing glow effect using the CSS keyframes
-                          animation: highlightResolution ? 'resolutionShine 1.2s ease-in-out 2' : 'none',
-                          // Shimmer gradient overlay that sweeps across during animation
-                          backgroundImage: highlightResolution
-                            ? `linear-gradient(90deg, transparent 0%, rgba(5, 150, 105, 0.15) 25%, rgba(5, 150, 105, 0.3) 50%, rgba(5, 150, 105, 0.15) 75%, transparent 100%)`
-                            : 'none',
-                          backgroundSize: highlightResolution ? '200% 100%' : 'auto',
-                          transform: highlightResolution ? 'scale(1.02)' : 'scale(1)',
-                          position: 'relative',
-                          overflow: 'hidden'
+                          backgroundColor: isCustomer
+                            ? theme.colors.accent.primaryLight
+                            : isTech
+                            ? theme.colors.background.secondary
+                            : theme.colors.accent.warningLight,
+                          border: `1px solid ${
+                            isCustomer
+                              ? `${theme.colors.accent.primary}20`
+                              : isTech
+                              ? theme.colors.border.light
+                              : `${theme.colors.accent.warning}30`
+                          }`,
+                          transition: `all ${theme.transitions.fast}`,
                         }}
                       >
                         <div style={{
-                          width: '24px',
-                          height: '24px',
-                          borderRadius: theme.radius.md,
-                          border: `2px solid ${isResolution ? theme.colors.accent.success : theme.colors.border.medium}`,
-                          backgroundColor: isResolution ? theme.colors.accent.success : 'transparent',
                           display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0,
-                          transition: 'all 0.2s'
+                          alignItems: 'flex-start',
+                          gap: theme.spacing.md,
                         }}>
-                          {isResolution && (
-                            <CheckCircle className="w-4 h-4" style={{ color: '#ffffff' }} />
-                          )}
-                        </div>
-                        <div style={{ flex: 1 }}>
+                          {/* Avatar */}
                           <div style={{
+                            width: '40px',
+                            height: '40px',
+                            borderRadius: theme.radius.full,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: theme.colors.text.inverse,
+                            fontWeight: theme.fontWeight.bold,
                             fontSize: theme.fontSize.sm,
-                            fontWeight: theme.fontWeight.semibold,
-                            color: isResolution ? theme.colors.accent.success : theme.colors.text.primary,
-                            marginBottom: theme.spacing.xs
+                            backgroundColor: isCustomer
+                              ? theme.colors.accent.info
+                              : isTech
+                              ? theme.colors.accent.primary
+                              : theme.colors.accent.warning,
+                            flexShrink: 0,
                           }}>
-                            Mark as Resolution
+                            {getAvatarInitial(comment.author_type)}
                           </div>
-                          <div style={{
-                            fontSize: theme.fontSize.xs,
-                            color: isResolution ? theme.colors.chart.green : theme.colors.text.tertiary
-                          }}>
-                            This comment will be saved as the official resolution for this ticket
+
+                          {/* Comment Content */}
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: theme.spacing.sm,
+                              marginBottom: theme.spacing.sm,
+                              flexWrap: 'wrap',
+                            }}>
+                              <span style={{
+                                color: theme.colors.text.primary,
+                                fontSize: theme.fontSize.sm,
+                                fontWeight: theme.fontWeight.semibold,
+                              }}>
+                                {comment.author_name}
+                              </span>
+                              <Badge
+                                variant={
+                                  isCustomer ? 'info' : isTech ? 'primary' : 'warning'
+                                }
+                                size="sm"
+                                soft
+                              >
+                                {isCustomer ? 'Customer' : isTech ? 'Tech' : 'System'}
+                              </Badge>
+                              {comment.is_resolution && (
+                                <Badge variant="success" size="sm" icon={<CheckCircle />}>
+                                  Resolution
+                                </Badge>
+                              )}
+                              <span style={{
+                                color: theme.colors.text.tertiary,
+                                fontSize: theme.fontSize.xs,
+                              }}>
+                                {getRelativeTime(comment.created_at)}
+                              </span>
+                            </div>
+                            <p style={{
+                              color: theme.colors.text.primary,
+                              fontSize: theme.fontSize.sm,
+                              whiteSpace: 'pre-wrap',
+                              lineHeight: theme.lineHeight.relaxed,
+                              margin: 0,
+                              wordBreak: 'break-word',
+                            }}>
+                              {comment.comment_text}
+                            </p>
+
+                            {/* Attachments for this comment */}
+                            {(() => {
+                              const commentAttachments = attachmentsByCommentId.get(comment.id) || [];
+                              if (commentAttachments.length === 0) return null;
+
+                              return (
+                                <div style={{
+                                  marginTop: theme.spacing.md,
+                                  display: 'flex',
+                                  flexWrap: 'wrap',
+                                  gap: theme.spacing.sm,
+                                }}>
+                                  {commentAttachments.map((attachment) => {
+                                    const isVideo = attachment.mime_type?.startsWith('video/');
+                                    const isImage = attachment.mime_type?.startsWith('image/');
+
+                                    return (
+                                      <div key={attachment.id} style={{
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: theme.spacing.xs,
+                                      }}>
+                                        {isVideo ? (
+                                          <div
+                                            role="button"
+                                            tabIndex={0}
+                                            aria-label={`Play video: ${attachment.original_filename || 'Video attachment'}`}
+                                            onClick={(e) => {
+                                              lightboxTriggerRef.current = e.currentTarget;
+                                              setLightboxMedia({ type: 'video', url: attachment.public_url });
+                                            }}
+                                            onKeyDown={(e) => {
+                                              if (e.key === 'Enter' || e.key === ' ') {
+                                                e.preventDefault();
+                                                lightboxTriggerRef.current = e.currentTarget;
+                                                setLightboxMedia({ type: 'video', url: attachment.public_url });
+                                              }
+                                            }}
+                                            style={{
+                                              position: 'relative',
+                                              cursor: 'pointer',
+                                              borderRadius: theme.radius.md,
+                                              overflow: 'hidden',
+                                              border: `1px solid ${theme.colors.border.medium}`,
+                                              transition: `all ${theme.transitions.fast}`,
+                                            }}
+                                            onMouseOver={(e) => {
+                                              e.currentTarget.style.transform = 'scale(1.02)';
+                                              e.currentTarget.style.boxShadow = theme.shadows.md;
+                                            }}
+                                            onMouseOut={(e) => {
+                                              e.currentTarget.style.transform = 'scale(1)';
+                                              e.currentTarget.style.boxShadow = 'none';
+                                            }}
+                                          >
+                                            <video
+                                              src={attachment.public_url}
+                                              aria-hidden="true"
+                                              style={{
+                                                maxWidth: '280px',
+                                                maxHeight: '180px',
+                                                display: 'block',
+                                              }}
+                                            />
+                                            <div
+                                              style={{
+                                                position: 'absolute',
+                                                top: 0,
+                                                left: 0,
+                                                right: 0,
+                                                bottom: 0,
+                                                backgroundColor: 'rgba(0, 0, 0, 0.4)',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                transition: `background-color ${theme.transitions.fast}`,
+                                              }}
+                                            >
+                                              <div
+                                                style={{
+                                                  width: '48px',
+                                                  height: '48px',
+                                                  borderRadius: theme.radius.full,
+                                                  backgroundColor: theme.colors.background.secondary,
+                                                  display: 'flex',
+                                                  alignItems: 'center',
+                                                  justifyContent: 'center',
+                                                  boxShadow: theme.shadows.md,
+                                                }}
+                                              >
+                                                <Play size={20} fill={theme.colors.accent.primary} color={theme.colors.accent.primary} />
+                                              </div>
+                                            </div>
+                                          </div>
+                                        ) : isImage ? (
+                                          <img
+                                            src={attachment.public_url}
+                                            alt={attachment.original_filename || 'Attachment'}
+                                            role="button"
+                                            tabIndex={0}
+                                            onClick={(e) => {
+                                              lightboxTriggerRef.current = e.currentTarget;
+                                              setLightboxMedia({ type: 'image', url: attachment.public_url });
+                                            }}
+                                            onKeyDown={(e) => {
+                                              if (e.key === 'Enter' || e.key === ' ') {
+                                                e.preventDefault();
+                                                lightboxTriggerRef.current = e.currentTarget;
+                                                setLightboxMedia({ type: 'image', url: attachment.public_url });
+                                              }
+                                            }}
+                                            style={{
+                                              maxWidth: '180px',
+                                              maxHeight: '140px',
+                                              objectFit: 'cover',
+                                              borderRadius: theme.radius.md,
+                                              border: `1px solid ${theme.colors.border.medium}`,
+                                              cursor: 'pointer',
+                                              transition: `all ${theme.transitions.fast}`,
+                                            }}
+                                            onMouseOver={(e) => {
+                                              e.target.style.transform = 'scale(1.02)';
+                                              e.target.style.boxShadow = theme.shadows.md;
+                                            }}
+                                            onMouseOut={(e) => {
+                                              e.target.style.transform = 'scale(1)';
+                                              e.target.style.boxShadow = 'none';
+                                            }}
+                                          />
+                                        ) : (
+                                          <a
+                                            href={attachment.public_url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            style={{
+                                              display: 'inline-flex',
+                                              alignItems: 'center',
+                                              gap: theme.spacing.xs,
+                                              color: theme.colors.accent.primary,
+                                              fontSize: theme.fontSize.sm,
+                                              padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                                              backgroundColor: theme.colors.accent.primaryLight,
+                                              borderRadius: theme.radius.md,
+                                              textDecoration: 'none',
+                                            }}
+                                          >
+                                            <ExternalLink size={14} />
+                                            {attachment.original_filename || 'Download attachment'}
+                                          </a>
+                                        )}
+                                        <span style={{
+                                          fontSize: theme.fontSize.xs,
+                                          color: theme.colors.text.tertiary,
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: theme.spacing.xs,
+                                        }}>
+                                          <Camera size={12} />
+                                          {attachment.uploaded_by_type === 'customer' ? 'From customer' : 'From technician'}
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            })()}
                           </div>
                         </div>
-                        <input
-                          type="checkbox"
-                          id="isResolution"
-                          checked={isResolution}
-                          onChange={(e) => setIsResolution(e.target.checked)}
-                          style={{
-                            position: 'absolute',
-                            opacity: 0,
-                            pointerEvents: 'none'
-                          }}
-                        />
                       </div>
-                    )}
-
-                    <button
-                      type="submit"
-                      disabled={addingComment || commentText.trim().length < 10}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: theme.spacing.xs,
-                        padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
-                        backgroundColor: theme.colors.accent.primary,
-                        border: 'none',
-                        borderRadius: theme.radius.md,
-                        color: '#ffffff',
-                        fontSize: theme.fontSize.sm,
-                        fontWeight: theme.fontWeight.medium,
-                        cursor: (addingComment || commentText.trim().length < 10) ? 'not-allowed' : 'pointer',
-                        opacity: (addingComment || commentText.trim().length < 10) ? 0.5 : 1,
-                        transition: 'all 0.2s',
-                        alignSelf: 'flex-start'
-                      }}
-                      onMouseEnter={(e) => !(addingComment || commentText.trim().length < 10) && (e.currentTarget.style.backgroundColor = '#2c5282')}
-                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = theme.colors.accent.primary)}
-                    >
-                      <Send className="w-4 h-4" />
-                      {addingComment ? 'Adding...' : 'Add Comment'}
-                    </button>
-                  </form>
+                    );
+                  })}
+                  <div ref={commentsEndRef} />
                 </div>
-              </div>
+              ) : (
+                <div style={{
+                  textAlign: 'center',
+                  padding: theme.spacing['3xl'],
+                  color: theme.colors.text.tertiary,
+                }}>
+                  <div style={{
+                    width: '64px',
+                    height: '64px',
+                    borderRadius: theme.radius.full,
+                    backgroundColor: theme.colors.background.tertiary,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    margin: '0 auto',
+                    marginBottom: theme.spacing.lg,
+                  }}>
+                    <MessageCircle size={28} style={{ opacity: 0.4 }} />
+                  </div>
+                  <p style={{
+                    fontSize: theme.fontSize.base,
+                    fontWeight: theme.fontWeight.medium,
+                    color: theme.colors.text.secondary,
+                    margin: 0,
+                    marginBottom: theme.spacing.xs,
+                  }}>
+                    No activity yet
+                  </p>
+                  <p style={{
+                    fontSize: theme.fontSize.sm,
+                    margin: 0,
+                  }}>
+                    Be the first to add a comment
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Add Comment Form */}
+            <div
+              ref={commentFormRef}
+              style={{
+                paddingTop: theme.spacing.xl,
+                borderTop: `1px solid ${theme.colors.border.light}`,
+              }}
+            >
+              <label
+                htmlFor="comment-textarea"
+                style={{
+                  display: 'block',
+                  fontWeight: theme.fontWeight.semibold,
+                  color: theme.colors.text.primary,
+                  fontSize: theme.fontSize.sm,
+                  marginBottom: theme.spacing.md,
+                }}
+              >
+                Add Comment
+              </label>
+              <form onSubmit={handleAddComment} style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: theme.spacing.lg,
+              }}>
+                <div>
+                  <textarea
+                    id="comment-textarea"
+                    value={commentText}
+                    onChange={(e) => setCommentText(e.target.value)}
+                    onFocus={() => setIsEditing(true)}
+                    placeholder="Write a comment..."
+                    rows={4}
+                    maxLength={2000}
+                    required
+                    style={{
+                      width: '100%',
+                      padding: theme.spacing.lg,
+                      backgroundColor: theme.colors.background.secondary,
+                      color: theme.colors.text.primary,
+                      border: `1px solid ${theme.colors.border.medium}`,
+                      borderRadius: theme.radius.lg,
+                      fontSize: theme.fontSize.sm,
+                      outline: 'none',
+                      resize: 'vertical',
+                      fontFamily: 'inherit',
+                      lineHeight: theme.lineHeight.relaxed,
+                      transition: `border-color ${theme.transitions.fast}`,
+                      boxSizing: 'border-box',
+                    }}
+                    onFocusCapture={(e) => (e.currentTarget.style.borderColor = theme.colors.border.focus)}
+                    onBlur={(e) => (e.currentTarget.style.borderColor = theme.colors.border.medium)}
+                  />
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginTop: theme.spacing.sm,
+                  }}>
+                    <p style={{
+                      fontSize: theme.fontSize.xs,
+                      color: commentText.length < 10 ? theme.colors.text.tertiary : theme.colors.accent.success,
+                      margin: 0,
+                    }}>
+                      {commentText.length < 10
+                        ? `${10 - commentText.length} more characters needed`
+                        : 'Ready to submit'}
+                    </p>
+                    <p style={{
+                      fontSize: theme.fontSize.xs,
+                      color: theme.colors.text.tertiary,
+                      margin: 0,
+                    }}>
+                      {commentText.length}/2000
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  onClick={() => setIsResolution(!isResolution)}
+                  role="checkbox"
+                  aria-checked={isResolution}
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === ' ' || e.key === 'Enter') {
+                      e.preventDefault();
+                      setIsResolution(!isResolution);
+                    }
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: theme.spacing.md,
+                    padding: theme.spacing.lg,
+                    backgroundColor: isResolution ? theme.colors.accent.successLight : theme.colors.background.secondary,
+                    border: `2px solid ${isResolution ? theme.colors.accent.success : theme.colors.border.light}`,
+                    borderRadius: theme.radius.lg,
+                    cursor: 'pointer',
+                    transition: `all ${theme.transitions.fast}`,
+                    animation: highlightResolution ? 'resolutionShine 1.2s ease-in-out 2' : 'none',
+                    backgroundImage: highlightResolution
+                      ? `linear-gradient(90deg, transparent 0%, rgba(5, 150, 105, 0.15) 25%, rgba(5, 150, 105, 0.3) 50%, rgba(5, 150, 105, 0.15) 75%, transparent 100%)`
+                      : 'none',
+                    backgroundSize: highlightResolution ? '200% 100%' : 'auto',
+                    transform: highlightResolution ? 'scale(1.01)' : 'scale(1)',
+                  }}
+                >
+                  <div style={{
+                    width: '22px',
+                    height: '22px',
+                    borderRadius: theme.radius.sm,
+                    border: `2px solid ${isResolution ? theme.colors.accent.success : theme.colors.border.medium}`,
+                    backgroundColor: isResolution ? theme.colors.accent.success : 'transparent',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                    transition: `all ${theme.transitions.fast}`,
+                  }}>
+                    {isResolution && (
+                      <CheckCircle size={14} style={{ color: theme.colors.text.inverse }} />
+                    )}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{
+                      fontSize: theme.fontSize.sm,
+                      fontWeight: theme.fontWeight.semibold,
+                      color: isResolution ? theme.colors.accent.success : theme.colors.text.primary,
+                      marginBottom: theme.spacing.xs,
+                    }}>
+                      Mark as Resolution
+                    </div>
+                    <div style={{
+                      fontSize: theme.fontSize.xs,
+                      color: isResolution ? theme.colors.accent.success : theme.colors.text.tertiary,
+                      lineHeight: theme.lineHeight.normal,
+                    }}>
+                      This comment will be saved as the official resolution for this ticket
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={addingComment || commentText.trim().length < 10}
+                  style={{
+                    ...getButtonStyles('primary', addingComment || commentText.trim().length < 10),
+                    alignSelf: 'flex-start',
+                    padding: `${theme.spacing.md} ${theme.spacing.xl}`,
+                  }}
+                  onMouseEnter={(e) => !(addingComment || commentText.trim().length < 10) && (e.currentTarget.style.backgroundColor = theme.colors.accent.primaryHover)}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = theme.colors.accent.primary)}
+                >
+                  <Send size={16} />
+                  {addingComment ? 'Adding...' : 'Add Comment'}
+                </button>
+              </form>
+            </div>
+          </div>
         </Card>
 
         {/* Status History - Collapsible at Bottom */}
         {ticket.status_history && ticket.status_history.length > 0 && (
           <Card>
-            <div style={{ padding: theme.spacing.lg }}>
+            <div style={{ padding: theme.spacing.xl }}>
               <button
                 onClick={() => setStatusHistoryOpen(!statusHistoryOpen)}
+                aria-expanded={statusHistoryOpen}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -1784,60 +2143,71 @@ const TechTicketDetail = () => {
                   background: 'none',
                   border: 'none',
                   cursor: 'pointer',
-                  padding: 0
+                  padding: 0,
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
-                  <Clock className="w-5 h-5" style={{ color: theme.colors.text.secondary }} />
+                  <Clock size={18} style={{ color: theme.colors.text.tertiary }} />
                   <h3 style={{
-                    color: theme.colors.text.secondary,
-                    fontSize: theme.fontSize.xs,
+                    color: theme.colors.text.primary,
+                    fontSize: theme.fontSize.sm,
                     fontWeight: theme.fontWeight.semibold,
                     textTransform: 'uppercase',
                     letterSpacing: '0.05em',
-                    margin: 0
+                    margin: 0,
                   }}>
                     Status History
                   </h3>
-                  <Badge color="gray">{ticket.status_history.length}</Badge>
+                  <Badge variant="default" size="sm">
+                    {ticket.status_history.length}
+                  </Badge>
                 </div>
-                {statusHistoryOpen ? (
-                  <ChevronUp className="w-5 h-5" style={{ color: theme.colors.text.tertiary }} />
-                ) : (
-                  <ChevronDown className="w-5 h-5" style={{ color: theme.colors.text.tertiary }} />
-                )}
+                <div style={{
+                  width: '28px',
+                  height: '28px',
+                  borderRadius: theme.radius.md,
+                  backgroundColor: theme.colors.background.tertiary,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: `transform ${theme.transitions.fast}`,
+                  transform: statusHistoryOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                }}>
+                  <ChevronDown size={16} style={{ color: theme.colors.text.tertiary }} />
+                </div>
               </button>
 
               {statusHistoryOpen && (
                 <div style={{
-                  marginTop: theme.spacing.lg,
+                  marginTop: theme.spacing.xl,
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: theme.spacing.md
+                  gap: theme.spacing.sm,
                 }}>
                   {ticket.status_history.map((history, index) => (
                     <div
                       key={index}
                       style={{
                         display: 'flex',
-                        alignItems: 'start',
+                        alignItems: 'flex-start',
                         gap: theme.spacing.md,
-                        padding: theme.spacing.md,
-                        backgroundColor: theme.colors.background.secondary,
-                        borderRadius: theme.radius.lg
+                        padding: theme.spacing.lg,
+                        backgroundColor: theme.colors.background.tertiary,
+                        borderRadius: theme.radius.lg,
+                        borderLeft: `3px solid ${theme.colors.border.medium}`,
                       }}
                     >
                       <div style={{
                         width: '32px',
                         height: '32px',
                         borderRadius: theme.radius.full,
-                        backgroundColor: theme.colors.background.tertiary,
+                        backgroundColor: theme.colors.background.secondary,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        flexShrink: 0
+                        flexShrink: 0,
                       }}>
-                        <Clock className="w-4 h-4" style={{ color: theme.colors.text.tertiary }} />
+                        <Clock size={14} style={{ color: theme.colors.text.tertiary }} />
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{
@@ -1845,31 +2215,40 @@ const TechTicketDetail = () => {
                           alignItems: 'center',
                           gap: theme.spacing.sm,
                           flexWrap: 'wrap',
-                          marginBottom: theme.spacing.xs
+                          marginBottom: theme.spacing.sm,
                         }}>
-                          <Badge color="gray" style={{ fontSize: theme.fontSize.xs }}>
+                          <Badge variant="default" size="sm">
                             {history.from_status}
                           </Badge>
-                          <span style={{ color: theme.colors.text.tertiary }}>→</span>
-                          <Badge color="blue" style={{ fontSize: theme.fontSize.xs }}>
+                          <span style={{
+                            color: theme.colors.text.tertiary,
+                            fontSize: theme.fontSize.lg,
+                          }}>
+                            &rarr;
+                          </span>
+                          <Badge variant="primary" size="sm" soft>
                             {history.to_status}
                           </Badge>
                         </div>
                         <p style={{
                           color: theme.colors.text.tertiary,
                           fontSize: theme.fontSize.xs,
-                          margin: 0
+                          margin: 0,
                         }}>
-                          By {history.changed_by_name} • {getRelativeTime(history.changed_at)}
+                          by {history.changed_by_name} - {getRelativeTime(history.changed_at)}
                         </p>
                         {history.reason && (
                           <p style={{
                             color: theme.colors.text.secondary,
                             fontSize: theme.fontSize.sm,
+                            fontStyle: 'italic',
+                            margin: 0,
                             marginTop: theme.spacing.sm,
-                            fontStyle: 'italic'
+                            padding: theme.spacing.sm,
+                            backgroundColor: theme.colors.background.secondary,
+                            borderRadius: theme.radius.md,
                           }}>
-                            "{history.reason}"
+                            &ldquo;{history.reason}&rdquo;
                           </p>
                         )}
                       </div>
@@ -1885,42 +2264,55 @@ const TechTicketDetail = () => {
       {/* Lightbox Modal for full-size media viewing (images and videos) */}
       {lightboxMedia.type && (
         <div
-          onClick={() => setLightboxMedia({ type: null, url: null })}
+          id="lightbox-modal"
+          onClick={() => {
+            setLightboxMedia({ type: null, url: null });
+            lightboxTriggerRef.current?.focus();
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Media viewer"
           style={{
             position: 'fixed',
             top: 0,
             left: 0,
             right: 0,
             bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.9)',
+            backgroundColor: 'rgba(0, 0, 0, 0.95)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            zIndex: 9999,
-            cursor: 'pointer'
+            zIndex: theme.zIndex.modal + 10,
+            cursor: 'pointer',
           }}
         >
           <button
-            onClick={() => setLightboxMedia({ type: null, url: null })}
+            ref={lightboxCloseRef}
+            onClick={() => {
+              setLightboxMedia({ type: null, url: null });
+              lightboxTriggerRef.current?.focus();
+            }}
             aria-label="Close media viewer"
             style={{
               position: 'absolute',
-              top: '20px',
-              right: '20px',
-              background: 'rgba(255, 255, 255, 0.2)',
-              border: 'none',
-              borderRadius: '50%',
-              width: '40px',
-              height: '40px',
+              top: theme.spacing.xl,
+              right: theme.spacing.xl,
+              backgroundColor: 'rgba(255, 255, 255, 0.1)',
+              border: `1px solid rgba(255, 255, 255, 0.2)`,
+              borderRadius: theme.radius.full,
+              width: '44px',
+              height: '44px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               cursor: 'pointer',
-              color: '#ffffff',
-              zIndex: 10000
+              color: theme.colors.text.inverse,
+              transition: `all ${theme.transitions.fast}`,
             }}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)')}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)')}
           >
-            <X size={24} />
+            <X size={20} />
           </button>
           {lightboxMedia.type === 'image' ? (
             <img
@@ -1931,7 +2323,8 @@ const TechTicketDetail = () => {
                 maxWidth: '90vw',
                 maxHeight: '90vh',
                 objectFit: 'contain',
-                borderRadius: theme.radius.lg
+                borderRadius: theme.radius.lg,
+                boxShadow: theme.shadows['2xl'],
               }}
             />
           ) : (
@@ -1943,7 +2336,8 @@ const TechTicketDetail = () => {
               style={{
                 maxWidth: '90vw',
                 maxHeight: '90vh',
-                borderRadius: theme.radius.lg
+                borderRadius: theme.radius.lg,
+                boxShadow: theme.shadows['2xl'],
               }}
             />
           )}
@@ -1963,12 +2357,13 @@ const TechTicketDetail = () => {
             left: 0,
             right: 0,
             bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            backgroundColor: 'rgba(0, 0, 0, 0.6)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             zIndex: theme.zIndex.modal,
-            padding: isMobile ? 0 : theme.spacing.xl
+            padding: isMobile ? 0 : theme.spacing.xl,
+            backdropFilter: 'blur(4px)',
           }}
         >
           <div
@@ -1979,37 +2374,57 @@ const TechTicketDetail = () => {
             aria-labelledby="similar-tickets-title"
             style={{
               backgroundColor: theme.colors.background.secondary,
-              borderRadius: isMobile ? 0 : theme.radius.lg,
+              borderRadius: isMobile ? 0 : theme.radius.xl,
               maxWidth: isMobile ? '100%' : '900px',
               width: '100%',
-              maxHeight: isMobile ? '100vh' : '80vh',
+              maxHeight: isMobile ? '100vh' : '85vh',
               overflow: 'hidden',
               display: 'flex',
               flexDirection: 'column',
-              boxShadow: theme.shadows.xl
+              boxShadow: theme.shadows['2xl'],
             }}
           >
             {/* Modal Header */}
             <div style={{
-              padding: theme.spacing.lg,
-              borderBottom: `1px solid ${theme.colors.border.medium}`,
+              padding: theme.spacing.xl,
+              borderBottom: `1px solid ${theme.colors.border.light}`,
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'space-between'
+              justifyContent: 'space-between',
+              backgroundColor: theme.colors.background.secondary,
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
-                <Lightbulb className="w-6 h-6" style={{ color: theme.colors.chart.purple }} aria-hidden="true" />
-                <h2
-                  id="similar-tickets-title"
-                  style={{
-                    fontSize: theme.fontSize.xl,
-                    fontWeight: theme.fontWeight.bold,
-                    color: theme.colors.text.primary,
-                    margin: 0
-                  }}
-                >
-                  Similar Resolved Tickets
-                </h2>
+              <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.md }}>
+                <div style={{
+                  width: '44px',
+                  height: '44px',
+                  borderRadius: theme.radius.lg,
+                  backgroundColor: `${theme.colors.chart.purple}15`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}>
+                  <Lightbulb size={22} style={{ color: theme.colors.chart.purple }} aria-hidden="true" />
+                </div>
+                <div>
+                  <h2
+                    id="similar-tickets-title"
+                    style={{
+                      fontSize: theme.fontSize.lg,
+                      fontWeight: theme.fontWeight.bold,
+                      color: theme.colors.text.primary,
+                      margin: 0,
+                    }}
+                  >
+                    Suggested Solutions
+                  </h2>
+                  <p style={{
+                    fontSize: theme.fontSize.sm,
+                    color: theme.colors.text.tertiary,
+                    margin: 0,
+                  }}>
+                    Similar resolved tickets that may help
+                  </p>
+                </div>
               </div>
               <button
                 ref={similarModalCloseRef}
@@ -2019,47 +2434,65 @@ const TechTicketDetail = () => {
                 }}
                 aria-label="Close similar tickets modal"
                 style={{
-                  background: 'none',
+                  backgroundColor: theme.colors.background.tertiary,
                   border: 'none',
                   cursor: 'pointer',
-                  color: theme.colors.text.tertiary,
-                  padding: theme.spacing.xs,
+                  color: theme.colors.text.secondary,
+                  padding: theme.spacing.sm,
                   borderRadius: theme.radius.md,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  transition: 'all 0.2s'
+                  transition: `all ${theme.transitions.fast}`,
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = theme.colors.background.secondary;
+                  e.currentTarget.style.backgroundColor = theme.colors.background.hover;
                   e.currentTarget.style.color = theme.colors.text.primary;
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                  e.currentTarget.style.color = theme.colors.text.tertiary;
+                  e.currentTarget.style.backgroundColor = theme.colors.background.tertiary;
+                  e.currentTarget.style.color = theme.colors.text.secondary;
                 }}
               >
-                <X size={24} aria-hidden="true" />
+                <X size={20} aria-hidden="true" />
               </button>
             </div>
 
             {/* Modal Body */}
             <div style={{
-              padding: theme.spacing.lg,
+              padding: theme.spacing.xl,
               overflowY: 'auto',
-              flex: 1
+              flex: 1,
+              backgroundColor: theme.colors.background.tertiary,
             }}>
               {similarTickets.length === 0 ? (
                 <div style={{
                   textAlign: 'center',
-                  padding: `${theme.spacing.xl} 0`,
-                  color: theme.colors.text.tertiary
+                  padding: theme.spacing['3xl'],
+                  color: theme.colors.text.tertiary,
                 }}>
-                  <Lightbulb className="w-16 h-16 mx-auto mb-4 opacity-20" aria-hidden="true" />
-                  <p style={{ fontSize: theme.fontSize.lg, marginBottom: theme.spacing.sm }}>
+                  <div style={{
+                    width: '80px',
+                    height: '80px',
+                    borderRadius: theme.radius.full,
+                    backgroundColor: theme.colors.background.secondary,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    margin: '0 auto',
+                    marginBottom: theme.spacing.xl,
+                  }}>
+                    <Lightbulb size={36} style={{ opacity: 0.3 }} aria-hidden="true" />
+                  </div>
+                  <p style={{
+                    fontSize: theme.fontSize.lg,
+                    fontWeight: theme.fontWeight.medium,
+                    color: theme.colors.text.secondary,
+                    marginBottom: theme.spacing.sm,
+                  }}>
                     No similar tickets found
                   </p>
-                  <p style={{ fontSize: theme.fontSize.sm }}>
+                  <p style={{ fontSize: theme.fontSize.sm, margin: 0 }}>
                     There are no resolved tickets similar to this one.
                   </p>
                 </div>
@@ -2069,30 +2502,56 @@ const TechTicketDetail = () => {
                     <div
                       key={similarTicket.id}
                       style={{
-                        padding: theme.spacing.lg,
+                        padding: theme.spacing.xl,
                         backgroundColor: theme.colors.background.secondary,
-                        borderRadius: theme.radius.lg,
-                        border: `1px solid ${theme.colors.border.medium}`,
-                        transition: 'all 0.2s'
+                        borderRadius: theme.radius.xl,
+                        border: `1px solid ${theme.colors.border.light}`,
+                        boxShadow: theme.shadows.sm,
                       }}
                     >
                       {/* Ticket Header */}
-                      <div style={{ marginBottom: theme.spacing.md }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.spacing.xs }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
-                            <span
-                              style={{
-                                fontSize: theme.fontSize.lg,
-                                fontWeight: theme.fontWeight.bold,
-                                color: theme.colors.accent.primary
-                              }}
-                            >
-                              Ticket #{similarTicket.ticket_number}
-                            </span>
-                            <Badge color="green" style={{ fontSize: theme.fontSize.xs }}>
-                              <CheckCircle className="w-3 h-3 mr-1" aria-hidden="true" />
-                              Resolved
-                            </Badge>
+                      <div style={{ marginBottom: theme.spacing.lg }}>
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          justifyContent: 'space-between',
+                          gap: theme.spacing.md,
+                          marginBottom: theme.spacing.sm,
+                        }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: theme.spacing.sm,
+                              marginBottom: theme.spacing.xs,
+                            }}>
+                              <span
+                                style={{
+                                  fontSize: theme.fontSize.base,
+                                  fontWeight: theme.fontWeight.bold,
+                                  color: theme.colors.accent.primary,
+                                }}
+                              >
+                                #{similarTicket.ticket_number}
+                              </span>
+                              <Badge variant="success" size="sm" icon={<CheckCircle />}>
+                                Resolved
+                              </Badge>
+                              {similarTicket.category_name && (
+                                <Badge variant="primary" size="sm" soft>
+                                  {similarTicket.category_name}
+                                </Badge>
+                              )}
+                            </div>
+                            <h3 style={{
+                              fontSize: theme.fontSize.base,
+                              fontWeight: theme.fontWeight.semibold,
+                              color: theme.colors.text.primary,
+                              margin: 0,
+                              lineHeight: theme.lineHeight.normal,
+                            }}>
+                              {similarTicket.subject}
+                            </h3>
                           </div>
                           <button
                             onClick={() => {
@@ -2101,64 +2560,43 @@ const TechTicketDetail = () => {
                             }}
                             aria-label={`View full details for ticket #${similarTicket.ticket_number}`}
                             style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: theme.spacing.xs,
-                              padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
-                              backgroundColor: 'transparent',
-                              border: `1px solid ${theme.colors.accent.primary}`,
-                              borderRadius: theme.radius.md,
-                              color: theme.colors.accent.primary,
+                              ...getButtonStyles('secondary'),
+                              padding: `${theme.spacing.xs} ${theme.spacing.md}`,
                               fontSize: theme.fontSize.xs,
-                              fontWeight: theme.fontWeight.medium,
-                              cursor: 'pointer',
-                              transition: 'all 0.2s',
-                              whiteSpace: 'nowrap'
                             }}
                             onMouseEnter={(e) => {
                               e.currentTarget.style.backgroundColor = theme.colors.accent.primary;
                               e.currentTarget.style.color = theme.colors.text.inverse;
+                              e.currentTarget.style.borderColor = theme.colors.accent.primary;
                             }}
                             onMouseLeave={(e) => {
-                              e.currentTarget.style.backgroundColor = 'transparent';
-                              e.currentTarget.style.color = theme.colors.accent.primary;
+                              e.currentTarget.style.backgroundColor = theme.colors.background.tertiary;
+                              e.currentTarget.style.color = theme.colors.text.secondary;
+                              e.currentTarget.style.borderColor = theme.colors.border.medium;
                             }}
                           >
-                            <ExternalLink className="w-3 h-3" aria-hidden="true" />
-                            View Full Ticket
+                            <ExternalLink size={12} aria-hidden="true" />
+                            View
                           </button>
                         </div>
-                        <h3 style={{
-                          fontSize: theme.fontSize.md,
-                          fontWeight: theme.fontWeight.semibold,
-                          color: theme.colors.text.primary,
-                          marginBottom: theme.spacing.xs
-                        }}>
-                          {similarTicket.subject}
-                        </h3>
-                        {similarTicket.category_name && (
-                          <Badge color="blue" style={{ fontSize: theme.fontSize.xs }}>
-                            {similarTicket.category_name}
-                          </Badge>
-                        )}
                       </div>
 
                       {/* Description */}
                       {similarTicket.description && (
                         <div style={{
-                          marginBottom: theme.spacing.md,
-                          padding: theme.spacing.md,
+                          marginBottom: theme.spacing.lg,
+                          padding: theme.spacing.lg,
                           backgroundColor: theme.colors.background.tertiary,
-                          borderRadius: theme.radius.md,
-                          border: `1px solid ${theme.colors.border.light}`
+                          borderRadius: theme.radius.lg,
+                          borderLeft: `3px solid ${theme.colors.border.medium}`,
                         }}>
                           <h4 style={{
                             fontSize: theme.fontSize.xs,
                             fontWeight: theme.fontWeight.semibold,
-                            color: theme.colors.text.secondary,
+                            color: theme.colors.text.tertiary,
                             textTransform: 'uppercase',
                             letterSpacing: '0.05em',
-                            marginBottom: theme.spacing.xs
+                            marginBottom: theme.spacing.sm,
                           }}>
                             Original Issue
                           </h4>
@@ -2166,8 +2604,8 @@ const TechTicketDetail = () => {
                             fontSize: theme.fontSize.sm,
                             color: theme.colors.text.primary,
                             whiteSpace: 'pre-wrap',
-                            lineHeight: '1.6',
-                            margin: 0
+                            lineHeight: theme.lineHeight.relaxed,
+                            margin: 0,
                           }}>
                             {similarTicket.description.length > 400
                               ? similarTicket.description.substring(0, 400) + '...'
@@ -2179,20 +2617,25 @@ const TechTicketDetail = () => {
                       {/* Resolution */}
                       {similarTicket.resolution ? (
                         <div style={{
-                          padding: theme.spacing.md,
+                          padding: theme.spacing.lg,
                           backgroundColor: theme.colors.accent.successLight,
-                          borderRadius: theme.radius.md,
-                          border: `1px solid ${theme.colors.accent.success}`
+                          borderRadius: theme.radius.lg,
+                          borderLeft: `3px solid ${theme.colors.accent.success}`,
                         }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs, marginBottom: theme.spacing.xs }}>
-                            <CheckCircle className="w-4 h-4" style={{ color: theme.colors.accent.success }} aria-hidden="true" />
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: theme.spacing.xs,
+                            marginBottom: theme.spacing.sm,
+                          }}>
+                            <CheckCircle size={16} style={{ color: theme.colors.accent.success }} aria-hidden="true" />
                             <h4 style={{
                               fontSize: theme.fontSize.xs,
                               fontWeight: theme.fontWeight.semibold,
                               color: theme.colors.accent.success,
                               textTransform: 'uppercase',
                               letterSpacing: '0.05em',
-                              margin: 0
+                              margin: 0,
                             }}>
                               Resolution
                             </h4>
@@ -2201,91 +2644,69 @@ const TechTicketDetail = () => {
                             fontSize: theme.fontSize.sm,
                             color: theme.colors.text.primary,
                             whiteSpace: 'pre-wrap',
-                            lineHeight: '1.6',
-                            margin: 0
+                            lineHeight: theme.lineHeight.relaxed,
+                            margin: 0,
+                            marginBottom: theme.spacing.lg,
                           }}>
                             {similarTicket.resolution}
                           </p>
                           <div style={{
-                            marginTop: theme.spacing.md,
-                            paddingTop: theme.spacing.sm,
-                            borderTop: `1px solid ${theme.colors.accent.success}40`
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            paddingTop: theme.spacing.md,
+                            borderTop: `1px solid ${theme.colors.accent.success}30`,
                           }}>
-                            <div style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              marginBottom: theme.spacing.xs
-                            }}>
-                              {similarTicket.resolved_at && (
-                                <p style={{
-                                  fontSize: theme.fontSize.xs,
-                                  color: theme.colors.accent.success,
-                                  margin: 0
-                                }}>
-                                  Resolved {getRelativeTime(similarTicket.resolved_at)}
-                                </p>
-                              )}
-                              <button
-                                onClick={() => {
-                                  handleUseSolution(similarTicket.resolution);
-                                }}
-                                aria-label={`Use resolution from ticket #${similarTicket.ticket_number}`}
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: theme.spacing.xs,
-                                  padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-                                  backgroundColor: theme.colors.accent.success,
-                                  border: 'none',
-                                  borderRadius: theme.radius.md,
-                                  color: theme.colors.text.inverse,
-                                  fontSize: theme.fontSize.sm,
-                                  fontWeight: theme.fontWeight.semibold,
-                                  cursor: 'pointer',
-                                  transition: 'all 0.2s',
-                                  marginLeft: 'auto'
-                                }}
-                                onMouseEnter={(e) => {
-                                  e.currentTarget.style.backgroundColor = theme.colors.accent.successHover;
-                                  e.currentTarget.style.transform = 'scale(1.02)';
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.currentTarget.style.backgroundColor = theme.colors.accent.success;
-                                  e.currentTarget.style.transform = 'scale(1)';
-                                }}
-                              >
-                                <CheckCircle className="w-3 h-3" aria-hidden="true" />
-                                Use This Solution
-                              </button>
-                            </div>
-                            <p style={{
-                              fontSize: theme.fontSize.xs,
-                              color: theme.colors.accent.success,
-                              fontStyle: 'italic',
-                              margin: 0,
-                              marginTop: theme.spacing.xs
-                            }}>
-                              Click to copy this resolution to your comment box
-                            </p>
+                            {similarTicket.resolved_at && (
+                              <p style={{
+                                fontSize: theme.fontSize.xs,
+                                color: theme.colors.accent.success,
+                                margin: 0,
+                              }}>
+                                Resolved {getRelativeTime(similarTicket.resolved_at)}
+                              </p>
+                            )}
+                            <button
+                              onClick={() => {
+                                handleUseSolution(similarTicket.resolution);
+                              }}
+                              aria-label={`Use resolution from ticket #${similarTicket.ticket_number}`}
+                              style={getButtonStyles('success')}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.backgroundColor = theme.colors.accent.successHover;
+                                e.currentTarget.style.transform = 'translateY(-1px)';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.backgroundColor = theme.colors.accent.success;
+                                e.currentTarget.style.transform = 'translateY(0)';
+                              }}
+                            >
+                              <CheckCircle size={14} aria-hidden="true" />
+                              Use This Solution
+                            </button>
                           </div>
                         </div>
                       ) : (
                         <div style={{
-                          padding: theme.spacing.md,
+                          padding: theme.spacing.lg,
                           backgroundColor: theme.colors.background.tertiary,
-                          borderRadius: theme.radius.md,
-                          border: `1px solid ${theme.colors.border.medium}`
+                          borderRadius: theme.radius.lg,
+                          borderLeft: `3px solid ${theme.colors.border.medium}`,
                         }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs, marginBottom: theme.spacing.xs }}>
-                            <AlertCircle className="w-4 h-4" style={{ color: theme.colors.text.tertiary }} aria-hidden="true" />
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: theme.spacing.xs,
+                            marginBottom: theme.spacing.sm,
+                          }}>
+                            <AlertCircle size={16} style={{ color: theme.colors.text.tertiary }} aria-hidden="true" />
                             <h4 style={{
                               fontSize: theme.fontSize.xs,
                               fontWeight: theme.fontWeight.semibold,
                               color: theme.colors.text.tertiary,
                               textTransform: 'uppercase',
                               letterSpacing: '0.05em',
-                              margin: 0
+                              margin: 0,
                             }}>
                               Resolution
                             </h4>
@@ -2294,7 +2715,7 @@ const TechTicketDetail = () => {
                             fontSize: theme.fontSize.sm,
                             color: theme.colors.text.tertiary,
                             fontStyle: 'italic',
-                            margin: 0
+                            margin: 0,
                           }}>
                             No resolution recorded for this ticket.
                           </p>
@@ -2302,7 +2723,8 @@ const TechTicketDetail = () => {
                             <p style={{
                               fontSize: theme.fontSize.xs,
                               color: theme.colors.text.tertiary,
-                              marginTop: theme.spacing.xs
+                              margin: 0,
+                              marginTop: theme.spacing.sm,
                             }}>
                               Closed {getRelativeTime(similarTicket.resolved_at)}
                             </p>
@@ -2333,12 +2755,13 @@ const TechTicketDetail = () => {
             left: 0,
             right: 0,
             bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            backgroundColor: 'rgba(0, 0, 0, 0.6)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             zIndex: theme.zIndex.modal,
-            padding: theme.spacing.xl
+            padding: theme.spacing.xl,
+            backdropFilter: 'blur(4px)',
           }}
         >
           <div
@@ -2349,80 +2772,112 @@ const TechTicketDetail = () => {
             aria-labelledby="resolve-modal-title"
             style={{
               backgroundColor: theme.colors.background.secondary,
-              borderRadius: theme.radius.lg,
-              maxWidth: '500px',
+              borderRadius: theme.radius.xl,
+              maxWidth: '520px',
               width: '100%',
               overflow: 'hidden',
-              boxShadow: theme.shadows.xl
+              boxShadow: theme.shadows['2xl'],
             }}
           >
             {/* Modal Header */}
             <div style={{
-              padding: theme.spacing.lg,
-              borderBottom: `1px solid ${theme.colors.border.medium}`
+              padding: theme.spacing.xl,
+              borderBottom: `1px solid ${theme.colors.border.light}`,
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
-                <CheckCircle className="w-6 h-6" style={{ color: theme.colors.accent.success }} aria-hidden="true" />
-                <h2
-                  id="resolve-modal-title"
-                  style={{
-                    fontSize: theme.fontSize.xl,
-                    fontWeight: theme.fontWeight.bold,
-                    color: theme.colors.text.primary,
-                    margin: 0
-                  }}
-                >
-                  Resolve Ticket
-                </h2>
-              </div>
-              <p style={{
-                fontSize: theme.fontSize.sm,
-                color: theme.colors.text.secondary,
-                marginTop: theme.spacing.sm,
-                marginBottom: 0
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: theme.spacing.md,
               }}>
-                How did you resolve this issue? Your resolution helps the team handle similar tickets in the future.
-              </p>
+                <div style={{
+                  width: '44px',
+                  height: '44px',
+                  borderRadius: theme.radius.lg,
+                  backgroundColor: theme.colors.accent.successLight,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}>
+                  <CheckCircle size={22} style={{ color: theme.colors.accent.success }} aria-hidden="true" />
+                </div>
+                <div>
+                  <h2
+                    id="resolve-modal-title"
+                    style={{
+                      fontSize: theme.fontSize.lg,
+                      fontWeight: theme.fontWeight.bold,
+                      color: theme.colors.text.primary,
+                      margin: 0,
+                    }}
+                  >
+                    Resolve Ticket
+                  </h2>
+                  <p style={{
+                    fontSize: theme.fontSize.sm,
+                    color: theme.colors.text.tertiary,
+                    margin: 0,
+                  }}>
+                    Document how you resolved this issue
+                  </p>
+                </div>
+              </div>
             </div>
 
             {/* Modal Body */}
-            <div style={{ padding: theme.spacing.lg }}>
+            <div style={{ padding: theme.spacing.xl }}>
               <div style={{ marginBottom: theme.spacing.lg }}>
+                <label
+                  htmlFor="resolution-textarea"
+                  style={{
+                    display: 'block',
+                    fontSize: theme.fontSize.sm,
+                    fontWeight: theme.fontWeight.medium,
+                    color: theme.colors.text.primary,
+                    marginBottom: theme.spacing.sm,
+                  }}
+                >
+                  Resolution Details
+                </label>
                 <textarea
+                  id="resolution-textarea"
                   value={resolutionText}
                   onChange={(e) => setResolutionText(e.target.value)}
                   placeholder="Describe the steps you took to resolve this ticket..."
-                  aria-label="Resolution description"
                   aria-describedby="resolution-char-count"
                   rows={5}
                   maxLength={2000}
                   disabled={skipResolution || submittingResolution}
                   style={{
                     width: '100%',
-                    padding: theme.spacing.md,
-                    backgroundColor: skipResolution ? theme.colors.background.hover : theme.colors.background.tertiary,
+                    padding: theme.spacing.lg,
+                    backgroundColor: skipResolution ? theme.colors.background.hover : theme.colors.background.secondary,
                     color: theme.colors.text.primary,
                     border: `1px solid ${theme.colors.border.medium}`,
-                    borderRadius: theme.radius.md,
+                    borderRadius: theme.radius.lg,
                     fontSize: theme.fontSize.sm,
                     outline: 'none',
                     resize: 'vertical',
                     fontFamily: 'inherit',
-                    lineHeight: '1.6',
+                    lineHeight: theme.lineHeight.relaxed,
                     opacity: skipResolution ? 0.5 : 1,
-                    cursor: skipResolution ? 'not-allowed' : 'text'
+                    cursor: skipResolution ? 'not-allowed' : 'text',
+                    transition: `border-color ${theme.transitions.fast}`,
+                    boxSizing: 'border-box',
                   }}
+                  onFocus={(e) => !skipResolution && (e.currentTarget.style.borderColor = theme.colors.border.focus)}
+                  onBlur={(e) => (e.currentTarget.style.borderColor = theme.colors.border.medium)}
                 />
                 <p
                   id="resolution-char-count"
                   style={{
                     fontSize: theme.fontSize.xs,
                     color: theme.colors.text.tertiary,
-                    marginTop: theme.spacing.xs,
-                    marginBottom: 0
+                    marginTop: theme.spacing.sm,
+                    marginBottom: 0,
+                    textAlign: 'right',
                   }}
                 >
-                  {resolutionText.length}/2000 characters
+                  {resolutionText.length}/2000
                 </p>
               </div>
 
@@ -2442,37 +2897,37 @@ const TechTicketDetail = () => {
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: theme.spacing.sm,
-                  padding: theme.spacing.md,
-                  backgroundColor: skipResolution ? theme.colors.background.hover : theme.colors.background.tertiary,
-                  border: `1px solid ${theme.colors.border.medium}`,
-                  borderRadius: theme.radius.md,
+                  gap: theme.spacing.md,
+                  padding: theme.spacing.lg,
+                  backgroundColor: skipResolution ? theme.colors.background.tertiary : theme.colors.background.secondary,
+                  border: `1px solid ${skipResolution ? theme.colors.accent.primary : theme.colors.border.light}`,
+                  borderRadius: theme.radius.lg,
                   cursor: submittingResolution ? 'not-allowed' : 'pointer',
-                  transition: 'all 0.2s'
+                  transition: `all ${theme.transitions.fast}`,
                 }}
               >
                 <div
                   aria-hidden="true"
                   style={{
-                    width: '18px',
-                    height: '18px',
-                    borderRadius: theme.radius.xs,
+                    width: '20px',
+                    height: '20px',
+                    borderRadius: theme.radius.sm,
                     border: `2px solid ${skipResolution ? theme.colors.accent.primary : theme.colors.border.medium}`,
                     backgroundColor: skipResolution ? theme.colors.accent.primary : 'transparent',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     flexShrink: 0,
-                    transition: 'all 0.2s'
+                    transition: `all ${theme.transitions.fast}`,
                   }}
                 >
                   {skipResolution && (
-                    <CheckCircle className="w-3 h-3" style={{ color: '#ffffff' }} />
+                    <CheckCircle size={12} style={{ color: theme.colors.text.inverse }} />
                   )}
                 </div>
                 <span style={{
                   fontSize: theme.fontSize.sm,
-                  color: theme.colors.text.secondary
+                  color: skipResolution ? theme.colors.text.primary : theme.colors.text.secondary,
                 }}>
                   Resolve without adding resolution notes
                 </span>
@@ -2481,11 +2936,12 @@ const TechTicketDetail = () => {
 
             {/* Modal Footer */}
             <div style={{
-              padding: theme.spacing.lg,
-              borderTop: `1px solid ${theme.colors.border.medium}`,
+              padding: theme.spacing.xl,
+              borderTop: `1px solid ${theme.colors.border.light}`,
               display: 'flex',
               justifyContent: 'flex-end',
-              gap: theme.spacing.sm
+              gap: theme.spacing.md,
+              backgroundColor: theme.colors.background.tertiary,
             }}>
               <button
                 ref={resolveModalCloseRef}
@@ -2494,45 +2950,20 @@ const TechTicketDetail = () => {
                   resolveModalTriggerRef.current?.focus();
                 }}
                 disabled={submittingResolution}
-                style={{
-                  padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
-                  backgroundColor: 'transparent',
-                  border: `1px solid ${theme.colors.border.medium}`,
-                  borderRadius: theme.radius.md,
-                  color: theme.colors.text.secondary,
-                  fontSize: theme.fontSize.sm,
-                  fontWeight: theme.fontWeight.medium,
-                  cursor: submittingResolution ? 'not-allowed' : 'pointer',
-                  opacity: submittingResolution ? 0.5 : 1,
-                  transition: 'all 0.2s'
-                }}
-                onMouseEnter={(e) => !submittingResolution && (e.currentTarget.style.backgroundColor = theme.colors.background.tertiary)}
-                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                style={getButtonStyles('secondary', submittingResolution)}
+                onMouseEnter={(e) => !submittingResolution && (e.currentTarget.style.backgroundColor = theme.colors.background.hover)}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = theme.colors.background.tertiary)}
               >
                 Cancel
               </button>
               <button
                 onClick={handleSubmitResolution}
                 disabled={submittingResolution || (!skipResolution && resolutionText.trim().length === 0)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: theme.spacing.xs,
-                  padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
-                  backgroundColor: theme.colors.accent.success,
-                  border: 'none',
-                  borderRadius: theme.radius.md,
-                  color: '#ffffff',
-                  fontSize: theme.fontSize.sm,
-                  fontWeight: theme.fontWeight.medium,
-                  cursor: (submittingResolution || (!skipResolution && resolutionText.trim().length === 0)) ? 'not-allowed' : 'pointer',
-                  opacity: (submittingResolution || (!skipResolution && resolutionText.trim().length === 0)) ? 0.5 : 1,
-                  transition: 'all 0.2s'
-                }}
-                onMouseEnter={(e) => !(submittingResolution || (!skipResolution && resolutionText.trim().length === 0)) && (e.currentTarget.style.backgroundColor = '#047857')}
+                style={getButtonStyles('success', submittingResolution || (!skipResolution && resolutionText.trim().length === 0))}
+                onMouseEnter={(e) => !(submittingResolution || (!skipResolution && resolutionText.trim().length === 0)) && (e.currentTarget.style.backgroundColor = theme.colors.accent.successHover)}
                 onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = theme.colors.accent.success)}
               >
-                <CheckCircle className="w-4 h-4" />
+                <CheckCircle size={16} />
                 {submittingResolution ? 'Resolving...' : 'Resolve Ticket'}
               </button>
             </div>
