@@ -206,16 +206,7 @@ const CreateTicket = () => {
 
       // Only update state if this is still the current fetch (prevents race conditions)
       if (currentOwnerFetchRef.current === fetchId) {
-        console.log('Vans API response for owner:', {
-          ownerId,
-          totalVans: data.vans?.length || 0,
-          vans: data.vans?.map(v => ({ id: v.id, van_number: v.van_number }))
-        });
-        const vansData = data.vans || [];
-        console.log('Setting vans state with', vansData.length, 'vans');
-        setVans(vansData);
-      } else {
-        console.log('Ignoring stale response for owner:', ownerId, 'current is:', currentOwnerFetchRef.current);
+        setVans(data.vans || []);
       }
     } catch (error) {
       if (currentOwnerFetchRef.current === fetchId) {
@@ -270,7 +261,6 @@ const CreateTicket = () => {
       return [];
     }
     // Vans are already filtered by owner_id from the API
-    console.log(`filteredVans memo: owner=${formData.owner_id}, vans.length=${vans.length}, loadingVans=${loadingVans}`);
     return vans;
   }, [vans, formData.owner_id, loadingVans]);
 
@@ -394,14 +384,6 @@ const CreateTicket = () => {
    */
   const handleOwnerSelect = (ownerId) => {
     const owner = owners.find(o => o.id === ownerId);
-
-    // Debug: Log owner selection
-    console.log('Owner selected:', {
-      ownerId,
-      ownerIdType: typeof ownerId,
-      ownerName: owner?.name,
-      ownerFound: !!owner
-    });
 
     setFormData(prev => ({
       ...prev,
