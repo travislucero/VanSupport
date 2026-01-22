@@ -13,6 +13,12 @@ const Card = ({
   style = {},
   headerStyle = {},
   bodyStyle = {},
+  id,
+  onDragOver,
+  onDragEnter,
+  onDragLeave,
+  onDrop,
+  ...restProps
 }) => {
   const [isHovered, setIsHovered] = React.useState(false);
 
@@ -21,7 +27,7 @@ const Card = ({
       backgroundColor: theme.colors.background.secondary,
       borderRadius: theme.radius.xl,
       border: `1px solid ${theme.colors.border.light}`,
-      overflow: 'hidden',
+      overflow: 'visible',
       boxShadow: isHovered && hoverable ? theme.shadows.md : theme.shadows.sm,
       transition: theme.transitions.normal,
       transform: isHovered && hoverable ? 'translateY(-2px)' : 'translateY(0)',
@@ -78,10 +84,16 @@ const Card = ({
 
   return (
     <div
+      id={id}
       className={className}
       style={styles.card}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      onDragOver={onDragOver}
+      onDragEnter={onDragEnter}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      {...restProps}
     >
       {(title || action || icon) && (
         <div style={styles.header}>

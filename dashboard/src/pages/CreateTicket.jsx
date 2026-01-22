@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import {
   Ticket,
@@ -14,7 +15,11 @@ import {
   AlertTriangle,
   ArrowUp,
   Minus,
-  ArrowDown
+  ArrowDown,
+  Loader2,
+  ChevronDown,
+  Search,
+  X
 } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import Card from '../components/Card';
@@ -39,7 +44,8 @@ const CreateTicket = () => {
     description: '',
     priority: 'normal',
     urgency: 'medium',
-    van_id: '',
+    owner_id: '', // Selected owner UUID for filtering vans
+    van_id: '',   // Selected van UUID
     category_id: ''
   });
 
@@ -54,13 +60,280 @@ const CreateTicket = () => {
   const [createdTicket, setCreatedTicket] = useState(null);
   const [linkCopied, setLinkCopied] = useState(false);
 
+  // Owners, Vans, and Categories state for dropdowns
+  const [owners, setOwners] = useState([]);
+  const [vans, setVans] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [loadingOwners, setLoadingOwners] = useState(true);
+  const [loadingVans, setLoadingVans] = useState(true);
+  const [loadingCategories, setLoadingCategories] = useState(true);
+
+  // Owner dropdown search state
+  const [ownerSearchQuery, setOwnerSearchQuery] = useState('');
+  const [ownerDropdownOpen, setOwnerDropdownOpen] = useState(false);
+
+  // Van dropdown search state
+  const [vanSearchQuery, setVanSearchQuery] = useState('');
+  const [vanDropdownOpen, setVanDropdownOpen] = useState(false);
+
+  // Refs for click-outside detection and positioning
+  const ownerDropdownRef = useRef(null);
+  const ownerTriggerRef = useRef(null);
+  const vanDropdownRef = useRef(null);
+  const vanTriggerRef = useRef(null);
+
+  // State for dropdown positions (for fixed positioning)
+  const [ownerDropdownPosition, setOwnerDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
+  const [vanDropdownPosition, setVanDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
+
+  // Ref for success modal focus management
+  const successModalRef = useRef(null);
+
+  /**
+   * Close owner dropdown when clicking outside.
+   * Checks both the trigger ref and the portal-rendered dropdown.
+   */
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      // Check if click is inside the trigger element
+      const isInsideTrigger = ownerDropdownRef.current && ownerDropdownRef.current.contains(event.target);
+      // Check if click is inside the portal-rendered dropdown (by id)
+      const dropdownElement = document.getElementById('owner-listbox');
+      const isInsideDropdown = dropdownElement && dropdownElement.contains(event.target);
+
+      if (!isInsideTrigger && !isInsideDropdown) {
+        setOwnerDropdownOpen(false);
+      }
+    };
+
+    if (ownerDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [ownerDropdownOpen]);
+
+  /**
+   * Close van dropdown when clicking outside.
+   * Checks both the trigger ref and the portal-rendered dropdown.
+   */
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      // Check if click is inside the trigger element
+      const isInsideTrigger = vanDropdownRef.current && vanDropdownRef.current.contains(event.target);
+      // Check if click is inside the portal-rendered dropdown (by id)
+      const dropdownElement = document.getElementById('van-listbox');
+      const isInsideDropdown = dropdownElement && dropdownElement.contains(event.target);
+
+      if (!isInsideTrigger && !isInsideDropdown) {
+        setVanDropdownOpen(false);
+      }
+    };
+
+    if (vanDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [vanDropdownOpen]);
+
+  /**
+   * Focus success modal when it opens for accessibility.
+   */
+  useEffect(() => {
+    if (showSuccess && successModalRef.current) {
+      successModalRef.current.focus();
+    }
+  }, [showSuccess]);
+
+  /**
+   * Fetch all owners on component mount.
+   * Uses a high limit to get all owners for the dropdown.
+   */
+  const fetchOwners = useCallback(async (signal) => {
+    setLoadingOwners(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/owners?limit=100`, {
+        credentials: 'include',
+        signal
+      });
+      if (!response.ok) {
+        throw new Error('Failed to fetch owners');
+      }
+      const data = await response.json();
+      setOwners(data.owners || []);
+    } catch (error) {
+      if (error.name === 'AbortError') return;
+      showToast('Failed to load owners', 'error');
+    } finally {
+      setLoadingOwners(false);
+    }
+  }, [showToast]);
+
+  // Ref to track current owner fetch to prevent race conditions
+  const currentOwnerFetchRef = useRef(null);
+
+  /**
+   * Fetch vans for a specific owner.
+   * Called when an owner is selected to get their associated vans.
+   * Uses a ref to track the current fetch and prevent race conditions.
+   */
+  const fetchVansForOwner = useCallback(async (ownerId) => {
+    if (!ownerId) {
+      setVans([]);
+      return;
+    }
+
+    // Track this fetch to prevent race conditions
+    const fetchId = ownerId;
+    currentOwnerFetchRef.current = fetchId;
+
+    setLoadingVans(true);
+    setVans([]); // Clear previous vans immediately
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/vans?owner_id=${ownerId}&limit=100`, {
+        credentials: 'include'
+      });
+      if (!response.ok) {
+        throw new Error('Failed to fetch vans');
+      }
+      const data = await response.json();
+
+      // Only update state if this is still the current fetch (prevents race conditions)
+      if (currentOwnerFetchRef.current === fetchId) {
+        console.log('Vans API response for owner:', {
+          ownerId,
+          totalVans: data.vans?.length || 0,
+          vans: data.vans?.map(v => ({ id: v.id, van_number: v.van_number }))
+        });
+        const vansData = data.vans || [];
+        console.log('Setting vans state with', vansData.length, 'vans');
+        setVans(vansData);
+      } else {
+        console.log('Ignoring stale response for owner:', ownerId, 'current is:', currentOwnerFetchRef.current);
+      }
+    } catch (error) {
+      if (currentOwnerFetchRef.current === fetchId) {
+        showToast('Failed to load vans', 'error');
+      }
+    } finally {
+      if (currentOwnerFetchRef.current === fetchId) {
+        setLoadingVans(false);
+      }
+    }
+  }, [showToast]);
+
+  /**
+   * Fetch categories on component mount.
+   */
+  const fetchCategories = useCallback(async (signal) => {
+    setLoadingCategories(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/categories`, {
+        credentials: 'include',
+        signal
+      });
+      if (!response.ok) {
+        throw new Error('Failed to fetch categories');
+      }
+      const data = await response.json();
+      setCategories(data.categories || []);
+    } catch (error) {
+      if (error.name === 'AbortError') return;
+      // Don't show toast for categories - it's optional
+    } finally {
+      setLoadingCategories(false);
+    }
+  }, []);
+
+  // Fetch owners and categories on component mount with AbortController
+  // Vans are fetched when an owner is selected
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchOwners(controller.signal);
+    fetchCategories(controller.signal);
+    return () => controller.abort();
+  }, [fetchOwners, fetchCategories]);
+
+  /**
+   * Get filtered vans for the selected owner.
+   * The vans are already filtered by owner_id from the API,
+   * so this just returns the vans array (or empty if no owner selected).
+   */
+  const filteredVans = useMemo(() => {
+    if (!formData.owner_id) {
+      return [];
+    }
+    // Vans are already filtered by owner_id from the API
+    console.log(`filteredVans memo: owner=${formData.owner_id}, vans.length=${vans.length}, loadingVans=${loadingVans}`);
+    return vans;
+  }, [vans, formData.owner_id, loadingVans]);
+
+  /**
+   * Further filter vans by search query for the searchable dropdown.
+   * Searches by van_number, make, and year.
+   */
+  const searchFilteredVans = useMemo(() => {
+    if (!vanSearchQuery.trim()) {
+      return filteredVans;
+    }
+    const query = vanSearchQuery.toLowerCase();
+    return filteredVans.filter(van => {
+      const vanNumber = (van.van_number || '').toLowerCase();
+      const make = (van.make || '').toLowerCase();
+      const year = String(van.year || '');
+      return vanNumber.includes(query) || make.includes(query) || year.includes(query);
+    });
+  }, [filteredVans, vanSearchQuery]);
+
+  /**
+   * Get the currently selected van object for display purposes.
+   */
+  const selectedVan = useMemo(() => {
+    if (!formData.van_id) return null;
+    return vans.find(v => v.id === formData.van_id) || null;
+  }, [vans, formData.van_id]);
+
+  /**
+   * Get the currently selected owner object for display and auto-populate.
+   */
+  const selectedOwner = useMemo(() => {
+    if (!formData.owner_id) return null;
+    return owners.find(o => o.id === formData.owner_id) || null;
+  }, [owners, formData.owner_id]);
+
+  /**
+   * Filter owners by search query for the searchable dropdown.
+   * Searches by name, company, phone, and email.
+   */
+  const searchFilteredOwners = useMemo(() => {
+    if (!ownerSearchQuery.trim()) {
+      return owners;
+    }
+    const query = ownerSearchQuery.toLowerCase();
+    return owners.filter(owner => {
+      const name = (owner.name || '').toLowerCase();
+      const company = (owner.company || '').toLowerCase();
+      const phone = (owner.phone || '').toLowerCase();
+      const email = (owner.email || '').toLowerCase();
+      return name.includes(query) || company.includes(query) || phone.includes(query) || email.includes(query);
+    });
+  }, [owners, ownerSearchQuery]);
+
   // Handle input change
   const handleChange = (e) => {
     const { name, value } = e.target;
+
     setFormData(prev => ({
       ...prev,
       [name]: value
     }));
+
     // Clear error for this field when user starts typing
     if (errors[name]) {
       setErrors(prev => ({
@@ -70,20 +343,151 @@ const CreateTicket = () => {
     }
   };
 
+  /**
+   * Calculate and set dropdown position for fixed positioning.
+   */
+  const updateOwnerDropdownPosition = useCallback(() => {
+    if (ownerTriggerRef.current) {
+      const rect = ownerTriggerRef.current.getBoundingClientRect();
+      setOwnerDropdownPosition({
+        top: rect.bottom,
+        left: rect.left,
+        width: rect.width
+      });
+    }
+  }, []);
+
+  const updateVanDropdownPosition = useCallback(() => {
+    if (vanTriggerRef.current) {
+      const rect = vanTriggerRef.current.getBoundingClientRect();
+      setVanDropdownPosition({
+        top: rect.bottom,
+        left: rect.left,
+        width: rect.width
+      });
+    }
+  }, []);
+
+  /**
+   * Handle opening owner dropdown with position calculation.
+   */
+  const handleOwnerDropdownToggle = () => {
+    if (!ownerDropdownOpen) {
+      updateOwnerDropdownPosition();
+    }
+    setOwnerDropdownOpen(!ownerDropdownOpen);
+  };
+
+  /**
+   * Handle opening van dropdown with position calculation.
+   */
+  const handleVanDropdownToggle = () => {
+    if (!vanDropdownOpen) {
+      updateVanDropdownPosition();
+    }
+    setVanDropdownOpen(!vanDropdownOpen);
+  };
+
+  /**
+   * Handle owner selection from the searchable dropdown.
+   * Fetches vans for the selected owner.
+   */
+  const handleOwnerSelect = (ownerId) => {
+    const owner = owners.find(o => o.id === ownerId);
+
+    // Debug: Log owner selection
+    console.log('Owner selected:', {
+      ownerId,
+      ownerIdType: typeof ownerId,
+      ownerName: owner?.name,
+      ownerFound: !!owner
+    });
+
+    setFormData(prev => ({
+      ...prev,
+      owner_id: ownerId,
+      owner_name: owner?.name || '',
+      phone: owner?.phone || '',
+      email: owner?.email || '',
+      van_id: '' // Clear van selection when owner changes
+    }));
+    setOwnerSearchQuery('');
+    setOwnerDropdownOpen(false);
+    setVanSearchQuery(''); // Reset van search
+    setVanDropdownOpen(false); // Close van dropdown
+
+    // Fetch vans for this owner
+    fetchVansForOwner(ownerId);
+
+    // Clear owner error if present
+    if (errors.owner_name) {
+      setErrors(prev => ({
+        ...prev,
+        owner_name: null
+      }));
+    }
+  };
+
+  /**
+   * Clear the owner selection and vans.
+   */
+  const handleClearOwner = () => {
+    setFormData(prev => ({
+      ...prev,
+      owner_id: '',
+      owner_name: '',
+      phone: '',
+      email: '',
+      van_id: ''
+    }));
+    setOwnerSearchQuery('');
+    setVanSearchQuery('');
+    setVans([]); // Clear vans since no owner is selected
+  };
+
+  /**
+   * Handle van selection from the custom searchable dropdown.
+   */
+  const handleVanSelect = (vanId) => {
+    setFormData(prev => ({
+      ...prev,
+      van_id: vanId
+    }));
+    setVanSearchQuery('');
+    setVanDropdownOpen(false);
+
+    // Clear error for van_id if present
+    if (errors.van_id) {
+      setErrors(prev => ({
+        ...prev,
+        van_id: null
+      }));
+    }
+  };
+
+  /**
+   * Clear the van selection.
+   */
+  const handleClearVan = () => {
+    setFormData(prev => ({
+      ...prev,
+      van_id: ''
+    }));
+    setVanSearchQuery('');
+  };
+
   // Validate form
   const validateForm = () => {
     const newErrors = {};
 
-    // Owner name (customer name)
-    if (!formData.owner_name.trim()) {
-      newErrors.owner_name = 'Customer name is required';
-    } else if (formData.owner_name.trim().length < 2) {
-      newErrors.owner_name = 'Customer name must be at least 2 characters';
+    // Owner selection (customer)
+    if (!formData.owner_id) {
+      newErrors.owner_name = 'Please select a customer';
     }
 
-    // Phone number
+    // Phone number - should be auto-filled from owner
     if (!formData.phone.trim()) {
-      newErrors.phone = 'Phone number is required';
+      newErrors.phone = 'Phone number is required - please select a customer';
     } else if (!/^[\d\s\-\+\(\)]+$/.test(formData.phone)) {
       newErrors.phone = 'Invalid phone number format';
     }
@@ -144,8 +548,9 @@ const CreateTicket = () => {
           description: formData.description.trim(),
           priority: formData.priority,
           urgency: formData.urgency || null,
-          van_id: null,  // TODO: Add dropdown with actual UUID values from lookup table
-          category_id: null  // TODO: Add dropdown with actual UUID values from lookup table
+          owner_id: formData.owner_id || null,  // Owner UUID from dropdown
+          van_id: formData.van_id || null,  // Van UUID from dropdown
+          category_id: formData.category_id || null  // Category from dropdown
         })
       });
 
@@ -156,11 +561,6 @@ const CreateTicket = () => {
 
       const newTicket = await response.json();
 
-      // Debug: Log the API response
-      console.log('🎫 Created ticket response:', newTicket);
-      console.log('🎫 Ticket ID:', newTicket.ticket_id);
-      console.log('🎫 Ticket Number:', newTicket.ticket_number);
-
       // Extract ticket data correctly - use ticket_id not id
       const ticketState = {
         id: newTicket.ticket_id,           // For navigation
@@ -168,7 +568,6 @@ const CreateTicket = () => {
         uuid: newTicket.ticket_id          // For public link
       };
 
-      console.log('🎫 Setting state:', ticketState);
       setCreatedTicket(ticketState);
       setShowSuccess(true);
       showToast(`Ticket #${newTicket.ticket_number} created successfully!`, 'success');
@@ -180,14 +579,18 @@ const CreateTicket = () => {
     }
   };
 
-  // Copy link to clipboard
-  const handleCopyLink = () => {
+  // Copy link to clipboard with error handling
+  const handleCopyLink = async () => {
     if (createdTicket) {
       const link = `${window.location.origin}/ticket/${createdTicket.uuid}`;
-      navigator.clipboard.writeText(link);
-      setLinkCopied(true);
-      showToast('Link copied to clipboard!', 'success');
-      setTimeout(() => setLinkCopied(false), 3000);
+      try {
+        await navigator.clipboard.writeText(link);
+        setLinkCopied(true);
+        showToast('Link copied to clipboard!', 'success');
+        setTimeout(() => setLinkCopied(false), 3000);
+      } catch (err) {
+        showToast('Failed to copy link to clipboard', 'error');
+      }
     }
   };
 
@@ -204,10 +607,16 @@ const CreateTicket = () => {
       description: '',
       priority: 'normal',
       urgency: 'medium',
+      owner_id: '',
       van_id: '',
       category_id: ''
     });
+    setOwnerSearchQuery('');
+    setOwnerDropdownOpen(false);
     setErrors({});
+    setVanSearchQuery('');
+    setVanDropdownOpen(false);
+    setVans([]); // Clear vans since no owner is selected
   };
 
   // Get priority badge config
@@ -283,55 +692,283 @@ const CreateTicket = () => {
                   </div>
 
                   <div className="space-y-4">
-                    {/* Customer Name */}
+                    {/* Customer Name - Searchable dropdown from owners */}
                     <div>
-                      <label style={{
-                        display: 'block',
-                        fontSize: theme.fontSize.sm,
-                        fontWeight: theme.fontWeight.medium,
-                        color: theme.colors.text.secondary,
-                        marginBottom: theme.spacing.xs
-                      }}>
-                        Customer Name <span style={{ color: '#dc2626' }}>*</span>
-                      </label>
-                      <input
-                        type="text"
-                        name="owner_name"
-                        value={formData.owner_name}
-                        onChange={handleChange}
-                        placeholder="Enter customer name"
-                        required
+                      <label
+                        id="owner_id-label"
                         style={{
-                          width: '100%',
-                          padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-                          backgroundColor: theme.colors.background.tertiary,
-                          color: theme.colors.text.primary,
-                          border: `1px solid ${errors.owner_name ? '#dc2626' : theme.colors.border.medium}`,
-                          borderRadius: theme.radius.md,
+                          display: 'block',
                           fontSize: theme.fontSize.sm,
-                          outline: 'none'
+                          fontWeight: theme.fontWeight.medium,
+                          color: theme.colors.text.secondary,
+                          marginBottom: theme.spacing.xs
                         }}
-                      />
+                      >
+                        Customer Name <span aria-hidden="true" style={{ color: '#dc2626' }}>*</span>
+                        <span className="sr-only">(required)</span>
+                      </label>
+
+                      {/* Owner searchable dropdown */}
+                      <div ref={ownerDropdownRef} style={{ position: 'relative' }}>
+                        <User aria-hidden="true" style={{
+                          position: 'absolute',
+                          left: '12px',
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                          width: '16px',
+                          height: '16px',
+                          color: '#9ca3af',
+                          pointerEvents: 'none',
+                          zIndex: 1
+                        }} />
+
+                        {/* Loading state */}
+                        {loadingOwners ? (
+                          <div
+                            aria-live="polite"
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                              paddingLeft: '40px',
+                              backgroundColor: theme.colors.background.tertiary,
+                              border: `1px solid ${theme.colors.border.medium}`,
+                              borderRadius: theme.radius.md,
+                              color: theme.colors.text.tertiary,
+                              fontSize: theme.fontSize.sm
+                            }}
+                          >
+                            <Loader2 aria-hidden="true" size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                            Loading customers...
+                          </div>
+                        ) : (
+                          <>
+                            {/* Selected value display / dropdown trigger */}
+                            <div
+                              ref={ownerTriggerRef}
+                              role="combobox"
+                              aria-expanded={ownerDropdownOpen}
+                              aria-haspopup="listbox"
+                              aria-controls="owner-listbox"
+                              aria-labelledby="owner_id-label"
+                              aria-required="true"
+                              aria-invalid={!!errors.owner_name}
+                              aria-describedby={errors.owner_name ? 'owner_id-error' : undefined}
+                              tabIndex={0}
+                              onClick={handleOwnerDropdownToggle}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  handleOwnerDropdownToggle();
+                                } else if (e.key === 'Escape') {
+                                  setOwnerDropdownOpen(false);
+                                }
+                              }}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                                paddingLeft: '40px',
+                                backgroundColor: theme.colors.background.tertiary,
+                                border: `1px solid ${errors.owner_name ? '#dc2626' : ownerDropdownOpen ? '#1e3a5f' : theme.colors.border.medium}`,
+                                borderRadius: theme.radius.md,
+                                fontSize: theme.fontSize.sm,
+                                cursor: 'pointer',
+                                minHeight: '40px',
+                                outline: 'none'
+                              }}
+                            >
+                              {selectedOwner ? (
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                                  <span style={{ color: theme.colors.text.primary }}>
+                                    {selectedOwner.name}{selectedOwner.company ? ` (${selectedOwner.company})` : ''}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleClearOwner();
+                                    }}
+                                    aria-label="Clear customer selection"
+                                    style={{
+                                      background: 'none',
+                                      border: 'none',
+                                      padding: '2px 6px',
+                                      cursor: 'pointer',
+                                      color: '#6b7280',
+                                      display: 'flex',
+                                      alignItems: 'center'
+                                    }}
+                                  >
+                                    <X size={14} />
+                                  </button>
+                                </div>
+                              ) : (
+                                <span style={{ color: theme.colors.text.tertiary }}>
+                                  Select a customer...
+                                </span>
+                              )}
+                              <ChevronDown
+                                aria-hidden="true"
+                                size={16}
+                                style={{
+                                  color: '#9ca3af',
+                                  transform: ownerDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                                  transition: 'transform 0.2s',
+                                  flexShrink: 0
+                                }}
+                              />
+                            </div>
+
+                            {/* Dropdown panel - rendered via Portal to escape all overflow constraints */}
+                            {ownerDropdownOpen && createPortal(
+                              <div
+                                id="owner-listbox"
+                                role="listbox"
+                                aria-labelledby="owner_id-label"
+                                style={{
+                                  position: 'fixed',
+                                  top: ownerDropdownPosition.top,
+                                  left: ownerDropdownPosition.left,
+                                  width: ownerDropdownPosition.width,
+                                  backgroundColor: 'white',
+                                  border: '1px solid #1e3a5f',
+                                  borderRadius: theme.radius.md,
+                                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                                  zIndex: 9999,
+                                  maxHeight: '300px',
+                                  overflow: 'hidden',
+                                  display: 'flex',
+                                  flexDirection: 'column'
+                                }}
+                              >
+                                {/* Search input */}
+                                <div style={{
+                                  padding: '8px',
+                                  borderBottom: `1px solid ${theme.colors.border.light}`
+                                }}>
+                                  <div style={{ position: 'relative' }}>
+                                    <Search size={14} style={{
+                                      position: 'absolute',
+                                      left: '8px',
+                                      top: '50%',
+                                      transform: 'translateY(-50%)',
+                                      color: '#9ca3af'
+                                    }} />
+                                    <input
+                                      type="text"
+                                      value={ownerSearchQuery}
+                                      onChange={(e) => setOwnerSearchQuery(e.target.value)}
+                                      onClick={(e) => e.stopPropagation()}
+                                      placeholder="Search customers..."
+                                      aria-label="Search customers"
+                                      style={{
+                                        width: '100%',
+                                        padding: '6px 8px 6px 28px',
+                                        border: `1px solid ${theme.colors.border.medium}`,
+                                        borderRadius: '4px',
+                                        fontSize: '0.8125rem',
+                                        outline: 'none'
+                                      }}
+                                      autoFocus
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Options list */}
+                                <div style={{
+                                  overflowY: 'auto',
+                                  maxHeight: '220px'
+                                }}>
+                                  {searchFilteredOwners.length === 0 ? (
+                                    <div style={{
+                                      padding: '12px',
+                                      textAlign: 'center',
+                                      color: theme.colors.text.tertiary,
+                                      fontSize: theme.fontSize.sm
+                                    }}>
+                                      {ownerSearchQuery ? 'No customers match your search' : 'No customers available'}
+                                    </div>
+                                  ) : (
+                                    searchFilteredOwners.map(owner => (
+                                      <div
+                                        key={owner.id}
+                                        role="option"
+                                        aria-selected={formData.owner_id === owner.id}
+                                        onClick={() => handleOwnerSelect(owner.id)}
+                                        style={{
+                                          padding: '10px 12px',
+                                          cursor: 'pointer',
+                                          backgroundColor: formData.owner_id === owner.id ? '#eff6ff' : 'transparent',
+                                          borderBottom: `1px solid ${theme.colors.border.light}`,
+                                          transition: 'background-color 0.15s'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                          if (formData.owner_id !== owner.id) {
+                                            e.currentTarget.style.backgroundColor = '#f9fafb';
+                                          }
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          if (formData.owner_id !== owner.id) {
+                                            e.currentTarget.style.backgroundColor = 'transparent';
+                                          }
+                                        }}
+                                      >
+                                        <div style={{
+                                          fontWeight: '500',
+                                          color: theme.colors.text.primary,
+                                          fontSize: theme.fontSize.sm
+                                        }}>
+                                          {owner.name}{owner.company ? ` (${owner.company})` : ''}
+                                        </div>
+                                        <div style={{
+                                          color: theme.colors.text.tertiary,
+                                          fontSize: '0.75rem',
+                                          marginTop: '2px'
+                                        }}>
+                                          {owner.phone}{owner.email ? ` • ${owner.email}` : ''}
+                                        </div>
+                                      </div>
+                                    ))
+                                  )}
+                                </div>
+                              </div>,
+                              document.body
+                            )}
+                          </>
+                        )}
+                      </div>
                       {errors.owner_name && (
-                        <p style={{ color: '#dc2626', fontSize: '0.75rem', marginTop: '4px' }}>
+                        <p id="owner_id-error" role="alert" style={{ color: '#dc2626', fontSize: '0.75rem', marginTop: '4px' }}>
                           {errors.owner_name}
                         </p>
                       )}
                     </div>
 
-                    {/* Phone Number */}
+                    {/* Phone Number - Auto-populated, read-only when owner selected */}
                     <div>
-                      <label style={{
-                        display: 'block',
-                        fontSize: theme.fontSize.sm,
-                        fontWeight: theme.fontWeight.medium,
-                        color: theme.colors.text.secondary,
-                        marginBottom: theme.spacing.xs
-                      }}>
-                        Phone Number <span style={{ color: '#dc2626' }}>*</span>
+                      <label
+                        htmlFor="phone"
+                        style={{
+                          display: 'block',
+                          fontSize: theme.fontSize.sm,
+                          fontWeight: theme.fontWeight.medium,
+                          color: theme.colors.text.secondary,
+                          marginBottom: theme.spacing.xs
+                        }}
+                      >
+                        Phone Number <span aria-hidden="true" style={{ color: '#dc2626' }}>*</span>
+                        <span className="sr-only">(required)</span>
+                        {selectedOwner && formData.phone && (
+                          <span style={{ color: '#6b7280', fontWeight: 'normal', marginLeft: '8px', fontSize: '0.75rem' }}>
+                            (pre-filled, can edit)
+                          </span>
+                        )}
                       </label>
                       <div style={{ position: 'relative' }}>
-                        <Phone style={{
+                        <Phone aria-hidden="true" style={{
                           position: 'absolute',
                           left: '12px',
                           top: '50%',
@@ -341,12 +978,15 @@ const CreateTicket = () => {
                           color: '#9ca3af'
                         }} />
                         <input
+                          id="phone"
                           type="tel"
                           name="phone"
                           value={formData.phone}
                           onChange={handleChange}
-                          placeholder="+1 555 555 1234"
-                          required
+                          aria-required="true"
+                          aria-invalid={!!errors.phone}
+                          aria-describedby={errors.phone ? 'phone-error' : undefined}
+                          placeholder="Enter phone number"
                           style={{
                             width: '100%',
                             padding: `${theme.spacing.sm} ${theme.spacing.md}`,
@@ -361,25 +1001,33 @@ const CreateTicket = () => {
                         />
                       </div>
                       {errors.phone && (
-                        <p style={{ color: '#dc2626', fontSize: '0.75rem', marginTop: '4px' }}>
+                        <p id="phone-error" role="alert" style={{ color: '#dc2626', fontSize: '0.75rem', marginTop: '4px' }}>
                           {errors.phone}
                         </p>
                       )}
                     </div>
 
-                    {/* Email */}
+                    {/* Email - Auto-populated, read-only when owner selected */}
                     <div>
-                      <label style={{
-                        display: 'block',
-                        fontSize: theme.fontSize.sm,
-                        fontWeight: theme.fontWeight.medium,
-                        color: theme.colors.text.secondary,
-                        marginBottom: theme.spacing.xs
-                      }}>
+                      <label
+                        htmlFor="email"
+                        style={{
+                          display: 'block',
+                          fontSize: theme.fontSize.sm,
+                          fontWeight: theme.fontWeight.medium,
+                          color: theme.colors.text.secondary,
+                          marginBottom: theme.spacing.xs
+                        }}
+                      >
                         Email <span style={{ color: '#6b7280', fontWeight: 'normal' }}>(optional)</span>
+                        {selectedOwner && formData.email && (
+                          <span style={{ color: '#6b7280', fontWeight: 'normal', marginLeft: '8px', fontSize: '0.75rem' }}>
+                            (pre-filled, can edit)
+                          </span>
+                        )}
                       </label>
                       <div style={{ position: 'relative' }}>
-                        <Mail style={{
+                        <Mail aria-hidden="true" style={{
                           position: 'absolute',
                           left: '12px',
                           top: '50%',
@@ -389,11 +1037,14 @@ const CreateTicket = () => {
                           color: '#9ca3af'
                         }} />
                         <input
+                          id="email"
                           type="email"
                           name="email"
                           value={formData.email}
                           onChange={handleChange}
-                          placeholder="customer@example.com"
+                          aria-invalid={!!errors.email}
+                          aria-describedby={errors.email ? 'email-error' : undefined}
+                          placeholder="Enter email address"
                           style={{
                             width: '100%',
                             padding: `${theme.spacing.sm} ${theme.spacing.md}`,
@@ -408,7 +1059,7 @@ const CreateTicket = () => {
                         />
                       </div>
                       {errors.email && (
-                        <p style={{ color: '#dc2626', fontSize: '0.75rem', marginTop: '4px' }}>
+                        <p id="email-error" role="alert" style={{ color: '#dc2626', fontSize: '0.75rem', marginTop: '4px' }}>
                           {errors.email}
                         </p>
                       )}
@@ -428,7 +1079,7 @@ const CreateTicket = () => {
                   </div>
 
                   <div className="space-y-4">
-                    {/* Van Info */}
+                    {/* Van Selection - Filtered by owner selected in Customer Information */}
                     <div>
                       <label style={{
                         display: 'block',
@@ -437,31 +1088,247 @@ const CreateTicket = () => {
                         color: theme.colors.text.secondary,
                         marginBottom: theme.spacing.xs
                       }}>
-                        Van Number/ID <span style={{ color: '#6b7280', fontWeight: 'normal' }}>(optional)</span>
+                        Van <span style={{ color: '#6b7280', fontWeight: 'normal' }}>(optional)</span>
                       </label>
-                      <input
-                        type="text"
-                        name="van_id"
-                        value={formData.van_id}
-                        onChange={handleChange}
-                        placeholder="e.g., VAN-123 or Ford Transit 2020"
-                        style={{
-                          width: '100%',
-                          padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-                          backgroundColor: theme.colors.background.tertiary,
-                          color: theme.colors.text.primary,
-                          border: `1px solid ${theme.colors.border.medium}`,
-                          borderRadius: theme.radius.md,
-                          fontSize: theme.fontSize.sm,
-                          outline: 'none'
-                        }}
-                      />
+
+                      {/* Van dropdown with search */}
+                      <div ref={vanDropdownRef} style={{ position: 'relative' }}>
+                        <Truck style={{
+                          position: 'absolute',
+                          left: '12px',
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                          width: '16px',
+                          height: '16px',
+                          color: '#9ca3af',
+                          pointerEvents: 'none',
+                          zIndex: 1
+                        }} />
+
+                        {/* Loading state */}
+                        {loadingVans && formData.owner_id ? (
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                            paddingLeft: '40px',
+                            backgroundColor: theme.colors.background.tertiary,
+                            border: `1px solid ${theme.colors.border.medium}`,
+                            borderRadius: theme.radius.md,
+                            color: theme.colors.text.tertiary,
+                            fontSize: theme.fontSize.sm
+                          }}>
+                            <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                            Loading vans...
+                          </div>
+                        ) : !formData.owner_id ? (
+                          /* Disabled state when no customer selected */
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                            paddingLeft: '40px',
+                            backgroundColor: '#f3f4f6',
+                            border: `1px solid ${theme.colors.border.medium}`,
+                            borderRadius: theme.radius.md,
+                            color: theme.colors.text.tertiary,
+                            fontSize: theme.fontSize.sm,
+                            cursor: 'not-allowed'
+                          }}>
+                            <span>Select a customer first</span>
+                            <ChevronDown size={16} style={{ color: '#9ca3af' }} />
+                          </div>
+                        ) : (
+                          /* Active dropdown */
+                          <>
+                            {/* Selected value display / search input */}
+                            <div
+                              ref={vanTriggerRef}
+                              onClick={handleVanDropdownToggle}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                                paddingLeft: '40px',
+                                backgroundColor: theme.colors.background.tertiary,
+                                border: `1px solid ${vanDropdownOpen ? '#1e3a5f' : theme.colors.border.medium}`,
+                                borderRadius: theme.radius.md,
+                                fontSize: theme.fontSize.sm,
+                                cursor: 'pointer',
+                                minHeight: '40px'
+                              }}
+                            >
+                              {selectedVan ? (
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                                  <span style={{ color: theme.colors.text.primary }}>
+                                    {selectedVan.van_number} - {selectedVan.make} {selectedVan.version} ({selectedVan.year})
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleClearVan();
+                                    }}
+                                    aria-label="Clear van selection"
+                                    style={{
+                                      background: 'none',
+                                      border: 'none',
+                                      padding: '2px 6px',
+                                      cursor: 'pointer',
+                                      color: '#6b7280',
+                                      display: 'flex',
+                                      alignItems: 'center'
+                                    }}
+                                  >
+                                    <X size={14} />
+                                  </button>
+                                </div>
+                              ) : (
+                                <span style={{ color: theme.colors.text.tertiary }}>
+                                  {filteredVans.length === 0 ? 'No vans for this owner' : 'Select a van...'}
+                                </span>
+                              )}
+                              <ChevronDown
+                                size={16}
+                                style={{
+                                  color: '#9ca3af',
+                                  transform: vanDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                                  transition: 'transform 0.2s'
+                                }}
+                              />
+                            </div>
+
+                            {/* Dropdown panel - rendered via Portal to escape all overflow constraints */}
+                            {vanDropdownOpen && filteredVans.length > 0 && createPortal(
+                              <div
+                                id="van-listbox"
+                                role="listbox"
+                                aria-label="Select a van"
+                                style={{
+                                  position: 'fixed',
+                                  top: vanDropdownPosition.top,
+                                  left: vanDropdownPosition.left,
+                                  width: vanDropdownPosition.width,
+                                  backgroundColor: 'white',
+                                  border: '1px solid #1e3a5f',
+                                  borderRadius: theme.radius.md,
+                                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                                  zIndex: 9999,
+                                  maxHeight: '280px',
+                                  overflow: 'hidden',
+                                  display: 'flex',
+                                  flexDirection: 'column'
+                                }}>
+                                {/* Search input inside dropdown */}
+                                <div style={{
+                                  padding: '8px',
+                                  borderBottom: `1px solid ${theme.colors.border.light}`
+                                }}>
+                                  <div style={{ position: 'relative' }}>
+                                    <Search size={14} style={{
+                                      position: 'absolute',
+                                      left: '8px',
+                                      top: '50%',
+                                      transform: 'translateY(-50%)',
+                                      color: '#9ca3af'
+                                    }} />
+                                    <input
+                                      type="text"
+                                      value={vanSearchQuery}
+                                      onChange={(e) => setVanSearchQuery(e.target.value)}
+                                      onClick={(e) => e.stopPropagation()}
+                                      placeholder="Search vans..."
+                                      aria-label="Search vans"
+                                      style={{
+                                        width: '100%',
+                                        padding: '6px 8px 6px 28px',
+                                        border: `1px solid ${theme.colors.border.medium}`,
+                                        borderRadius: '4px',
+                                        fontSize: '0.8125rem',
+                                        outline: 'none'
+                                      }}
+                                      autoFocus
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Options list */}
+                                <div style={{
+                                  overflowY: 'auto',
+                                  maxHeight: '220px'
+                                }}>
+                                  {searchFilteredVans.length === 0 ? (
+                                    <div style={{
+                                      padding: '12px',
+                                      textAlign: 'center',
+                                      color: theme.colors.text.tertiary,
+                                      fontSize: theme.fontSize.sm
+                                    }}>
+                                      No vans match your search
+                                    </div>
+                                  ) : (
+                                    searchFilteredVans.map(van => (
+                                      <div
+                                        key={van.id}
+                                        onClick={() => handleVanSelect(van.id)}
+                                        style={{
+                                          padding: '10px 12px',
+                                          cursor: 'pointer',
+                                          backgroundColor: formData.van_id === van.id ? '#eff6ff' : 'transparent',
+                                          borderBottom: `1px solid ${theme.colors.border.light}`,
+                                          transition: 'background-color 0.15s'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                          if (formData.van_id !== van.id) {
+                                            e.currentTarget.style.backgroundColor = '#f9fafb';
+                                          }
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          if (formData.van_id !== van.id) {
+                                            e.currentTarget.style.backgroundColor = 'transparent';
+                                          }
+                                        }}
+                                      >
+                                        <div style={{
+                                          fontWeight: '500',
+                                          color: theme.colors.text.primary,
+                                          fontSize: theme.fontSize.sm
+                                        }}>
+                                          {van.van_number}
+                                        </div>
+                                        <div style={{
+                                          color: theme.colors.text.tertiary,
+                                          fontSize: '0.75rem',
+                                          marginTop: '2px'
+                                        }}>
+                                          {van.make} {van.version} - {van.year}
+                                        </div>
+                                      </div>
+                                    ))
+                                  )}
+                                </div>
+                              </div>,
+                              document.body
+                            )}
+                          </>
+                        )}
+                      </div>
+
+                      {/* Helper text */}
                       <p style={{ color: '#6b7280', fontSize: '0.75rem', marginTop: '4px' }}>
-                        Link this ticket to a specific van
+                        {!formData.owner_id
+                          ? 'Select a customer in Customer Information to see available vans'
+                          : filteredVans.length === 0
+                            ? 'This customer has no registered vans'
+                            : `${filteredVans.length} van${filteredVans.length !== 1 ? 's' : ''} available for this customer`
+                        }
                       </p>
                     </div>
 
-                    {/* Category */}
+                    {/* Category - Dropdown from categories */}
                     <div>
                       <label style={{
                         display: 'block',
@@ -480,27 +1347,71 @@ const CreateTicket = () => {
                           transform: 'translateY(-50%)',
                           width: '16px',
                           height: '16px',
-                          color: '#9ca3af'
+                          color: '#9ca3af',
+                          pointerEvents: 'none',
+                          zIndex: 1
                         }} />
-                        <input
-                          type="text"
-                          name="category_id"
-                          value={formData.category_id}
-                          onChange={handleChange}
-                          placeholder="e.g., Electrical, Plumbing, Mechanical"
-                          style={{
-                            width: '100%',
+                        {loadingCategories ? (
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
                             padding: `${theme.spacing.sm} ${theme.spacing.md}`,
                             paddingLeft: '40px',
                             backgroundColor: theme.colors.background.tertiary,
-                            color: theme.colors.text.primary,
                             border: `1px solid ${theme.colors.border.medium}`,
                             borderRadius: theme.radius.md,
-                            fontSize: theme.fontSize.sm,
-                            outline: 'none'
-                          }}
-                        />
+                            color: theme.colors.text.tertiary,
+                            fontSize: theme.fontSize.sm
+                          }}>
+                            <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                            Loading categories...
+                          </div>
+                        ) : (
+                          <select
+                            name="category_id"
+                            value={formData.category_id}
+                            onChange={handleChange}
+                            style={{
+                              width: '100%',
+                              padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                              paddingLeft: '40px',
+                              backgroundColor: theme.colors.background.tertiary,
+                              color: formData.category_id ? theme.colors.text.primary : theme.colors.text.tertiary,
+                              border: `1px solid ${theme.colors.border.medium}`,
+                              borderRadius: theme.radius.md,
+                              fontSize: theme.fontSize.sm,
+                              outline: 'none',
+                              cursor: 'pointer',
+                              appearance: 'none',
+                              WebkitAppearance: 'none',
+                              MozAppearance: 'none'
+                            }}
+                          >
+                            <option value="">Select a category...</option>
+                            {categories.map(cat => (
+                              <option key={cat.id} value={cat.id}>
+                                {cat.name}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                        <ChevronDown style={{
+                          position: 'absolute',
+                          right: '12px',
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                          width: '16px',
+                          height: '16px',
+                          color: '#9ca3af',
+                          pointerEvents: 'none'
+                        }} />
                       </div>
+                      {categories.length === 0 && !loadingCategories && (
+                        <p style={{ color: '#6b7280', fontSize: '0.75rem', marginTop: '4px' }}>
+                          No categories available
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -522,16 +1433,21 @@ const CreateTicket = () => {
                   <div className="space-y-4">
                     {/* Subject */}
                     <div>
-                      <label style={{
-                        display: 'block',
-                        fontSize: theme.fontSize.sm,
-                        fontWeight: theme.fontWeight.medium,
-                        color: theme.colors.text.secondary,
-                        marginBottom: theme.spacing.xs
-                      }}>
-                        Subject <span style={{ color: '#dc2626' }}>*</span>
+                      <label
+                        htmlFor="subject"
+                        style={{
+                          display: 'block',
+                          fontSize: theme.fontSize.sm,
+                          fontWeight: theme.fontWeight.medium,
+                          color: theme.colors.text.secondary,
+                          marginBottom: theme.spacing.xs
+                        }}
+                      >
+                        Subject <span aria-hidden="true" style={{ color: '#dc2626' }}>*</span>
+                        <span className="sr-only">(required)</span>
                       </label>
                       <input
+                        id="subject"
                         type="text"
                         name="subject"
                         value={formData.subject}
@@ -539,6 +1455,9 @@ const CreateTicket = () => {
                         placeholder="Brief description of the issue"
                         maxLength={200}
                         required
+                        aria-required="true"
+                        aria-invalid={!!errors.subject}
+                        aria-describedby={errors.subject ? 'subject-error' : 'subject-hint'}
                         style={{
                           width: '100%',
                           padding: `${theme.spacing.sm} ${theme.spacing.md}`,
@@ -552,11 +1471,11 @@ const CreateTicket = () => {
                       />
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
                         {errors.subject ? (
-                          <p style={{ color: '#dc2626', fontSize: '0.75rem' }}>
+                          <p id="subject-error" role="alert" style={{ color: '#dc2626', fontSize: '0.75rem' }}>
                             {errors.subject}
                           </p>
                         ) : (
-                          <p style={{ color: '#6b7280', fontSize: '0.75rem' }}>
+                          <p id="subject-hint" style={{ color: '#6b7280', fontSize: '0.75rem' }}>
                             {formData.subject.length}/200 characters
                           </p>
                         )}
@@ -565,16 +1484,21 @@ const CreateTicket = () => {
 
                     {/* Description */}
                     <div>
-                      <label style={{
-                        display: 'block',
-                        fontSize: theme.fontSize.sm,
-                        fontWeight: theme.fontWeight.medium,
-                        color: theme.colors.text.secondary,
-                        marginBottom: theme.spacing.xs
-                      }}>
-                        Description <span style={{ color: '#dc2626' }}>*</span>
+                      <label
+                        htmlFor="description"
+                        style={{
+                          display: 'block',
+                          fontSize: theme.fontSize.sm,
+                          fontWeight: theme.fontWeight.medium,
+                          color: theme.colors.text.secondary,
+                          marginBottom: theme.spacing.xs
+                        }}
+                      >
+                        Description <span aria-hidden="true" style={{ color: '#dc2626' }}>*</span>
+                        <span className="sr-only">(required)</span>
                       </label>
                       <textarea
+                        id="description"
                         name="description"
                         value={formData.description}
                         onChange={handleChange}
@@ -582,6 +1506,9 @@ const CreateTicket = () => {
                         rows={6}
                         maxLength={2000}
                         required
+                        aria-required="true"
+                        aria-invalid={!!errors.description}
+                        aria-describedby={errors.description ? 'description-error' : 'description-hint'}
                         style={{
                           width: '100%',
                           padding: `${theme.spacing.sm} ${theme.spacing.md}`,
@@ -596,11 +1523,11 @@ const CreateTicket = () => {
                       />
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
                         {errors.description ? (
-                          <p style={{ color: '#dc2626', fontSize: '0.75rem' }}>
+                          <p id="description-error" role="alert" style={{ color: '#dc2626', fontSize: '0.75rem' }}>
                             {errors.description}
                           </p>
                         ) : (
-                          <p style={{ color: '#6b7280', fontSize: '0.75rem' }}>
+                          <p id="description-hint" style={{ color: '#6b7280', fontSize: '0.75rem' }}>
                             {formData.description.length}/2000 characters (minimum 20)
                           </p>
                         )}
@@ -609,20 +1536,26 @@ const CreateTicket = () => {
 
                     {/* Priority */}
                     <div>
-                      <label style={{
-                        display: 'block',
-                        fontSize: theme.fontSize.sm,
-                        fontWeight: theme.fontWeight.medium,
-                        color: theme.colors.text.secondary,
-                        marginBottom: theme.spacing.xs
-                      }}>
-                        Priority <span style={{ color: '#dc2626' }}>*</span>
+                      <label
+                        htmlFor="priority"
+                        style={{
+                          display: 'block',
+                          fontSize: theme.fontSize.sm,
+                          fontWeight: theme.fontWeight.medium,
+                          color: theme.colors.text.secondary,
+                          marginBottom: theme.spacing.xs
+                        }}
+                      >
+                        Priority <span aria-hidden="true" style={{ color: '#dc2626' }}>*</span>
+                        <span className="sr-only">(required)</span>
                       </label>
                       <select
+                        id="priority"
                         name="priority"
                         value={formData.priority}
                         onChange={handleChange}
                         required
+                        aria-required="true"
                         style={{
                           width: '100%',
                           padding: `${theme.spacing.sm} ${theme.spacing.md}`,
@@ -651,16 +1584,20 @@ const CreateTicket = () => {
 
                     {/* Urgency */}
                     <div>
-                      <label style={{
-                        display: 'block',
-                        fontSize: theme.fontSize.sm,
-                        fontWeight: theme.fontWeight.medium,
-                        color: theme.colors.text.secondary,
-                        marginBottom: theme.spacing.xs
-                      }}>
+                      <label
+                        htmlFor="urgency"
+                        style={{
+                          display: 'block',
+                          fontSize: theme.fontSize.sm,
+                          fontWeight: theme.fontWeight.medium,
+                          color: theme.colors.text.secondary,
+                          marginBottom: theme.spacing.xs
+                        }}
+                      >
                         Urgency <span style={{ color: '#6b7280', fontWeight: 'normal' }}>(optional)</span>
                       </label>
                       <select
+                        id="urgency"
                         name="urgency"
                         value={formData.urgency}
                         onChange={handleChange}
@@ -739,19 +1676,32 @@ const CreateTicket = () => {
 
         {/* Success Modal */}
         {showSuccess && createdTicket && (
-          <div style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0,0,0,0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '16px',
-            zIndex: 1000
-          }}>
+          <div
+            ref={successModalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="success-modal-title"
+            tabIndex={-1}
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0,0,0,0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '16px',
+              zIndex: 1000,
+              outline: 'none'
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                handleCreateAnother();
+              }
+            }}
+          >
             <Card style={{ maxWidth: '600px', width: '100%' }}>
               <div className="p-8">
                 <div style={{ textAlign: 'center', marginBottom: '24px' }}>
@@ -767,7 +1717,7 @@ const CreateTicket = () => {
                   }}>
                     <CheckCircle style={{ width: '32px', height: '32px', color: '#059669' }} />
                   </div>
-                  <h2 style={{ color: '#111827', fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '8px' }}>
+                  <h2 id="success-modal-title" style={{ color: '#111827', fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '8px' }}>
                     Ticket #{createdTicket.number} Created!
                   </h2>
                   <p style={{ color: '#6b7280', fontSize: '0.875rem' }}>

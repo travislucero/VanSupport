@@ -1378,6 +1378,45 @@ app.delete(
   }
 );
 
+// Categories endpoint for ticket creation dropdown
+// GET /api/categories - List unique categories from topic_patterns
+app.get(
+  "/api/categories",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      console.log("📂 Categories - Fetching unique categories");
+
+      const { data, error } = await supabase
+        .from("topic_patterns")
+        .select("category_slug")
+        .not("category_slug", "is", null);
+
+      if (error) {
+        console.error("📂 Categories - Supabase error:", error);
+        return res.status(500).json({ error: error.message });
+      }
+
+      // Extract unique category slugs and format them
+      const uniqueCategories = [...new Set(data.map(p => p.category_slug))]
+        .filter(Boolean)
+        .sort()
+        .map(slug => ({
+          id: slug,
+          name: slug.split('_').map(word =>
+            word.charAt(0).toUpperCase() + word.slice(1)
+          ).join(' ')
+        }));
+
+      console.log("📂 Categories - Success, returned", uniqueCategories.length, "categories");
+      res.json({ categories: uniqueCategories });
+    } catch (err) {
+      console.error("📂 Categories - Error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
 // Trigger Pattern Management endpoints (Manager+ access required)
 
 // 1. GET /api/patterns - List all trigger patterns
@@ -2012,13 +2051,69 @@ app.post("/api/tickets/create", async (req, res) => {
       category_id,
     } = req.body;
 
-    if (!subject || !description) {
+    // Comprehensive server-side validation
+    const validationErrors = [];
+
+    // Required fields
+    if (!subject || typeof subject !== 'string' || subject.trim().length === 0) {
+      validationErrors.push("Subject is required");
+    } else if (subject.trim().length < 5) {
+      validationErrors.push("Subject must be at least 5 characters");
+    } else if (subject.length > 200) {
+      validationErrors.push("Subject must be less than 200 characters");
+    }
+
+    if (!description || typeof description !== 'string' || description.trim().length === 0) {
+      validationErrors.push("Description is required");
+    } else if (description.trim().length < 20) {
+      validationErrors.push("Description must be at least 20 characters");
+    } else if (description.length > 2000) {
+      validationErrors.push("Description must be less than 2000 characters");
+    }
+
+    // Email validation (optional but must be valid if provided)
+    if (email && typeof email === 'string' && email.trim()) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email.trim())) {
+        validationErrors.push("Invalid email format");
+      }
+    }
+
+    // Phone validation (if provided, must be valid format)
+    if (phone && typeof phone === 'string' && phone.trim()) {
+      const phoneRegex = /^[\d\s\-\+\(\)]+$/;
+      if (!phoneRegex.test(phone.trim())) {
+        validationErrors.push("Invalid phone number format");
+      }
+    }
+
+    // Priority validation (must be a valid enum value)
+    const validPriorities = ['low', 'normal', 'high', 'urgent'];
+    if (priority && !validPriorities.includes(priority)) {
+      validationErrors.push("Invalid priority value. Must be: low, normal, high, or urgent");
+    }
+
+    // Urgency validation (must be a valid enum value)
+    const validUrgencies = ['low', 'medium', 'high'];
+    if (urgency && !validUrgencies.includes(urgency)) {
+      validationErrors.push("Invalid urgency value. Must be: low, medium, or high");
+    }
+
+    // UUID validation for van_id and category_id
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (van_id && !uuidRegex.test(van_id)) {
+      validationErrors.push("Invalid van_id format");
+    }
+
+    // Return all validation errors
+    if (validationErrors.length > 0) {
       return res.status(400).json({
-        error: "Missing required fields: subject and description are required",
+        error: validationErrors.length === 1 ? validationErrors[0] : "Validation failed",
+        errors: validationErrors,
       });
     }
 
-    console.log("🎫 Create Ticket - Creating new ticket:", subject);
+    console.log("🎫 Create Ticket - Creating new ticket:", subject.trim());
 
     // Create ticket - RPC returns just the UUID
     const { data: ticketId, error } = await supabase.rpc("fn_create_ticket", {
@@ -2233,6 +2328,193 @@ app.get(
       });
     } catch (err) {
       console.error("🎫 Get My Tickets - Error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// 7b. GET /api/tickets/closed - Get closed/resolved/cancelled tickets with filtering and pagination
+app.get(
+  "/api/tickets/closed",
+  authenticateToken,
+  requireRole(["manager", "admin"]),
+  async (req, res) => {
+    try {
+      // Parse query parameters with defaults
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 25;
+      const status = req.query.status || "all";
+      const search = req.query.search || "";
+      const dateFrom = req.query.dateFrom || null;
+      const dateTo = req.query.dateTo || null;
+      const sortBy = req.query.sortBy || "closed_date";
+      const sortOrder = req.query.sortOrder || "desc";
+
+      // Validate pagination parameters
+      const validLimits = [10, 25, 50, 100];
+      const pageSize = validLimits.includes(limit) ? limit : 25;
+      const currentPage = page > 0 ? page : 1;
+
+      // Validate status filter
+      const validStatuses = ["resolved", "closed", "cancelled", "all"];
+      const statusFilter = validStatuses.includes(status) ? status : "all";
+
+      // Validate date parameters
+      const isValidDate = (dateStr) => {
+        if (!dateStr) return true; // null/empty is valid (no filter)
+        const dateRegex = /^\d{4}-\d{2}-\d{2}(T[\d:.]+Z?)?$/;
+        if (!dateRegex.test(dateStr)) return false;
+        const date = new Date(dateStr);
+        return !isNaN(date.getTime());
+      };
+
+      if (dateFrom && !isValidDate(dateFrom)) {
+        return res.status(400).json({ error: "Invalid dateFrom format. Use YYYY-MM-DD." });
+      }
+      if (dateTo && !isValidDate(dateTo)) {
+        return res.status(400).json({ error: "Invalid dateTo format. Use YYYY-MM-DD." });
+      }
+
+      // Validate sort order
+      const isAscending = sortOrder.toLowerCase() === "asc";
+
+      // Map sortBy to actual database field
+      const sortFieldMap = {
+        closed_date: "resolved_at",
+        created_date: "created_at",
+        ticket_number: "ticket_number",
+        subject: "subject",
+        status: "status",
+        priority: "priority",
+        created_at: "created_at",
+      };
+      const sortField = sortFieldMap[sortBy] || "resolved_at";
+
+      if (process.env.NODE_ENV !== "production") {
+        console.log("Get Closed Tickets - Fetching with params:", {
+          page: currentPage,
+          limit: pageSize,
+          status: statusFilter,
+          search: search || "(none)",
+          dateFrom: dateFrom || "(none)",
+          dateTo: dateTo || "(none)",
+          sortBy: sortField,
+          sortOrder: isAscending ? "asc" : "desc",
+        });
+      }
+
+      // Build the base query with joins for customer info
+      let query = supabase
+        .from("tickets")
+        .select(
+          `
+          id,
+          ticket_number,
+          subject,
+          description,
+          status,
+          priority,
+          urgency,
+          created_at,
+          updated_at,
+          resolved_at,
+          resolved_by,
+          resolution,
+          owner_name,
+          phone,
+          email,
+          assigned_to,
+          assigned_to_user:users!tickets_assigned_to_fkey(id, email),
+          van:vans(id, owner_name, phone)
+        `,
+          { count: "exact" }
+        );
+
+      // Filter by closed statuses
+      if (statusFilter === "all") {
+        query = query.in("status", ["resolved", "closed", "cancelled"]);
+      } else {
+        query = query.eq("status", statusFilter);
+      }
+
+      // Apply date range filters on resolved_at
+      if (dateFrom) {
+        query = query.gte("resolved_at", dateFrom);
+      }
+      if (dateTo) {
+        // Add time to include the entire end date
+        const dateToEnd = dateTo.includes("T") ? dateTo : `${dateTo}T23:59:59.999Z`;
+        query = query.lte("resolved_at", dateToEnd);
+      }
+
+      // Apply search filter at database level using .or()
+      if (search && search.trim()) {
+        const searchPattern = `%${search.trim()}%`;
+        query = query.or(`ticket_number.ilike.${searchPattern},subject.ilike.${searchPattern},owner_name.ilike.${searchPattern}`);
+      }
+
+      // Apply sorting
+      query = query.order(sortField, { ascending: isAscending, nullsFirst: false });
+
+      // Apply pagination at database level BEFORE fetching
+      const offset = (currentPage - 1) * pageSize;
+      query = query.range(offset, offset + pageSize - 1);
+
+      // Execute the query - data contains only the paginated results, count has the total
+      const { data, error, count } = await query;
+
+      if (error) {
+        if (process.env.NODE_ENV !== "production") {
+          console.error("Get Closed Tickets - Supabase error:", error);
+        }
+        return res.status(500).json({ error: "Unable to process request" });
+      }
+
+      // Transform and flatten the data
+      const tickets = (data || []).map((ticket) => ({
+        ...ticket,
+        assigned_to_name: ticket.assigned_to_user?.email || null,
+        customer_name: ticket.van?.owner_name || ticket.owner_name || null,
+        customer_phone: ticket.van?.phone || ticket.phone || null,
+        closed_date: ticket.resolved_at,
+      }));
+
+      // Calculate pagination metadata using the exact count from database
+      const totalCount = count || 0;
+      const totalPages = Math.ceil(totalCount / pageSize);
+
+      // Build pagination metadata
+      const pagination = {
+        page: currentPage,
+        limit: pageSize,
+        totalCount: totalCount,
+        totalPages: totalPages,
+        hasNextPage: currentPage < totalPages,
+        hasPreviousPage: currentPage > 1,
+      };
+
+      if (process.env.NODE_ENV !== "production") {
+        console.log(
+          "Get Closed Tickets - Success, page",
+          currentPage,
+          "of",
+          totalPages,
+          "(",
+          tickets.length,
+          "of",
+          totalCount,
+          "tickets)"
+        );
+      }
+
+      res.json({
+        tickets: tickets,
+        pagination: pagination,
+      });
+    } catch (err) {
+      if (process.env.NODE_ENV !== "production") {
+        console.error("Get Closed Tickets - Error:", err);
+      }
       res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -3415,13 +3697,14 @@ app.get("/api/call-volume-heatmap", authenticateToken, async (req, res) => {
 
 // ===== VAN MANAGEMENT ENDPOINTS =====
 
-// GET /api/vans - List all vans with owner info (supports search)
+// GET /api/vans - List all vans with owner info (supports search and owner_id filter)
 app.get("/api/vans", authenticateToken, async (req, res) => {
   try {
     // Parse pagination and search parameters
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 25;
     const searchQuery = req.query.search || '';
+    const ownerIdFilter = req.query.owner_id || null;
 
     // Validate pagination parameters
     const validLimits = [10, 25, 50, 100];
@@ -3433,13 +3716,12 @@ app.get("/api/vans", authenticateToken, async (req, res) => {
       currentPage,
       "with limit",
       pageSize,
-      searchQuery ? `and search: "${searchQuery}"` : ''
+      searchQuery ? `and search: "${searchQuery}"` : '',
+      ownerIdFilter ? `filtered by owner_id: ${ownerIdFilter}` : ''
     );
 
     // Build the query with owner join
-    // Note: We fetch all vans and do filtering in memory because we need to search
-    // by owner name (joined field) which Supabase doesn't support in .or() queries
-    const { data, error } = await supabase
+    let query = supabase
       .from("vans")
       .select(
         `
@@ -3452,8 +3734,16 @@ app.get("/api/vans", authenticateToken, async (req, res) => {
           company
         )
       `
-      )
-      .order("van_number", { ascending: true });
+      );
+
+    // Apply owner_id filter at database level if provided
+    if (ownerIdFilter) {
+      query = query.eq("owner_id", ownerIdFilter);
+    }
+
+    query = query.order("van_number", { ascending: true });
+
+    const { data, error } = await query;
 
     if (error) throw error;
 
