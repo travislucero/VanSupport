@@ -26,11 +26,13 @@ import {
   Lightbulb,
   ExternalLink,
   FileText,
-  Link2
+  Link2,
+  Sparkles
 } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import Card from '../components/Card';
 import Badge from '../components/Badge';
+import ConvertToSequenceModal from '../components/ConvertToSequenceModal';
 import { useToast } from '../hooks/useToast';
 import { useAuth } from '../hooks/useAuth';
 import { theme } from '../styles/theme';
@@ -273,6 +275,9 @@ const TechTicketDetail = () => {
   const [skipResolution, setSkipResolution] = useState(false);
   const [submittingResolution, setSubmittingResolution] = useState(false);
   const [resolutionCommentPosted, setResolutionCommentPosted] = useState(false);
+
+  // Convert to Sequence modal state
+  const [showConvertModal, setShowConvertModal] = useState(false);
 
 
   // Mobile detection state for responsive modals
@@ -1356,6 +1361,23 @@ const TechTicketDetail = () => {
                     {loadingSimilar ? 'Searching...' : 'Suggest Solutions'}
                   </span>
                 </button>
+
+                {/* Convert to Sequence Button - only for resolved/closed tickets */}
+                {['resolved', 'closed'].includes(ticket.status) && (
+                  <button
+                    onClick={() => setShowConvertModal(true)}
+                    style={{
+                      ...getButtonStyles('purple', false),
+                      backgroundColor: theme.colors.chart.purple,
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.9')}
+                    onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+                    title="Convert this resolved ticket into a reusable troubleshooting sequence"
+                  >
+                    <Sparkles size={16} aria-hidden="true" />
+                    Convert to Sequence
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -2969,6 +2991,20 @@ const TechTicketDetail = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Convert to Sequence Modal */}
+      {showConvertModal && (
+        <ConvertToSequenceModal
+          ticketId={uuid}
+          ticketNumber={ticket.ticket_number}
+          onClose={() => setShowConvertModal(false)}
+          onSuccess={(sequenceKey) => {
+            setShowConvertModal(false);
+            showToast('Sequence created successfully!', 'success');
+            navigate(`/sequences/${sequenceKey}`);
+          }}
+        />
       )}
     </div>
   );

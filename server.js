@@ -10,6 +10,7 @@ import cookieParser from "cookie-parser";
 import patternValidator from "./utils/patternValidator.js";
 import multer from "multer";
 import { BlobServiceClient } from "@azure/storage-blob";
+import OpenAI from "openai";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -60,6 +61,11 @@ const blobServiceClient = new BlobServiceClient(
   `https://${AZURE_STORAGE_ACCOUNT_NAME}.blob.core.windows.net?${AZURE_STORAGE_SAS_TOKEN}`
 );
 const containerClient = blobServiceClient.getContainerClient(AZURE_CONTAINER_NAME);
+
+// OpenAI client configuration
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
 // Multer configuration for file uploads (memory storage for Azure upload)
 const allowedImageTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
@@ -2425,7 +2431,7 @@ app.get(
           email,
           assigned_to,
           assigned_to_user:users!tickets_assigned_to_fkey(id, email),
-          van:vans(id, owner_name, phone)
+          van:vans(id, vin, year, make, van_number)
         `,
           { count: "exact" }
         );
@@ -2471,11 +2477,13 @@ app.get(
       }
 
       // Transform and flatten the data
+      // Map id to ticket_id for frontend compatibility
       const tickets = (data || []).map((ticket) => ({
         ...ticket,
+        ticket_id: ticket.id, // Frontend expects ticket_id, not id
         assigned_to_name: ticket.assigned_to_user?.email || null,
-        customer_name: ticket.van?.owner_name || ticket.owner_name || null,
-        customer_phone: ticket.van?.phone || ticket.phone || null,
+        customer_name: ticket.owner_name || null,
+        customer_phone: ticket.phone || null,
         closed_date: ticket.resolved_at,
       }));
 
@@ -3058,6 +3066,424 @@ app.post(
       res.json({ success: true });
     } catch (err) {
       console.error("🎫 Mark Comments Read - Error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// AI SEQUENCE GENERATION ENDPOINTS
+
+// 15b. POST /api/tickets/:uuid/generate-sequence - Generate sequence from ticket using AI
+app.post(
+  "/api/tickets/:uuid/generate-sequence",
+  authenticateToken,
+  requireRole(["manager", "admin"]),
+  validateUuid,
+  async (req, res) => {
+    try {
+      const { uuid } = req.params;
+      console.log("🤖 Generate Sequence - Processing ticket:", uuid);
+
+      // Fetch ticket with all comments
+      const { data, error } = await supabase.rpc("fn_get_ticket_detail", {
+        p_ticket_id: uuid,
+        p_viewer_type: "tech",
+      });
+
+      if (error) {
+        console.error("🤖 Generate Sequence - Supabase error:", error);
+        return res.status(500).json({ error: "Unable to fetch ticket data" });
+      }
+
+      const ticketData = Array.isArray(data) ? data[0] : data;
+
+      if (!ticketData) {
+        return res.status(404).json({ error: "Ticket not found" });
+      }
+
+      // Check ticket status
+      if (!["resolved", "closed"].includes(ticketData.status)) {
+        return res.status(400).json({
+          error: "Only resolved or closed tickets can be converted to sequences",
+        });
+      }
+
+      // Build comments string for the prompt
+      const comments = ticketData.comments || [];
+      const commentsText = comments
+        .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+        .map((c) => {
+          const authorType = c.is_internal ? "Tech (Internal)" : c.author_type === "tech" ? "Tech" : "Customer";
+          const timestamp = new Date(c.created_at).toLocaleString();
+          return `[${timestamp}] ${authorType}: ${c.message}`;
+        })
+        .join("\n");
+
+      // Build the AI prompt with improved structure
+      const systemMessage = `You are an expert technical support analyst who creates reusable troubleshooting sequences from resolved support tickets. Your sequences guide customers through self-service troubleshooting via an automated system. Extract only the steps that actually worked, written as clear customer-facing instructions. Always respond with valid JSON.`;
+
+      const prompt = `Generate a troubleshooting sequence JSON from this resolved support ticket.
+
+TICKET:
+Subject: ${ticketData.subject}
+Description: ${ticketData.description || "[none]"}
+Category: ${ticketData.category || "[unspecified]"}
+
+CONVERSATION:
+${commentsText || "[no comments]"}
+
+REQUIRED JSON STRUCTURE:
+{
+  "sequence_name": "string, max 60 chars, descriptive title",
+  "description": "string, 1-2 sentences explaining what this sequence resolves",
+  "category": "Electrical|Plumbing|HVAC|Appliances|Mechanical|Other",
+  "keywords": ["3-8 searchable terms from ticket content"],
+  "steps": [{
+    "step_num": 1,
+    "message_template": "Direct instruction to customer",
+    "success_triggers": ["3-5 step-specific success phrases"],
+    "failure_triggers": ["3-5 step-specific failure phrases"]
+  }],
+  "urls": [{"url": "exact URL from ticket", "category": "tool|video|documentation", "title": "descriptive title"}]
+}
+
+EXTRACTION RULES:
+1. Include only steps that contributed to resolution (omit failed attempts)
+2. Write message_templates as direct, actionable customer instructions
+3. Success/failure triggers must be STEP-SPECIFIC, not generic - relate to what this step accomplishes
+4. Include 3-7 steps representing the logical troubleshooting flow. Each step should be ONE discrete action the customer can verify completed
+5. Return urls as empty array [] if none found in ticket
+6. NEVER include customer PII, credentials, or internal system references
+7. For category, choose exactly ONE from: Electrical, Plumbing, HVAC, Appliances, Mechanical, Other
+
+EXAMPLE OUTPUT (abbreviated):
+{
+  "sequence_name": "Troubleshooting RV Water Heater Pilot Light",
+  "description": "Steps to diagnose and relight a propane water heater pilot light that won't stay lit.",
+  "category": "Appliances",
+  "keywords": ["water heater", "pilot light", "propane", "no hot water"],
+  "steps": [
+    {"step_num": 1, "message_template": "Locate the gas control valve on the water heater...", "success_triggers": ["found it", "see it", "yes"], "failure_triggers": ["cant find", "where is it", "no valve"]}
+  ],
+  "urls": []
+}`;
+
+      console.log("🤖 Generate Sequence - Calling OpenAI API...");
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: systemMessage },
+          { role: "user", content: prompt },
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.3, // Lower temperature for more consistent structured output
+        max_tokens: 2000,
+      });
+
+      const responseText = completion.choices[0].message.content;
+      console.log("🤖 Generate Sequence - AI response received");
+
+      let aiResponse;
+      try {
+        aiResponse = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error("🤖 Generate Sequence - JSON parse error:", parseError);
+        return res.status(500).json({ error: "Failed to parse AI response" });
+      }
+
+      // Validate AI response structure
+      if (!aiResponse.sequence_name || typeof aiResponse.sequence_name !== "string") {
+        console.error("🤖 Generate Sequence - Invalid response: missing sequence_name");
+        return res.status(500).json({ error: "AI generated invalid response. Please try again." });
+      }
+      if (!Array.isArray(aiResponse.steps) || aiResponse.steps.length === 0) {
+        console.error("🤖 Generate Sequence - Invalid response: missing or empty steps");
+        return res.status(500).json({ error: "AI generated invalid response. Please try again." });
+      }
+      // Validate step structure
+      for (const step of aiResponse.steps) {
+        if (typeof step.step_num !== "number" || !step.message_template) {
+          console.error("🤖 Generate Sequence - Invalid response: malformed step data");
+          return res.status(500).json({ error: "AI generated invalid response. Please try again." });
+        }
+        // Ensure triggers are arrays
+        step.success_triggers = Array.isArray(step.success_triggers) ? step.success_triggers : [];
+        step.failure_triggers = Array.isArray(step.failure_triggers) ? step.failure_triggers : [];
+      }
+      // Ensure urls is an array
+      aiResponse.urls = Array.isArray(aiResponse.urls) ? aiResponse.urls : [];
+      // Ensure keywords is an array
+      aiResponse.keywords = Array.isArray(aiResponse.keywords) ? aiResponse.keywords : [];
+
+      // Return the AI-generated data along with ticket reference
+      res.json({
+        ticket_id: uuid,
+        ticket_number: ticketData.ticket_number,
+        ...aiResponse,
+      });
+    } catch (err) {
+      console.error("🤖 Generate Sequence - Error:", err);
+
+      // Handle specific OpenAI errors
+      if (err.code === "insufficient_quota" || err.message?.includes("quota")) {
+        return res.status(503).json({ error: "AI service quota exceeded. Please try again later." });
+      }
+      if (err.status === 429 || err.code === "rate_limit_exceeded") {
+        return res.status(429).json({ error: "Too many requests. Please wait a moment and try again." });
+      }
+      if (err.status === 401 || err.code === "invalid_api_key") {
+        console.error("🤖 OpenAI API key issue");
+        return res.status(503).json({ error: "AI service temporarily unavailable." });
+      }
+      if (err.code === "content_filter" || err.message?.includes("content policy")) {
+        return res.status(400).json({ error: "Unable to process this ticket content. Please try a different ticket." });
+      }
+
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// Sequence key validation regex (lowercase alphanumeric with hyphens, max 50 chars)
+const SEQUENCE_KEY_REGEX = /^[a-z0-9-]{1,50}$/;
+
+// Valid sequence categories
+const VALID_CATEGORIES = ['Electrical', 'Plumbing', 'HVAC', 'Appliances', 'Mechanical', 'Other'];
+
+// 15c. POST /api/sequences/from-ticket - Create sequence from AI-generated data
+app.post(
+  "/api/sequences/from-ticket",
+  authenticateToken,
+  requireRole(["manager", "admin"]),
+  async (req, res) => {
+    try {
+      const {
+        ticket_id,
+        sequence_key,
+        display_name,
+        description,
+        category,
+        is_active,
+        steps,
+        urls,
+        keywords,
+      } = req.body;
+
+      console.log("🔧 Create Sequence from Ticket - Creating:", sequence_key);
+
+      // Validate required fields
+      if (!sequence_key || !display_name || !steps || steps.length === 0) {
+        return res.status(400).json({
+          error: "Missing required fields: sequence_key, display_name, and at least one step are required",
+        });
+      }
+
+      // Server-side validation for sequence_key format
+      if (!SEQUENCE_KEY_REGEX.test(sequence_key)) {
+        return res.status(400).json({
+          error: "Invalid sequence_key format. Must be lowercase alphanumeric with hyphens only, max 50 chars.",
+        });
+      }
+
+      // Validate category if provided
+      if (category && !VALID_CATEGORIES.includes(category)) {
+        return res.status(400).json({
+          error: `Invalid category. Must be one of: ${VALID_CATEGORIES.join(', ')}`,
+        });
+      }
+
+      // Validate display_name length
+      if (display_name.length > 100) {
+        return res.status(400).json({
+          error: "Sequence name too long (max 100 characters)",
+        });
+      }
+
+      // Check for duplicate sequence_key
+      const { data: existingSequence } = await supabase
+        .from("sequences")
+        .select("sequence_key")
+        .eq("sequence_key", sequence_key)
+        .single();
+
+      if (existingSequence) {
+        return res.status(409).json({
+          error: "A sequence with this key already exists. Please modify the sequence name.",
+        });
+      }
+
+      // Create the sequence using existing function
+      const firstStep = steps[0];
+      const { data: sequenceData, error: sequenceError } = await supabase.rpc(
+        "fn_create_sequence",
+        {
+          p_sequence_key: sequence_key,
+          p_display_name: display_name,
+          p_description: description || null,
+          p_category: category || null,
+          p_created_by: req.user.id,
+          p_first_step_message: firstStep.message_template,
+          p_first_step_url: firstStep.doc_url || null,
+          p_first_step_title: firstStep.doc_title || null,
+        }
+      );
+
+      if (sequenceError) {
+        console.error("🔧 Create Sequence from Ticket - Create error:", sequenceError);
+        return res.status(500).json({ error: sequenceError.message });
+      }
+
+      console.log("🔧 Create Sequence from Ticket - Sequence created, adding remaining steps...");
+
+      // Track failed steps for reporting
+      const failedSteps = [];
+
+      // Add remaining steps (skip first as it was created with the sequence)
+      for (let i = 1; i < steps.length; i++) {
+        const step = steps[i];
+        const { error: stepError } = await supabase.rpc("fn_add_sequence_step", {
+          p_sequence_key: sequence_key,
+          p_step_num: step.step_num,
+          p_message_template: step.message_template,
+          p_doc_url: step.doc_url || null,
+          p_doc_title: step.doc_title || null,
+          p_success_triggers: step.success_triggers || [],
+          p_failure_triggers: step.failure_triggers || [],
+        });
+
+        if (stepError) {
+          console.error(`🔧 Create Sequence from Ticket - Step ${i + 1} error:`, stepError);
+          failedSteps.push(i + 1);
+        }
+      }
+
+      // Update first step with triggers if provided
+      if (firstStep.success_triggers?.length || firstStep.failure_triggers?.length) {
+        await supabase.rpc("fn_update_sequence_step", {
+          p_sequence_key: sequence_key,
+          p_step_num: 1,
+          p_message_template: firstStep.message_template,
+          p_doc_url: firstStep.doc_url || null,
+          p_doc_title: firstStep.doc_title || null,
+          p_success_triggers: firstStep.success_triggers || [],
+          p_failure_triggers: firstStep.failure_triggers || [],
+        });
+      }
+
+      // Add tools from URLs where category is "tool"
+      const toolUrls = (urls || []).filter((u) => u.category === "tool");
+      for (const tool of toolUrls) {
+        await supabase.rpc("fn_add_sequence_tool", {
+          p_sequence_key: sequence_key,
+          p_tool_name: tool.title || "Tool",
+          p_tool_description: null,
+          p_tool_link: tool.url,
+          p_is_required: false,
+          p_sort_order: 0,
+          p_step_num: null,
+        });
+      }
+
+      // Update sequence active status if specified
+      if (is_active !== undefined) {
+        await supabase
+          .from("sequences")
+          .update({ is_active: is_active })
+          .eq("sequence_key", sequence_key);
+      }
+
+      // Create trigger patterns from keywords
+      const createdPatterns = [];
+      const MAX_KEYWORDS = 20;
+      const MAX_KEYWORD_LENGTH = 100;
+      const BASE_KEYWORD_PRIORITY = 100;
+      // Allow alphanumeric, spaces, hyphens, apostrophes, and common punctuation
+      const SAFE_KEYWORD_PATTERN = /^[\w\s\-'.,&/]+$/;
+
+      if (keywords && Array.isArray(keywords) && keywords.length > 0) {
+        // Limit keywords to prevent DoS
+        const limitedKeywords = keywords.slice(0, MAX_KEYWORDS);
+        console.log("🔧 Create Sequence from Ticket - Creating trigger patterns from keywords:", limitedKeywords.length);
+
+        // Map category to category_slug for patterns
+        const categorySlugMap = {
+          'Electrical': 'electrical',
+          'Plumbing': 'plumbing',
+          'HVAC': 'hvac',
+          'Appliances': 'appliances',
+          'Mechanical': 'mechanical',
+          'Other': 'general',
+        };
+        const categorySlug = categorySlugMap[category] || 'general';
+
+        for (let i = 0; i < limitedKeywords.length; i++) {
+          const keyword = limitedKeywords[i];
+          if (!keyword || typeof keyword !== 'string') continue;
+
+          const trimmedKeyword = keyword.trim();
+
+          // Validate keyword length and characters
+          if (!trimmedKeyword ||
+              trimmedKeyword.length > MAX_KEYWORD_LENGTH ||
+              !SAFE_KEYWORD_PATTERN.test(trimmedKeyword)) {
+            console.log(`🔧 Create Sequence from Ticket - Skipping invalid keyword: "${trimmedKeyword?.substring(0, 20)}..."`);
+            continue;
+          }
+
+          // Create a safe regex pattern - escape all regex special characters
+          // Using a comprehensive escape for PostgreSQL regex compatibility
+          const escapedKeyword = trimmedKeyword
+            .replace(/[.*+?^${}()|[\]\\\/]/g, '\\$&');
+
+          // Use word boundaries for whole-word matching
+          const patternRegex = `\\b${escapedKeyword}\\b`;
+
+          const newPattern = {
+            category_slug: categorySlug,
+            pattern: patternRegex,
+            flags: 'i',
+            priority: BASE_KEYWORD_PRIORITY + i,
+            action_type: 'sequence',
+            action_key: sequence_key,
+            entry_step_id: null,
+            van_makes: null,
+            years: null,
+            van_versions: null,
+            is_active: is_active !== undefined ? is_active : false,
+          };
+
+          const { data: patternData, error: patternError } = await supabase
+            .from("topic_patterns")
+            .insert(newPattern)
+            .select()
+            .single();
+
+          if (patternError) {
+            console.error(`🔧 Create Sequence from Ticket - Pattern "${trimmedKeyword}" error:`, patternError);
+          } else {
+            createdPatterns.push(patternData.id);
+          }
+        }
+        console.log(`🔧 Create Sequence from Ticket - Created ${createdPatterns.length} trigger patterns`);
+      }
+
+      // Link sequence to source ticket (optional - add reference)
+      if (ticket_id) {
+        console.log("🔧 Create Sequence from Ticket - Linked to ticket:", ticket_id);
+      }
+
+      console.log("🔧 Create Sequence from Ticket - Success", failedSteps.length > 0 ? `with ${failedSteps.length} failed steps` : "");
+      res.status(201).json({
+        success: true,
+        sequence_key: sequence_key,
+        message: failedSteps.length > 0
+          ? `Sequence created with ${failedSteps.length} step(s) that failed to save`
+          : "Sequence created successfully",
+        failedSteps: failedSteps.length > 0 ? failedSteps : undefined,
+      });
+    } catch (err) {
+      console.error("🔧 Create Sequence from Ticket - Error:", err);
       res.status(500).json({ error: "Internal server error" });
     }
   }
