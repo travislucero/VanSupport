@@ -82,6 +82,15 @@ const CreateTicket = () => {
   const vanDropdownRef = useRef(null);
   const vanTriggerRef = useRef(null);
 
+  // Ref for copy link timeout cleanup
+  const copyLinkTimeoutRef = useRef(null);
+
+  // Refs for focused option index in dropdowns (for keyboard navigation)
+  const [ownerFocusedIndex, setOwnerFocusedIndex] = useState(-1);
+  const [vanFocusedIndex, setVanFocusedIndex] = useState(-1);
+  const ownerOptionsRef = useRef([]);
+  const vanOptionsRef = useRef([]);
+
   // State for dropdown positions (for fixed positioning)
   const [ownerDropdownPosition, setOwnerDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
   const [vanDropdownPosition, setVanDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
@@ -149,6 +158,35 @@ const CreateTicket = () => {
       successModalRef.current.focus();
     }
   }, [showSuccess]);
+
+  /**
+   * Cleanup copy link timeout on unmount to prevent memory leak.
+   */
+  useEffect(() => {
+    return () => {
+      if (copyLinkTimeoutRef.current) {
+        clearTimeout(copyLinkTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  /**
+   * Reset focused index when owner dropdown opens/closes.
+   */
+  useEffect(() => {
+    if (ownerDropdownOpen) {
+      setOwnerFocusedIndex(-1);
+    }
+  }, [ownerDropdownOpen]);
+
+  /**
+   * Reset focused index when van dropdown opens/closes.
+   */
+  useEffect(() => {
+    if (vanDropdownOpen) {
+      setVanFocusedIndex(-1);
+    }
+  }, [vanDropdownOpen]);
 
   /**
    * Fetch all owners on component mount.
@@ -569,7 +607,11 @@ const CreateTicket = () => {
         await navigator.clipboard.writeText(link);
         setLinkCopied(true);
         showToast('Link copied to clipboard!', 'success');
-        setTimeout(() => setLinkCopied(false), 3000);
+        // Clear any existing timeout before setting a new one
+        if (copyLinkTimeoutRef.current) {
+          clearTimeout(copyLinkTimeoutRef.current);
+        }
+        copyLinkTimeoutRef.current = setTimeout(() => setLinkCopied(false), 3000);
       } catch (err) {
         showToast('Failed to copy link to clipboard', 'error');
       }
@@ -860,10 +902,29 @@ const CreateTicket = () => {
                                 </div>
 
                                 {/* Options list */}
-                                <div style={{
-                                  overflowY: 'auto',
-                                  maxHeight: '220px'
-                                }}>
+                                <div
+                                  style={{
+                                    overflowY: 'auto',
+                                    maxHeight: '220px'
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (searchFilteredOwners.length === 0) return;
+                                    if (e.key === 'ArrowDown') {
+                                      e.preventDefault();
+                                      const nextIndex = ownerFocusedIndex < searchFilteredOwners.length - 1 ? ownerFocusedIndex + 1 : 0;
+                                      setOwnerFocusedIndex(nextIndex);
+                                      ownerOptionsRef.current[nextIndex]?.focus();
+                                    } else if (e.key === 'ArrowUp') {
+                                      e.preventDefault();
+                                      const prevIndex = ownerFocusedIndex > 0 ? ownerFocusedIndex - 1 : searchFilteredOwners.length - 1;
+                                      setOwnerFocusedIndex(prevIndex);
+                                      ownerOptionsRef.current[prevIndex]?.focus();
+                                    } else if (e.key === 'Escape') {
+                                      setOwnerDropdownOpen(false);
+                                      ownerTriggerRef.current?.focus();
+                                    }
+                                  }}
+                                >
                                   {searchFilteredOwners.length === 0 ? (
                                     <div style={{
                                       padding: '12px',
@@ -874,26 +935,37 @@ const CreateTicket = () => {
                                       {ownerSearchQuery ? 'No customers match your search' : 'No customers available'}
                                     </div>
                                   ) : (
-                                    searchFilteredOwners.map(owner => (
+                                    searchFilteredOwners.map((owner, index) => (
                                       <div
                                         key={owner.id}
+                                        ref={(el) => (ownerOptionsRef.current[index] = el)}
                                         role="option"
                                         aria-selected={formData.owner_id === owner.id}
+                                        tabIndex={-1}
                                         onClick={() => handleOwnerSelect(owner.id)}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter' || e.key === ' ') {
+                                            e.preventDefault();
+                                            handleOwnerSelect(owner.id);
+                                          }
+                                        }}
+                                        onFocus={() => setOwnerFocusedIndex(index)}
                                         style={{
                                           padding: '10px 12px',
                                           cursor: 'pointer',
-                                          backgroundColor: formData.owner_id === owner.id ? '#eff6ff' : 'transparent',
+                                          backgroundColor: ownerFocusedIndex === index ? '#e0e7ff' : formData.owner_id === owner.id ? '#eff6ff' : 'transparent',
                                           borderBottom: `1px solid ${theme.colors.border.light}`,
-                                          transition: 'background-color 0.15s'
+                                          transition: 'background-color 0.15s',
+                                          outline: 'none'
                                         }}
                                         onMouseEnter={(e) => {
+                                          setOwnerFocusedIndex(index);
                                           if (formData.owner_id !== owner.id) {
                                             e.currentTarget.style.backgroundColor = '#f9fafb';
                                           }
                                         }}
                                         onMouseLeave={(e) => {
-                                          if (formData.owner_id !== owner.id) {
+                                          if (formData.owner_id !== owner.id && ownerFocusedIndex !== index) {
                                             e.currentTarget.style.backgroundColor = 'transparent';
                                           }
                                         }}
@@ -1063,13 +1135,15 @@ const CreateTicket = () => {
                   <div className="space-y-4">
                     {/* Van Selection - Filtered by owner selected in Customer Information */}
                     <div>
-                      <label style={{
-                        display: 'block',
-                        fontSize: theme.fontSize.sm,
-                        fontWeight: theme.fontWeight.medium,
-                        color: theme.colors.text.secondary,
-                        marginBottom: theme.spacing.xs
-                      }}>
+                      <label
+                        id="van_id-label"
+                        style={{
+                          display: 'block',
+                          fontSize: theme.fontSize.sm,
+                          fontWeight: theme.fontWeight.medium,
+                          color: theme.colors.text.secondary,
+                          marginBottom: theme.spacing.xs
+                        }}>
                         Van <span style={{ color: '#6b7280', fontWeight: 'normal' }}>(optional)</span>
                       </label>
 
@@ -1089,19 +1163,21 @@ const CreateTicket = () => {
 
                         {/* Loading state */}
                         {loadingVans && formData.owner_id ? (
-                          <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-                            paddingLeft: '40px',
-                            backgroundColor: theme.colors.background.tertiary,
-                            border: `1px solid ${theme.colors.border.medium}`,
-                            borderRadius: theme.radius.md,
-                            color: theme.colors.text.tertiary,
-                            fontSize: theme.fontSize.sm
-                          }}>
-                            <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                          <div
+                            aria-live="polite"
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                              paddingLeft: '40px',
+                              backgroundColor: theme.colors.background.tertiary,
+                              border: `1px solid ${theme.colors.border.medium}`,
+                              borderRadius: theme.radius.md,
+                              color: theme.colors.text.tertiary,
+                              fontSize: theme.fontSize.sm
+                            }}>
+                            <Loader2 aria-hidden="true" size={16} style={{ animation: 'spin 1s linear infinite' }} />
                             Loading vans...
                           </div>
                         ) : !formData.owner_id ? (
@@ -1128,7 +1204,21 @@ const CreateTicket = () => {
                             {/* Selected value display / search input */}
                             <div
                               ref={vanTriggerRef}
+                              role="combobox"
+                              aria-expanded={vanDropdownOpen}
+                              aria-haspopup="listbox"
+                              aria-controls="van-listbox"
+                              aria-labelledby="van_id-label"
+                              tabIndex={0}
                               onClick={handleVanDropdownToggle}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  handleVanDropdownToggle();
+                                } else if (e.key === 'Escape') {
+                                  setVanDropdownOpen(false);
+                                }
+                              }}
                               style={{
                                 display: 'flex',
                                 alignItems: 'center',
@@ -1140,7 +1230,8 @@ const CreateTicket = () => {
                                 borderRadius: theme.radius.md,
                                 fontSize: theme.fontSize.sm,
                                 cursor: 'pointer',
-                                minHeight: '40px'
+                                minHeight: '40px',
+                                outline: 'none'
                               }}
                             >
                               {selectedVan ? (
@@ -1174,11 +1265,13 @@ const CreateTicket = () => {
                                 </span>
                               )}
                               <ChevronDown
+                                aria-hidden="true"
                                 size={16}
                                 style={{
                                   color: '#9ca3af',
                                   transform: vanDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-                                  transition: 'transform 0.2s'
+                                  transition: 'transform 0.2s',
+                                  flexShrink: 0
                                 }}
                               />
                             </div>
@@ -1188,7 +1281,7 @@ const CreateTicket = () => {
                               <div
                                 id="van-listbox"
                                 role="listbox"
-                                aria-label="Select a van"
+                                aria-labelledby="van_id-label"
                                 style={{
                                   position: 'fixed',
                                   top: vanDropdownPosition.top,
@@ -1238,10 +1331,29 @@ const CreateTicket = () => {
                                 </div>
 
                                 {/* Options list */}
-                                <div style={{
-                                  overflowY: 'auto',
-                                  maxHeight: '220px'
-                                }}>
+                                <div
+                                  style={{
+                                    overflowY: 'auto',
+                                    maxHeight: '220px'
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (searchFilteredVans.length === 0) return;
+                                    if (e.key === 'ArrowDown') {
+                                      e.preventDefault();
+                                      const nextIndex = vanFocusedIndex < searchFilteredVans.length - 1 ? vanFocusedIndex + 1 : 0;
+                                      setVanFocusedIndex(nextIndex);
+                                      vanOptionsRef.current[nextIndex]?.focus();
+                                    } else if (e.key === 'ArrowUp') {
+                                      e.preventDefault();
+                                      const prevIndex = vanFocusedIndex > 0 ? vanFocusedIndex - 1 : searchFilteredVans.length - 1;
+                                      setVanFocusedIndex(prevIndex);
+                                      vanOptionsRef.current[prevIndex]?.focus();
+                                    } else if (e.key === 'Escape') {
+                                      setVanDropdownOpen(false);
+                                      vanTriggerRef.current?.focus();
+                                    }
+                                  }}
+                                >
                                   {searchFilteredVans.length === 0 ? (
                                     <div style={{
                                       padding: '12px',
@@ -1252,24 +1364,37 @@ const CreateTicket = () => {
                                       No vans match your search
                                     </div>
                                   ) : (
-                                    searchFilteredVans.map(van => (
+                                    searchFilteredVans.map((van, index) => (
                                       <div
                                         key={van.id}
+                                        ref={(el) => (vanOptionsRef.current[index] = el)}
+                                        role="option"
+                                        aria-selected={formData.van_id === van.id}
+                                        tabIndex={-1}
                                         onClick={() => handleVanSelect(van.id)}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter' || e.key === ' ') {
+                                            e.preventDefault();
+                                            handleVanSelect(van.id);
+                                          }
+                                        }}
+                                        onFocus={() => setVanFocusedIndex(index)}
                                         style={{
                                           padding: '10px 12px',
                                           cursor: 'pointer',
-                                          backgroundColor: formData.van_id === van.id ? '#eff6ff' : 'transparent',
+                                          backgroundColor: vanFocusedIndex === index ? '#e0e7ff' : formData.van_id === van.id ? '#eff6ff' : 'transparent',
                                           borderBottom: `1px solid ${theme.colors.border.light}`,
-                                          transition: 'background-color 0.15s'
+                                          transition: 'background-color 0.15s',
+                                          outline: 'none'
                                         }}
                                         onMouseEnter={(e) => {
+                                          setVanFocusedIndex(index);
                                           if (formData.van_id !== van.id) {
                                             e.currentTarget.style.backgroundColor = '#f9fafb';
                                           }
                                         }}
                                         onMouseLeave={(e) => {
-                                          if (formData.van_id !== van.id) {
+                                          if (formData.van_id !== van.id && vanFocusedIndex !== index) {
                                             e.currentTarget.style.backgroundColor = 'transparent';
                                           }
                                         }}
@@ -1312,13 +1437,15 @@ const CreateTicket = () => {
 
                     {/* Category - Dropdown from categories */}
                     <div>
-                      <label style={{
-                        display: 'block',
-                        fontSize: theme.fontSize.sm,
-                        fontWeight: theme.fontWeight.medium,
-                        color: theme.colors.text.secondary,
-                        marginBottom: theme.spacing.xs
-                      }}>
+                      <label
+                        htmlFor="category_id"
+                        style={{
+                          display: 'block',
+                          fontSize: theme.fontSize.sm,
+                          fontWeight: theme.fontWeight.medium,
+                          color: theme.colors.text.secondary,
+                          marginBottom: theme.spacing.xs
+                        }}>
                         Category <span style={{ color: '#6b7280', fontWeight: 'normal' }}>(optional)</span>
                       </label>
                       <div style={{ position: 'relative' }}>
@@ -1351,6 +1478,7 @@ const CreateTicket = () => {
                           </div>
                         ) : (
                           <select
+                            id="category_id"
                             name="category_id"
                             value={formData.category_id}
                             onChange={handleChange}
