@@ -14,6 +14,8 @@ import {
   Wrench,
   Tag,
   RefreshCw,
+  Package,
+  DollarSign,
 } from 'lucide-react';
 import { theme } from '../styles/theme';
 
@@ -81,6 +83,8 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
     keywords: [],
     steps: [],
     urls: [],
+    tools: [],
+    parts: [],
   });
 
   // Step expansion state
@@ -150,6 +154,8 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
         keywords: data.keywords || [],
         steps: data.steps || [],
         urls: data.urls || [],
+        tools: [],
+        parts: [],
       });
 
       // Expand first step by default
@@ -246,6 +252,8 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
         steps: sequenceData.steps,
         urls: sequenceData.urls,
         keywords: sequenceData.keywords,
+        tools: sequenceData.tools,
+        parts: sequenceData.parts,
       };
 
       const response = await fetch(`${API_BASE_URL}/api/sequences/from-ticket`, {
@@ -385,6 +393,70 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
     setSequenceData((prev) => ({
       ...prev,
       keywords: prev.keywords.filter((_, i) => i !== index),
+    }));
+  };
+
+  // Tool handlers
+  const addTool = () => {
+    setSequenceData((prev) => ({
+      ...prev,
+      tools: [
+        ...prev.tools,
+        {
+          tool_name: '',
+          tool_description: '',
+          tool_link: '',
+          is_required: true,
+          step_num: null,
+        },
+      ],
+    }));
+  };
+
+  const updateTool = (index, field, value) => {
+    setSequenceData((prev) => ({
+      ...prev,
+      tools: prev.tools.map((tool, i) => (i === index ? { ...tool, [field]: value } : tool)),
+    }));
+  };
+
+  const removeTool = (index) => {
+    setSequenceData((prev) => ({
+      ...prev,
+      tools: prev.tools.filter((_, i) => i !== index),
+    }));
+  };
+
+  // Part handlers
+  const addPart = () => {
+    setSequenceData((prev) => ({
+      ...prev,
+      parts: [
+        ...prev.parts,
+        {
+          part_name: '',
+          part_number: '',
+          part_description: '',
+          part_link: '',
+          estimated_price: '',
+          is_required: true,
+          step_num: null,
+        },
+      ],
+    }));
+  };
+
+  const updatePart = (index, field, value) => {
+    setSequenceData((prev) => ({
+      ...prev,
+      parts: prev.parts.map((part, i) => (i === index ? { ...part, [field]: value } : part)),
+    }));
+  };
+
+  const removePart = (index) => {
+    setSequenceData((prev) => ({
+      ...prev,
+      parts: prev.parts.filter((_, i) => i !== index),
     }));
   };
 
@@ -1317,6 +1389,566 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                     </div>
                   ))}
                 </div>
+              </div>
+
+              {/* Tools */}
+              <div>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: theme.spacing.md,
+                  }}
+                >
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: theme.spacing.sm,
+                      fontSize: theme.fontSize.sm,
+                      fontWeight: theme.fontWeight.semibold,
+                      color: theme.colors.text.primary,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em',
+                    }}
+                  >
+                    <Wrench size={16} />
+                    Tools ({sequenceData.tools.length})
+                  </label>
+                  <button
+                    type="button"
+                    onClick={addTool}
+                    style={{
+                      padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                      borderRadius: theme.radius.md,
+                      border: 'none',
+                      backgroundColor: theme.colors.accent.primary,
+                      color: theme.colors.text.inverse,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: theme.spacing.xs,
+                      fontSize: theme.fontSize.sm,
+                      fontWeight: theme.fontWeight.medium,
+                    }}
+                  >
+                    <Plus size={14} />
+                    Add Tool
+                  </button>
+                </div>
+
+                {sequenceData.tools.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
+                    {sequenceData.tools.map((tool, i) => (
+                      <div
+                        key={i}
+                        style={{
+                          padding: theme.spacing.md,
+                          backgroundColor: theme.colors.background.tertiary,
+                          borderRadius: theme.radius.md,
+                          border: `1px solid ${theme.colors.border.light}`,
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+                            gap: theme.spacing.md,
+                            marginBottom: theme.spacing.md,
+                          }}
+                        >
+                          <div>
+                            <label
+                              style={{
+                                display: 'block',
+                                fontSize: theme.fontSize.xs,
+                                fontWeight: theme.fontWeight.medium,
+                                color: theme.colors.text.tertiary,
+                                marginBottom: theme.spacing.xs,
+                              }}
+                            >
+                              Tool Name *
+                            </label>
+                            <input
+                              type="text"
+                              value={tool.tool_name}
+                              onChange={(e) => updateTool(i, 'tool_name', e.target.value)}
+                              placeholder="e.g. Multimeter"
+                              style={{
+                                width: '100%',
+                                padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                                borderRadius: theme.radius.md,
+                                border: `1px solid ${theme.colors.border.medium}`,
+                                fontSize: theme.fontSize.sm,
+                                backgroundColor: theme.colors.background.secondary,
+                                color: theme.colors.text.primary,
+                              }}
+                            />
+                          </div>
+                          <div>
+                            <label
+                              style={{
+                                display: 'block',
+                                fontSize: theme.fontSize.xs,
+                                fontWeight: theme.fontWeight.medium,
+                                color: theme.colors.text.tertiary,
+                                marginBottom: theme.spacing.xs,
+                              }}
+                            >
+                              Link
+                            </label>
+                            <input
+                              type="text"
+                              value={tool.tool_link}
+                              onChange={(e) => updateTool(i, 'tool_link', e.target.value)}
+                              placeholder="https://..."
+                              style={{
+                                width: '100%',
+                                padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                                borderRadius: theme.radius.md,
+                                border: `1px solid ${theme.colors.border.medium}`,
+                                fontSize: theme.fontSize.sm,
+                                backgroundColor: theme.colors.background.secondary,
+                                color: theme.colors.text.primary,
+                              }}
+                            />
+                          </div>
+                        </div>
+                        <div style={{ marginBottom: theme.spacing.md }}>
+                          <label
+                            style={{
+                              display: 'block',
+                              fontSize: theme.fontSize.xs,
+                              fontWeight: theme.fontWeight.medium,
+                              color: theme.colors.text.tertiary,
+                              marginBottom: theme.spacing.xs,
+                            }}
+                          >
+                            Description
+                          </label>
+                          <input
+                            type="text"
+                            value={tool.tool_description}
+                            onChange={(e) => updateTool(i, 'tool_description', e.target.value)}
+                            placeholder="Brief description..."
+                            style={{
+                              width: '100%',
+                              padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                              borderRadius: theme.radius.md,
+                              border: `1px solid ${theme.colors.border.medium}`,
+                              fontSize: theme.fontSize.sm,
+                              backgroundColor: theme.colors.background.secondary,
+                              color: theme.colors.text.primary,
+                            }}
+                          />
+                        </div>
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.lg }}>
+                            <label
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: theme.spacing.xs,
+                                fontSize: theme.fontSize.sm,
+                                color: theme.colors.text.secondary,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={tool.is_required}
+                                onChange={(e) => updateTool(i, 'is_required', e.target.checked)}
+                                style={{
+                                  width: '16px',
+                                  height: '16px',
+                                  cursor: 'pointer',
+                                  accentColor: theme.colors.accent.primary,
+                                }}
+                              />
+                              Required
+                            </label>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
+                              <label
+                                style={{
+                                  fontSize: theme.fontSize.xs,
+                                  color: theme.colors.text.tertiary,
+                                }}
+                              >
+                                Step:
+                              </label>
+                              <select
+                                value={tool.step_num || ''}
+                                onChange={(e) =>
+                                  updateTool(i, 'step_num', e.target.value ? parseInt(e.target.value) : null)
+                                }
+                                style={{
+                                  padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
+                                  borderRadius: theme.radius.sm,
+                                  border: `1px solid ${theme.colors.border.medium}`,
+                                  fontSize: theme.fontSize.xs,
+                                  backgroundColor: theme.colors.background.secondary,
+                                  color: theme.colors.text.primary,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                <option value="">All Steps</option>
+                                {sequenceData.steps.map((s) => (
+                                  <option key={s.step_num} value={s.step_num}>
+                                    Step {s.step_num}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeTool(i)}
+                            style={{
+                              padding: theme.spacing.sm,
+                              borderRadius: theme.radius.md,
+                              border: 'none',
+                              backgroundColor: 'transparent',
+                              color: theme.colors.accent.danger,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                            }}
+                            aria-label={`Remove tool ${tool.tool_name || i + 1}`}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Parts */}
+              <div>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: theme.spacing.md,
+                  }}
+                >
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: theme.spacing.sm,
+                      fontSize: theme.fontSize.sm,
+                      fontWeight: theme.fontWeight.semibold,
+                      color: theme.colors.text.primary,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em',
+                    }}
+                  >
+                    <Package size={16} />
+                    Parts ({sequenceData.parts.length})
+                  </label>
+                  <button
+                    type="button"
+                    onClick={addPart}
+                    style={{
+                      padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                      borderRadius: theme.radius.md,
+                      border: 'none',
+                      backgroundColor: theme.colors.accent.primary,
+                      color: theme.colors.text.inverse,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: theme.spacing.xs,
+                      fontSize: theme.fontSize.sm,
+                      fontWeight: theme.fontWeight.medium,
+                    }}
+                  >
+                    <Plus size={14} />
+                    Add Part
+                  </button>
+                </div>
+
+                {sequenceData.parts.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
+                    {sequenceData.parts.map((part, i) => (
+                      <div
+                        key={i}
+                        style={{
+                          padding: theme.spacing.md,
+                          backgroundColor: theme.colors.background.tertiary,
+                          borderRadius: theme.radius.md,
+                          border: `1px solid ${theme.colors.border.light}`,
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+                            gap: theme.spacing.md,
+                            marginBottom: theme.spacing.md,
+                          }}
+                        >
+                          <div>
+                            <label
+                              style={{
+                                display: 'block',
+                                fontSize: theme.fontSize.xs,
+                                fontWeight: theme.fontWeight.medium,
+                                color: theme.colors.text.tertiary,
+                                marginBottom: theme.spacing.xs,
+                              }}
+                            >
+                              Part Name *
+                            </label>
+                            <input
+                              type="text"
+                              value={part.part_name}
+                              onChange={(e) => updatePart(i, 'part_name', e.target.value)}
+                              placeholder="e.g. 30A Fuse"
+                              style={{
+                                width: '100%',
+                                padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                                borderRadius: theme.radius.md,
+                                border: `1px solid ${theme.colors.border.medium}`,
+                                fontSize: theme.fontSize.sm,
+                                backgroundColor: theme.colors.background.secondary,
+                                color: theme.colors.text.primary,
+                              }}
+                            />
+                          </div>
+                          <div>
+                            <label
+                              style={{
+                                display: 'block',
+                                fontSize: theme.fontSize.xs,
+                                fontWeight: theme.fontWeight.medium,
+                                color: theme.colors.text.tertiary,
+                                marginBottom: theme.spacing.xs,
+                              }}
+                            >
+                              Part Number
+                            </label>
+                            <input
+                              type="text"
+                              value={part.part_number}
+                              onChange={(e) => updatePart(i, 'part_number', e.target.value)}
+                              placeholder="e.g. ABC-123"
+                              style={{
+                                width: '100%',
+                                padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                                borderRadius: theme.radius.md,
+                                border: `1px solid ${theme.colors.border.medium}`,
+                                fontSize: theme.fontSize.sm,
+                                backgroundColor: theme.colors.background.secondary,
+                                color: theme.colors.text.primary,
+                              }}
+                            />
+                          </div>
+                        </div>
+                        <div
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+                            gap: theme.spacing.md,
+                            marginBottom: theme.spacing.md,
+                          }}
+                        >
+                          <div>
+                            <label
+                              style={{
+                                display: 'block',
+                                fontSize: theme.fontSize.xs,
+                                fontWeight: theme.fontWeight.medium,
+                                color: theme.colors.text.tertiary,
+                                marginBottom: theme.spacing.xs,
+                              }}
+                            >
+                              Buy Link
+                            </label>
+                            <input
+                              type="text"
+                              value={part.part_link}
+                              onChange={(e) => updatePart(i, 'part_link', e.target.value)}
+                              placeholder="https://..."
+                              style={{
+                                width: '100%',
+                                padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                                borderRadius: theme.radius.md,
+                                border: `1px solid ${theme.colors.border.medium}`,
+                                fontSize: theme.fontSize.sm,
+                                backgroundColor: theme.colors.background.secondary,
+                                color: theme.colors.text.primary,
+                              }}
+                            />
+                          </div>
+                          <div>
+                            <label
+                              style={{
+                                display: 'block',
+                                fontSize: theme.fontSize.xs,
+                                fontWeight: theme.fontWeight.medium,
+                                color: theme.colors.text.tertiary,
+                                marginBottom: theme.spacing.xs,
+                              }}
+                            >
+                              Estimated Price ($)
+                            </label>
+                            <div style={{ position: 'relative' }}>
+                              <DollarSign
+                                size={14}
+                                style={{
+                                  position: 'absolute',
+                                  left: theme.spacing.sm,
+                                  top: '50%',
+                                  transform: 'translateY(-50%)',
+                                  color: theme.colors.text.tertiary,
+                                }}
+                              />
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={part.estimated_price}
+                                onChange={(e) => updatePart(i, 'estimated_price', e.target.value)}
+                                placeholder="0.00"
+                                style={{
+                                  width: '100%',
+                                  padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                                  paddingLeft: '28px',
+                                  borderRadius: theme.radius.md,
+                                  border: `1px solid ${theme.colors.border.medium}`,
+                                  fontSize: theme.fontSize.sm,
+                                  backgroundColor: theme.colors.background.secondary,
+                                  color: theme.colors.text.primary,
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                        <div style={{ marginBottom: theme.spacing.md }}>
+                          <label
+                            style={{
+                              display: 'block',
+                              fontSize: theme.fontSize.xs,
+                              fontWeight: theme.fontWeight.medium,
+                              color: theme.colors.text.tertiary,
+                              marginBottom: theme.spacing.xs,
+                            }}
+                          >
+                            Description
+                          </label>
+                          <input
+                            type="text"
+                            value={part.part_description}
+                            onChange={(e) => updatePart(i, 'part_description', e.target.value)}
+                            placeholder="Brief description..."
+                            style={{
+                              width: '100%',
+                              padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                              borderRadius: theme.radius.md,
+                              border: `1px solid ${theme.colors.border.medium}`,
+                              fontSize: theme.fontSize.sm,
+                              backgroundColor: theme.colors.background.secondary,
+                              color: theme.colors.text.primary,
+                            }}
+                          />
+                        </div>
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.lg }}>
+                            <label
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: theme.spacing.xs,
+                                fontSize: theme.fontSize.sm,
+                                color: theme.colors.text.secondary,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={part.is_required}
+                                onChange={(e) => updatePart(i, 'is_required', e.target.checked)}
+                                style={{
+                                  width: '16px',
+                                  height: '16px',
+                                  cursor: 'pointer',
+                                  accentColor: theme.colors.accent.primary,
+                                }}
+                              />
+                              Required
+                            </label>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
+                              <label
+                                style={{
+                                  fontSize: theme.fontSize.xs,
+                                  color: theme.colors.text.tertiary,
+                                }}
+                              >
+                                Step:
+                              </label>
+                              <select
+                                value={part.step_num || ''}
+                                onChange={(e) =>
+                                  updatePart(i, 'step_num', e.target.value ? parseInt(e.target.value) : null)
+                                }
+                                style={{
+                                  padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
+                                  borderRadius: theme.radius.sm,
+                                  border: `1px solid ${theme.colors.border.medium}`,
+                                  fontSize: theme.fontSize.xs,
+                                  backgroundColor: theme.colors.background.secondary,
+                                  color: theme.colors.text.primary,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                <option value="">All Steps</option>
+                                {sequenceData.steps.map((s) => (
+                                  <option key={s.step_num} value={s.step_num}>
+                                    Step {s.step_num}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removePart(i)}
+                            style={{
+                              padding: theme.spacing.sm,
+                              borderRadius: theme.radius.md,
+                              border: 'none',
+                              backgroundColor: 'transparent',
+                              color: theme.colors.accent.danger,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                            }}
+                            aria-label={`Remove part ${part.part_name || i + 1}`}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* URLs */}

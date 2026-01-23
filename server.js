@@ -3365,6 +3365,8 @@ app.post(
         steps,
         urls,
         keywords,
+        tools,
+        parts,
       } = req.body;
 
       console.log("🔧 Create Sequence from Ticket - Creating:", sequence_key);
@@ -3480,6 +3482,80 @@ app.post(
           p_sort_order: 0,
           p_step_num: null,
         });
+      }
+
+      // Add explicit tools from the tools array
+      if (tools && Array.isArray(tools) && tools.length > 0) {
+        console.log("🔧 Create Sequence from Ticket - Adding tools:", tools.length);
+        for (let i = 0; i < tools.length; i++) {
+          const tool = tools[i];
+          if (!tool.tool_name || !tool.tool_name.trim()) continue;
+
+          const toolLink = tool.tool_link && tool.tool_link.trim() ? tool.tool_link.trim() : null;
+          // Validate tool link if provided
+          if (toolLink) {
+            try {
+              const parsed = new URL(toolLink);
+              if (!["http:", "https:"].includes(parsed.protocol)) continue;
+            } catch {
+              // Skip invalid URLs - don't add the link but still add the tool
+            }
+          }
+
+          const { error: toolError } = await supabase.rpc("fn_add_sequence_tool", {
+            p_sequence_key: sequence_key,
+            p_tool_name: tool.tool_name.trim().substring(0, 200),
+            p_tool_description: tool.tool_description?.trim() || null,
+            p_tool_link: toolLink,
+            p_is_required: tool.is_required !== false,
+            p_sort_order: i,
+            p_step_num: tool.step_num || null,
+          });
+
+          if (toolError) {
+            console.error(`🔧 Create Sequence from Ticket - Tool "${tool.tool_name}" error:`, toolError);
+          }
+        }
+      }
+
+      // Add parts from the parts array
+      if (parts && Array.isArray(parts) && parts.length > 0) {
+        console.log("🔧 Create Sequence from Ticket - Adding parts:", parts.length);
+        for (let i = 0; i < parts.length; i++) {
+          const part = parts[i];
+          if (!part.part_name || !part.part_name.trim()) continue;
+
+          const partLink = part.part_link && part.part_link.trim() ? part.part_link.trim() : null;
+          // Validate part link if provided
+          if (partLink) {
+            try {
+              const parsed = new URL(partLink);
+              if (!["http:", "https:"].includes(parsed.protocol)) continue;
+            } catch {
+              // Skip invalid URLs - don't add the link but still add the part
+            }
+          }
+
+          const estimatedPrice = part.estimated_price
+            ? parseFloat(part.estimated_price)
+            : null;
+
+          const { error: partError } = await supabase.rpc("fn_add_sequence_part", {
+            p_sequence_key: sequence_key,
+            p_part_name: part.part_name.trim().substring(0, 200),
+            p_part_number: part.part_number?.trim() || null,
+            p_part_description: part.part_description?.trim() || null,
+            p_part_link: partLink,
+            p_estimated_price: isNaN(estimatedPrice) ? null : estimatedPrice,
+            p_is_required: part.is_required !== false,
+            p_sort_order: i,
+            p_step_num: part.step_num || null,
+          });
+
+          if (partError) {
+            console.error(`🔧 Create Sequence from Ticket - Part "${part.part_name}" error:`, partError);
+          }
+        }
       }
 
       // Update sequence active status if specified
