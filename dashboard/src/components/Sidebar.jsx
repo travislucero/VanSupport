@@ -35,6 +35,7 @@ const Sidebar = ({ user, onLogout, hasRole, isSiteAdmin }) => {
     clearNewNotifications,
     markAsRead,
     markAllAsRead,
+    dismissAll,
   } = useNotifications(!!user);
 
   // Helper to check if user can access a feature (site_admin bypasses all)
@@ -69,6 +70,13 @@ const Sidebar = ({ user, onLogout, hasRole, isSiteAdmin }) => {
     const interval = setInterval(fetchActiveCount, 30000);
     return () => clearInterval(interval);
   }, [hasRole, isSiteAdmin]);
+
+  // Dismiss notifications when navigating to tickets page
+  useEffect(() => {
+    if (location.pathname.startsWith('/tickets')) {
+      dismissAll();
+    }
+  }, [location.pathname, dismissAll]);
 
   // Show toast for new broadcast notifications
   useEffect(() => {

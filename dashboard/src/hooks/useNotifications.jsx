@@ -7,7 +7,9 @@ export const useNotifications = (isAuthenticated) => {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [newNotifications, setNewNotifications] = useState([]);
-  const prevCountRef = useRef(0);
+  const sessionStartRef = useRef(null);
+  const initialFetchDoneRef = useRef(false);
+  const prevSessionCountRef = useRef(0);
 
   const fetchNotifications = useCallback(async (signal) => {
     if (!isAuthenticated) return;
@@ -19,16 +21,26 @@ export const useNotifications = (isAuthenticated) => {
       if (!response.ok) return;
       const data = await response.json();
 
+      if (!initialFetchDoneRef.current) {
+        // First fetch - record session start, don't show any badge
+        sessionStartRef.current = new Date();
+        initialFetchDoneRef.current = true;
+        return;
+      }
+
+      // Only show notifications created after session start
+      const sessionStart = sessionStartRef.current;
+      const sessionNotifs = data.filter(n => new Date(n.created_at) > sessionStart);
+
       // Detect newly arrived notifications for toast display
-      const prevCount = prevCountRef.current;
-      if (data.length > prevCount && prevCount >= 0 && prevCountRef.current !== 0) {
-        const newOnes = data.slice(0, data.length - prevCount);
+      if (sessionNotifs.length > prevSessionCountRef.current) {
+        const newOnes = sessionNotifs.slice(0, sessionNotifs.length - prevSessionCountRef.current);
         setNewNotifications(newOnes);
       }
 
-      setNotifications(data);
-      setUnreadCount(data.length);
-      prevCountRef.current = data.length;
+      prevSessionCountRef.current = sessionNotifs.length;
+      setNotifications(sessionNotifs);
+      setUnreadCount(sessionNotifs.length);
     } catch (err) {
       if (err.name === 'AbortError') return;
       // Silently fail - polling will retry
@@ -44,7 +56,6 @@ export const useNotifications = (isAuthenticated) => {
       if (!response.ok) return;
       setNotifications(prev => prev.filter(n => n.id !== id));
       setUnreadCount(prev => Math.max(0, prev - 1));
-      prevCountRef.current = Math.max(0, prevCountRef.current - 1);
     } catch (err) {
       // Silent failure
     }
@@ -59,10 +70,16 @@ export const useNotifications = (isAuthenticated) => {
       if (!response.ok) return;
       setNotifications([]);
       setUnreadCount(0);
-      prevCountRef.current = 0;
     } catch (err) {
       // Silent failure
     }
+  }, []);
+
+  const dismissAll = useCallback(() => {
+    setNotifications([]);
+    setUnreadCount(0);
+    prevSessionCountRef.current = 0;
+    sessionStartRef.current = new Date();
   }, []);
 
   const clearNewNotifications = useCallback(() => {
@@ -96,6 +113,7 @@ export const useNotifications = (isAuthenticated) => {
     clearNewNotifications,
     markAsRead,
     markAllAsRead,
+    dismissAll,
     refetch: fetchNotifications,
   };
 };

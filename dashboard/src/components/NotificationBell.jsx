@@ -5,7 +5,9 @@ import { theme } from '../styles/theme';
 
 const NotificationBell = ({ notifications, unreadCount, onMarkAsRead, onMarkAllAsRead }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
   const dropdownRef = useRef(null);
+  const buttonRef = useRef(null);
   const navigate = useNavigate();
 
   // Close dropdown on click outside
@@ -39,10 +41,22 @@ const NotificationBell = ({ notifications, unreadCount, onMarkAsRead, onMarkAllA
     return date.toLocaleDateString();
   };
 
+  const toggleDropdown = () => {
+    if (!isOpen && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setDropdownPos({
+        top: rect.top - 8, // 8px gap above the button
+        left: rect.left,
+      });
+    }
+    setIsOpen(!isOpen);
+  };
+
   return (
     <div ref={dropdownRef} style={{ position: 'relative' }}>
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        ref={buttonRef}
+        onClick={toggleDropdown}
         aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
         style={{
           position: 'relative',
@@ -82,10 +96,10 @@ const NotificationBell = ({ notifications, unreadCount, onMarkAsRead, onMarkAllA
 
       {isOpen && (
         <div style={{
-          position: 'absolute',
-          bottom: '100%',
-          left: '0',
-          marginBottom: theme.spacing.sm,
+          position: 'fixed',
+          top: dropdownPos.top,
+          left: dropdownPos.left,
+          transform: 'translateY(-100%)',
           width: '320px',
           maxHeight: '400px',
           overflowY: 'auto',
