@@ -3241,7 +3241,9 @@ REQUIRED JSON STRUCTURE:
     "success_triggers": ["3-5 step-specific success phrases"],
     "failure_triggers": ["3-5 step-specific failure phrases"]
   }],
-  "urls": [{"url": "exact URL from ticket", "category": "tool|video|documentation", "title": "descriptive title"}]
+  "urls": [{"url": "exact URL from ticket", "category": "tool|video|documentation", "title": "descriptive title"}],
+  "tools": [{"tool_name": "name of the tool", "tool_description": "brief description or usage context", "tool_link": "URL if mentioned", "is_required": true, "step_num": null}],
+  "parts": [{"part_name": "name of the part", "part_number": "manufacturer part number if mentioned", "part_description": "brief description", "part_link": "purchase URL if mentioned", "estimated_price": null, "is_required": true, "step_num": null}]
 }
 
 EXTRACTION RULES:
@@ -3252,6 +3254,9 @@ EXTRACTION RULES:
 5. Return urls as empty array [] if none found in ticket
 6. NEVER include customer PII, credentials, or internal system references
 7. For category, choose exactly ONE from: Electrical, Plumbing, HVAC, Appliances, Mechanical, Other
+8. Extract ALL tools mentioned in the conversation (multimeter, screwdriver, wrench, etc.). Set step_num to the step number where the tool is needed, or null if it applies to all steps. Set is_required to true if the tool is essential for the repair
+9. Extract ALL parts/supplies mentioned in the conversation (fuses, connectors, wires, filters, etc.). Include part_number if a specific model/SKU is mentioned. Set estimated_price if a price is discussed. Set step_num to the step where the part is needed, or null if general
+10. Return tools and parts as empty arrays [] if none are mentioned in the ticket
 
 EXAMPLE OUTPUT (abbreviated):
 {
@@ -3260,9 +3265,12 @@ EXAMPLE OUTPUT (abbreviated):
   "category": "Appliances",
   "keywords": ["water heater", "pilot light", "propane", "no hot water"],
   "steps": [
-    {"step_num": 1, "message_template": "Locate the gas control valve on the water heater...", "success_triggers": ["found it", "see it", "yes"], "failure_triggers": ["cant find", "where is it", "no valve"]}
+    {"step_num": 1, "message_template": "Locate the gas control valve on the water heater...", "success_triggers": ["found it", "see it", "yes"], "failure_triggers": ["cant find", "where is it", "no valve"]},
+    {"step_num": 2, "message_template": "Turn the knob to the OFF position and wait 5 minutes...", "success_triggers": ["done", "waited", "ok"], "failure_triggers": ["stuck", "won't turn", "broken knob"]}
   ],
-  "urls": []
+  "urls": [],
+  "tools": [{"tool_name": "Long-reach lighter", "tool_description": "For relighting the pilot", "tool_link": "", "is_required": true, "step_num": 3}],
+  "parts": [{"part_name": "Thermocouple", "part_number": "", "part_description": "Replacement if pilot won't stay lit after cleaning", "part_link": "", "estimated_price": 15, "is_required": false, "step_num": null}]
 }`;
 
       console.log("🤖 Generate Sequence - Calling OpenAI API...");
@@ -3275,7 +3283,7 @@ EXAMPLE OUTPUT (abbreviated):
         ],
         response_format: { type: "json_object" },
         temperature: 0.3, // Lower temperature for more consistent structured output
-        max_tokens: 2000,
+        max_tokens: 3000,
       });
 
       const responseText = completion.choices[0].message.content;
@@ -3312,6 +3320,14 @@ EXAMPLE OUTPUT (abbreviated):
       aiResponse.urls = Array.isArray(aiResponse.urls) ? aiResponse.urls : [];
       // Ensure keywords is an array
       aiResponse.keywords = Array.isArray(aiResponse.keywords) ? aiResponse.keywords : [];
+      // Ensure tools is an array with valid structure
+      aiResponse.tools = Array.isArray(aiResponse.tools)
+        ? aiResponse.tools.filter((t) => t && typeof t.tool_name === "string" && t.tool_name.trim())
+        : [];
+      // Ensure parts is an array with valid structure
+      aiResponse.parts = Array.isArray(aiResponse.parts)
+        ? aiResponse.parts.filter((p) => p && typeof p.part_name === "string" && p.part_name.trim())
+        : [];
 
       // Return the AI-generated data along with ticket reference
       res.json({

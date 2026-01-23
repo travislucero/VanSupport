@@ -154,8 +154,22 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
         keywords: data.keywords || [],
         steps: data.steps || [],
         urls: data.urls || [],
-        tools: [],
-        parts: [],
+        tools: (data.tools || []).map((t) => ({
+          tool_name: t.tool_name || '',
+          tool_description: t.tool_description || '',
+          tool_link: t.tool_link || '',
+          is_required: t.is_required !== false,
+          step_num: t.step_num || null,
+        })),
+        parts: (data.parts || []).map((p) => ({
+          part_name: p.part_name || '',
+          part_number: p.part_number || '',
+          part_description: p.part_description || '',
+          part_link: p.part_link || '',
+          estimated_price: p.estimated_price != null ? String(p.estimated_price) : '',
+          is_required: p.is_required !== false,
+          step_num: p.step_num || null,
+        })),
       });
 
       // Expand first step by default
