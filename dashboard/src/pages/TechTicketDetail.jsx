@@ -98,7 +98,7 @@ const SectionHeader = ({ icon: Icon, title, badge, action }) => (
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: theme.spacing.lg,
+    marginBottom: theme.spacing.md,
   }}>
     <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
       {Icon && <Icon size={18} style={{ color: theme.colors.text.tertiary }} />}
@@ -154,9 +154,9 @@ const InfoRow = ({ icon: Icon, label, value, href, isEmail }) => {
       display: 'flex',
       alignItems: 'center',
       gap: theme.spacing.sm,
-      padding: `${theme.spacing.sm} 0`,
+      padding: `${theme.spacing.xs} 0`,
     }}>
-      <Icon size={18} style={{ color: theme.colors.text.tertiary, flexShrink: 0 }} />
+      <Icon size={16} style={{ color: theme.colors.text.tertiary, flexShrink: 0 }} />
       {label && (
         <span style={{
           color: theme.colors.text.tertiary,
@@ -934,7 +934,7 @@ const TechTicketDetail = () => {
     main: {
       marginLeft: isMobile ? 0 : '260px',
       flex: 1,
-      padding: isMobile ? theme.spacing.lg : theme.spacing['2xl'],
+      padding: isMobile ? theme.spacing.md : theme.spacing.xl,
       maxWidth: '1400px',
     },
   };
@@ -944,10 +944,10 @@ const TechTicketDetail = () => {
       <div style={pageStyles.wrapper}>
         <Sidebar user={user} onLogout={logout} hasRole={hasRole} isSiteAdmin={isSiteAdmin} />
         <div style={pageStyles.main}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xl }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.lg }}>
             {/* Skeleton header */}
             <div style={{
-              height: '180px',
+              height: '160px',
               backgroundColor: theme.colors.background.tertiary,
               borderRadius: theme.radius.xl,
               animation: 'pulse 2s ease-in-out infinite',
@@ -1045,14 +1045,14 @@ const TechTicketDetail = () => {
     main: {
       marginLeft: isMobile ? 0 : '260px',
       flex: 1,
-      padding: isMobile ? theme.spacing.lg : theme.spacing['2xl'],
+      padding: isMobile ? theme.spacing.md : theme.spacing.xl,
       display: 'flex',
       flexDirection: 'column',
-      gap: isMobile ? theme.spacing.lg : theme.spacing.xl,
+      gap: isMobile ? theme.spacing.md : theme.spacing.lg,
       maxWidth: '1400px',
     },
     newCommentsBanner: {
-      padding: isMobile ? theme.spacing.md : theme.spacing.lg,
+      padding: isMobile ? theme.spacing.sm : theme.spacing.md,
       backgroundColor: theme.colors.accent.primaryLight,
       border: `1px solid ${theme.colors.accent.primary}20`,
       borderRadius: theme.radius.lg,
@@ -1060,7 +1060,7 @@ const TechTicketDetail = () => {
       alignItems: isMobile ? 'flex-start' : 'center',
       justifyContent: 'space-between',
       flexDirection: isMobile ? 'column' : 'row',
-      gap: theme.spacing.md,
+      gap: theme.spacing.sm,
     },
   };
 
@@ -1095,14 +1095,14 @@ const TechTicketDetail = () => {
 
         {/* Header Section - Redesigned */}
         <Card>
-          <div style={{ padding: theme.spacing.xl }}>
+          <div style={{ padding: theme.spacing.md }}>
             {/* Back Button */}
             <button
               onClick={() => navigate('/tickets')}
               style={{
                 ...getButtonStyles('ghost'),
                 padding: `${theme.spacing.xs} 0`,
-                marginBottom: theme.spacing.lg,
+                marginBottom: theme.spacing.sm,
                 gap: theme.spacing.xs,
               }}
               onMouseEnter={(e) => (e.currentTarget.style.color = theme.colors.text.primary)}
@@ -1113,14 +1113,14 @@ const TechTicketDetail = () => {
             </button>
 
             {/* Title & Subject */}
-            <div style={{ marginBottom: theme.spacing.xl }}>
+            <div style={{ marginBottom: theme.spacing.md }}>
               <div style={{
                 display: 'flex',
                 alignItems: 'flex-start',
                 justifyContent: 'space-between',
                 flexWrap: 'wrap',
-                gap: theme.spacing.md,
-                marginBottom: theme.spacing.sm,
+                gap: theme.spacing.sm,
+                marginBottom: theme.spacing.xs,
               }}>
                 <h1 style={{
                   color: theme.colors.text.primary,
@@ -1160,7 +1160,7 @@ const TechTicketDetail = () => {
                 fontSize: theme.fontSize.lg,
                 fontWeight: theme.fontWeight.medium,
                 margin: 0,
-                marginBottom: theme.spacing.md,
+                marginBottom: theme.spacing.sm,
                 lineHeight: theme.lineHeight.normal,
               }}>
                 {ticket.subject}
@@ -1169,7 +1169,7 @@ const TechTicketDetail = () => {
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: theme.spacing.lg,
+                gap: theme.spacing.md,
                 flexWrap: 'wrap',
               }}>
                 {ticket.van_info && (
@@ -1203,8 +1203,8 @@ const TechTicketDetail = () => {
               alignItems: 'center',
               justifyContent: 'space-between',
               flexWrap: 'wrap',
-              gap: theme.spacing.md,
-              paddingTop: theme.spacing.lg,
+              gap: theme.spacing.sm,
+              paddingTop: theme.spacing.md,
               borderTop: `1px solid ${theme.colors.border.light}`,
             }}>
               {/* Priority dropdown */}
@@ -1385,19 +1385,19 @@ const TechTicketDetail = () => {
 
         {/* Ticket Information - Full Width 3-Column Card */}
         <Card>
-          <div style={{ padding: theme.spacing.xl }}>
+          <div style={{ padding: theme.spacing.md }}>
             <SectionHeader icon={User} title="Ticket Details" />
 
             {/* 3-Column Grid */}
             <div style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-              gap: theme.spacing.xl,
+              gap: theme.spacing.md,
             }}>
 
               {/* Column 1: Customer */}
               <div style={{
-                padding: theme.spacing.lg,
+                padding: theme.spacing.md,
                 backgroundColor: theme.colors.background.tertiary,
                 borderRadius: theme.radius.lg,
               }}>
@@ -1407,7 +1407,7 @@ const TechTicketDetail = () => {
                   fontWeight: theme.fontWeight.semibold,
                   textTransform: 'uppercase',
                   letterSpacing: '0.05em',
-                  marginBottom: theme.spacing.md,
+                  marginBottom: theme.spacing.sm,
                 }}>
                   Customer
                 </h4>
@@ -1424,7 +1424,7 @@ const TechTicketDetail = () => {
 
               {/* Column 2: Van */}
               <div style={{
-                padding: theme.spacing.lg,
+                padding: theme.spacing.md,
                 backgroundColor: theme.colors.background.tertiary,
                 borderRadius: theme.radius.lg,
               }}>
@@ -1434,7 +1434,7 @@ const TechTicketDetail = () => {
                   fontWeight: theme.fontWeight.semibold,
                   textTransform: 'uppercase',
                   letterSpacing: '0.05em',
-                  marginBottom: theme.spacing.md,
+                  marginBottom: theme.spacing.sm,
                 }}>
                   Vehicle
                 </h4>
@@ -1453,7 +1453,7 @@ const TechTicketDetail = () => {
 
               {/* Column 3: Assignment */}
               <div style={{
-                padding: theme.spacing.lg,
+                padding: theme.spacing.md,
                 backgroundColor: theme.colors.background.tertiary,
                 borderRadius: theme.radius.lg,
               }}>
@@ -1463,7 +1463,7 @@ const TechTicketDetail = () => {
                   fontWeight: theme.fontWeight.semibold,
                   textTransform: 'uppercase',
                   letterSpacing: '0.05em',
-                  marginBottom: theme.spacing.md,
+                  marginBottom: theme.spacing.sm,
                 }}>
                   Assigned To
                 </h4>
@@ -1508,7 +1508,7 @@ const TechTicketDetail = () => {
         {/* Description Card (conditional) */}
         {ticket.description && ticket.description !== ticket.subject && (
           <Card>
-            <div style={{ padding: theme.spacing.xl }}>
+            <div style={{ padding: theme.spacing.md }}>
               <SectionHeader icon={FileText} title="Description" />
               <div style={{
                 color: theme.colors.text.primary,
@@ -1516,7 +1516,7 @@ const TechTicketDetail = () => {
                 whiteSpace: 'pre-wrap',
                 lineHeight: theme.lineHeight.relaxed,
                 backgroundColor: theme.colors.background.tertiary,
-                padding: theme.spacing.lg,
+                padding: theme.spacing.md,
                 borderRadius: theme.radius.lg,
                 borderLeft: `3px solid ${theme.colors.accent.primary}`,
               }}>
@@ -1529,11 +1529,11 @@ const TechTicketDetail = () => {
         {/* Related Info Card (conditional) */}
         {(ticket.category_name || ticket.session_id || ticket.related_ticket_id) && (
           <Card>
-            <div style={{ padding: theme.spacing.xl }}>
+            <div style={{ padding: theme.spacing.md }}>
               <SectionHeader icon={Link2} title="Related" />
               <div style={{
                 display: 'flex',
-                gap: theme.spacing.lg,
+                gap: theme.spacing.md,
                 flexWrap: 'wrap',
               }}>
                 {ticket.category_name && (
@@ -1596,28 +1596,28 @@ const TechTicketDetail = () => {
             backgroundColor: theme.colors.accent.successLight,
             border: `1px solid ${theme.colors.accent.success}30`,
           }}>
-            <div style={{ padding: theme.spacing.xl }}>
+            <div style={{ padding: theme.spacing.md }}>
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: theme.spacing.sm,
-                marginBottom: theme.spacing.lg,
+                marginBottom: theme.spacing.md,
               }}>
                 <div style={{
-                  width: '36px',
-                  height: '36px',
+                  width: '32px',
+                  height: '32px',
                   borderRadius: theme.radius.full,
                   backgroundColor: theme.colors.accent.success,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}>
-                  <CheckCircle size={20} style={{ color: theme.colors.text.inverse }} />
+                  <CheckCircle size={18} style={{ color: theme.colors.text.inverse }} />
                 </div>
                 <div>
                   <h3 style={{
                     color: theme.colors.accent.success,
-                    fontSize: theme.fontSize.base,
+                    fontSize: theme.fontSize.sm,
                     fontWeight: theme.fontWeight.semibold,
                     margin: 0,
                   }}>
@@ -1640,7 +1640,7 @@ const TechTicketDetail = () => {
                 fontSize: theme.fontSize.sm,
                 whiteSpace: 'pre-wrap',
                 lineHeight: theme.lineHeight.relaxed,
-                padding: theme.spacing.lg,
+                padding: theme.spacing.md,
                 backgroundColor: theme.colors.background.secondary,
                 borderRadius: theme.radius.lg,
                 borderLeft: `3px solid ${theme.colors.accent.success}`,
@@ -1657,7 +1657,7 @@ const TechTicketDetail = () => {
           flexDirection: 'column',
           flexGrow: 1,
         }}>
-          <div style={{ padding: theme.spacing.xl }}>
+          <div style={{ padding: theme.spacing.md }}>
             <SectionHeader
               icon={MessageCircle}
               title="Activity & Comments"
@@ -1668,7 +1668,7 @@ const TechTicketDetail = () => {
             <div style={{
               maxHeight: '600px',
               overflowY: 'auto',
-              marginBottom: theme.spacing.xl,
+              marginBottom: theme.spacing.lg,
               paddingRight: theme.spacing.sm,
             }}>
               {ticket.comments && ticket.comments.length > 0 ? (
@@ -1686,7 +1686,7 @@ const TechTicketDetail = () => {
                       <div
                         key={comment.id}
                         style={{
-                          padding: theme.spacing.lg,
+                          padding: theme.spacing.md,
                           borderRadius: theme.radius.lg,
                           backgroundColor: isCustomer
                             ? theme.colors.accent.primaryLight
@@ -1706,12 +1706,12 @@ const TechTicketDetail = () => {
                         <div style={{
                           display: 'flex',
                           alignItems: 'flex-start',
-                          gap: theme.spacing.md,
+                          gap: theme.spacing.sm,
                         }}>
                           {/* Avatar */}
                           <div style={{
-                            width: '40px',
-                            height: '40px',
+                            width: '32px',
+                            height: '32px',
                             borderRadius: theme.radius.full,
                             display: 'flex',
                             alignItems: 'center',
@@ -1734,8 +1734,8 @@ const TechTicketDetail = () => {
                             <div style={{
                               display: 'flex',
                               alignItems: 'center',
-                              gap: theme.spacing.sm,
-                              marginBottom: theme.spacing.sm,
+                              gap: theme.spacing.xs,
+                              marginBottom: theme.spacing.xs,
                               flexWrap: 'wrap',
                             }}>
                               <span style={{
@@ -1784,7 +1784,7 @@ const TechTicketDetail = () => {
 
                               return (
                                 <div style={{
-                                  marginTop: theme.spacing.md,
+                                  marginTop: theme.spacing.sm,
                                   display: 'flex',
                                   flexWrap: 'wrap',
                                   gap: theme.spacing.sm,
@@ -1953,21 +1953,21 @@ const TechTicketDetail = () => {
               ) : (
                 <div style={{
                   textAlign: 'center',
-                  padding: theme.spacing['3xl'],
+                  padding: theme.spacing.xl,
                   color: theme.colors.text.tertiary,
                 }}>
                   <div style={{
-                    width: '64px',
-                    height: '64px',
+                    width: '48px',
+                    height: '48px',
                     borderRadius: theme.radius.full,
                     backgroundColor: theme.colors.background.tertiary,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     margin: '0 auto',
-                    marginBottom: theme.spacing.lg,
+                    marginBottom: theme.spacing.md,
                   }}>
-                    <MessageCircle size={28} style={{ opacity: 0.4 }} />
+                    <MessageCircle size={22} style={{ opacity: 0.4 }} />
                   </div>
                   <p style={{
                     fontSize: theme.fontSize.base,
@@ -1992,7 +1992,7 @@ const TechTicketDetail = () => {
             <div
               ref={commentFormRef}
               style={{
-                paddingTop: theme.spacing.xl,
+                paddingTop: theme.spacing.lg,
                 borderTop: `1px solid ${theme.colors.border.light}`,
               }}
             >
@@ -2003,7 +2003,7 @@ const TechTicketDetail = () => {
                   fontWeight: theme.fontWeight.semibold,
                   color: theme.colors.text.primary,
                   fontSize: theme.fontSize.sm,
-                  marginBottom: theme.spacing.md,
+                  marginBottom: theme.spacing.sm,
                 }}
               >
                 Add Comment
@@ -2011,7 +2011,7 @@ const TechTicketDetail = () => {
               <form onSubmit={handleAddComment} style={{
                 display: 'flex',
                 flexDirection: 'column',
-                gap: theme.spacing.lg,
+                gap: theme.spacing.md,
               }}>
                 <div>
                   <textarea
@@ -2020,12 +2020,12 @@ const TechTicketDetail = () => {
                     onChange={(e) => setCommentText(e.target.value)}
                     onFocus={() => setIsEditing(true)}
                     placeholder="Write a comment..."
-                    rows={4}
+                    rows={3}
                     maxLength={2000}
                     required
                     style={{
                       width: '100%',
-                      padding: theme.spacing.lg,
+                      padding: theme.spacing.md,
                       backgroundColor: theme.colors.background.secondary,
                       color: theme.colors.text.primary,
                       border: `1px solid ${theme.colors.border.medium}`,
@@ -2080,8 +2080,8 @@ const TechTicketDetail = () => {
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: theme.spacing.md,
-                    padding: theme.spacing.lg,
+                    gap: theme.spacing.sm,
+                    padding: theme.spacing.md,
                     backgroundColor: isResolution ? theme.colors.accent.successLight : theme.colors.background.secondary,
                     border: `2px solid ${isResolution ? theme.colors.accent.success : theme.colors.border.light}`,
                     borderRadius: theme.radius.lg,
@@ -2136,7 +2136,7 @@ const TechTicketDetail = () => {
                   style={{
                     ...getButtonStyles('primary', addingComment || commentText.trim().length < 10),
                     alignSelf: 'flex-start',
-                    padding: `${theme.spacing.md} ${theme.spacing.xl}`,
+                    padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
                   }}
                   onMouseEnter={(e) => !(addingComment || commentText.trim().length < 10) && (e.currentTarget.style.backgroundColor = theme.colors.accent.primaryHover)}
                   onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = theme.colors.accent.primary)}
@@ -2152,7 +2152,7 @@ const TechTicketDetail = () => {
         {/* Status History - Collapsible at Bottom */}
         {ticket.status_history && ticket.status_history.length > 0 && (
           <Card>
-            <div style={{ padding: theme.spacing.xl }}>
+            <div style={{ padding: theme.spacing.md }}>
               <button
                 onClick={() => setStatusHistoryOpen(!statusHistoryOpen)}
                 aria-expanded={statusHistoryOpen}
@@ -2201,10 +2201,10 @@ const TechTicketDetail = () => {
 
               {statusHistoryOpen && (
                 <div style={{
-                  marginTop: theme.spacing.xl,
+                  marginTop: theme.spacing.lg,
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: theme.spacing.sm,
+                  gap: theme.spacing.xs,
                 }}>
                   {ticket.status_history.map((history, index) => (
                     <div
@@ -2212,16 +2212,16 @@ const TechTicketDetail = () => {
                       style={{
                         display: 'flex',
                         alignItems: 'flex-start',
-                        gap: theme.spacing.md,
-                        padding: theme.spacing.lg,
+                        gap: theme.spacing.sm,
+                        padding: theme.spacing.md,
                         backgroundColor: theme.colors.background.tertiary,
                         borderRadius: theme.radius.lg,
                         borderLeft: `3px solid ${theme.colors.border.medium}`,
                       }}
                     >
                       <div style={{
-                        width: '32px',
-                        height: '32px',
+                        width: '28px',
+                        height: '28px',
                         borderRadius: theme.radius.full,
                         backgroundColor: theme.colors.background.secondary,
                         display: 'flex',
@@ -2229,15 +2229,15 @@ const TechTicketDetail = () => {
                         justifyContent: 'center',
                         flexShrink: 0,
                       }}>
-                        <Clock size={14} style={{ color: theme.colors.text.tertiary }} />
+                        <Clock size={12} style={{ color: theme.colors.text.tertiary }} />
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{
                           display: 'flex',
                           alignItems: 'center',
-                          gap: theme.spacing.sm,
+                          gap: theme.spacing.xs,
                           flexWrap: 'wrap',
-                          marginBottom: theme.spacing.sm,
+                          marginBottom: theme.spacing.xs,
                         }}>
                           <Badge variant="default" size="sm">
                             {history.from_status}
