@@ -33,7 +33,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 const CreateTicket = () => {
   const navigate = useNavigate();
   const { showToast } = useToast();
-  const { user, logout, hasRole } = useAuth();
+  const { user, logout, hasRole, isSiteAdmin } = useAuth();
 
   // Form state
   const [formData, setFormData] = useState({
@@ -659,7 +659,7 @@ const CreateTicket = () => {
 
   return (
     <div className="flex min-h-screen" style={{ backgroundColor: '#f9fafb' }}>
-      <Sidebar user={user} onLogout={logout} hasRole={hasRole} />
+      <Sidebar user={user} onLogout={logout} hasRole={hasRole} isSiteAdmin={isSiteAdmin} />
 
       <div style={{ marginLeft: '260px', flex: 1, padding: '2rem' }}>
         {/* Header */}

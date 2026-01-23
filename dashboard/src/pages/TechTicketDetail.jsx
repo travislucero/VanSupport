@@ -220,7 +220,7 @@ const TechTicketDetail = () => {
   const { uuid } = useParams();
   const navigate = useNavigate();
   const { showToast } = useToast();
-  const { user, logout, hasRole } = useAuth();
+  const { user, logout, hasRole, isSiteAdmin } = useAuth();
   const commentsEndRef = useRef(null);
   const commentFormRef = useRef(null);
   const similarModalTriggerRef = useRef(null);
@@ -942,7 +942,7 @@ const TechTicketDetail = () => {
   if (loading) {
     return (
       <div style={pageStyles.wrapper}>
-        <Sidebar user={user} onLogout={logout} hasRole={hasRole} />
+        <Sidebar user={user} onLogout={logout} hasRole={hasRole} isSiteAdmin={isSiteAdmin} />
         <div style={pageStyles.main}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xl }}>
             {/* Skeleton header */}
@@ -977,7 +977,7 @@ const TechTicketDetail = () => {
   if (!ticket) {
     return (
       <div style={pageStyles.wrapper}>
-        <Sidebar user={user} onLogout={logout} hasRole={hasRole} />
+        <Sidebar user={user} onLogout={logout} hasRole={hasRole} isSiteAdmin={isSiteAdmin} />
         <div style={{
           ...pageStyles.main,
           display: 'flex',
@@ -1066,7 +1066,7 @@ const TechTicketDetail = () => {
 
   return (
     <div style={styles.page}>
-      <Sidebar user={user} onLogout={logout} hasRole={hasRole} />
+      <Sidebar user={user} onLogout={logout} hasRole={hasRole} isSiteAdmin={isSiteAdmin} />
 
       <div style={styles.main}>
         {/* New Comments Banner */}

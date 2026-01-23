@@ -27,7 +27,7 @@ import {
 } from '../utils/validators';
 
 function Owners() {
-  const { user, logout, hasRole } = useAuth();
+  const { user, logout, hasRole, isSiteAdmin } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [owners, setOwners] = useState([]);
@@ -67,14 +67,14 @@ function Owners() {
       // Reset to page 1 when search query changes
       if (searchQuery !== debouncedSearchQuery) {
         setCurrentPage(1);
-        const params = new URLSearchParams(searchParams);
+        const params = new URLSearchParams(window.location.search);
         params.set('page', '1');
         setSearchParams(params);
       }
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [searchQuery]);
+  }, [searchQuery, debouncedSearchQuery, setSearchParams]);
 
   const fetchOwners = useCallback(async () => {
     setLoading(true);
@@ -102,9 +102,7 @@ function Owners() {
       setOwners(data.owners || []);
       setPagination(data.pagination);
 
-      console.log('👥 Owners fetched:', data.owners?.length || 0, 'Pagination:', data.pagination);
     } catch (err) {
-      console.error('Error fetching owners:', err);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -157,9 +155,6 @@ function Owners() {
   }, []);
 
   const handleCreateOwner = useCallback(async () => {
-    console.log('🔍 handleCreateOwner called');
-    console.log('📝 ownerForm:', ownerForm);
-
     if (!validateForm()) {
       setError('Please fix validation errors');
       return;
@@ -173,7 +168,6 @@ function Owners() {
         phone: phoneValidation.formatted || ownerForm.phone,
       };
 
-      console.log('🚀 Submitting to API...');
       const response = await fetch('/api/owners', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -181,9 +175,7 @@ function Owners() {
         body: JSON.stringify(formattedData),
       });
 
-      console.log('📡 Response status:', response.status);
       const data = await response.json();
-      console.log('📦 Response data:', data);
 
       if (!response.ok) {
         throw new Error(data.error || 'Failed to create owner');
@@ -194,18 +186,12 @@ function Owners() {
       resetForm();
       showSuccess('Owner created successfully');
     } catch (err) {
-      console.error('💥 Error creating owner:', err);
       setError(err.message);
     }
-  }, [ownerForm, validateForm, resetForm, showSuccess]);
+  }, [ownerForm, validateForm, resetForm, showSuccess, fetchOwners]);
 
   const handleUpdateOwner = useCallback(async () => {
-    console.log('🔍 handleUpdateOwner called');
-    console.log('📝 editingOwner:', editingOwner);
-    console.log('📝 ownerForm:', ownerForm);
-
     if (!validateForm()) {
-      console.log('❌ Validation failed');
       setError('Please fix validation errors');
       return;
     }
@@ -218,7 +204,6 @@ function Owners() {
         phone: phoneValidation.formatted || ownerForm.phone,
       };
 
-      console.log('🚀 Submitting to API...');
       const response = await fetch(`/api/owners/${editingOwner.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -226,9 +211,7 @@ function Owners() {
         body: JSON.stringify(formattedData),
       });
 
-      console.log('📡 Response status:', response.status);
       const data = await response.json();
-      console.log('📦 Response data:', data);
 
       if (!response.ok) {
         throw new Error(data.error || 'Failed to update owner');
@@ -240,18 +223,12 @@ function Owners() {
       resetForm();
       showSuccess('Owner updated successfully');
     } catch (err) {
-      console.error('💥 Error updating owner:', err);
       setError(err.message);
     }
-  }, [editingOwner, ownerForm, validateForm, resetForm, showSuccess]);
+  }, [editingOwner, ownerForm, validateForm, resetForm, showSuccess, fetchOwners]);
 
   const handleDeleteOwner = useCallback(async () => {
     try {
-      console.log('🔍 handleDeleteOwner called');
-      console.log('📝 deletingOwner:', deletingOwner);
-
-      // First, check if owner has historical data
-      console.log('🔍 Checking for dependencies...');
       const checkResponse = await fetch(`/api/owners/${deletingOwner.id}/check-dependencies`, {
         credentials: 'include'
       });
@@ -261,45 +238,34 @@ function Owners() {
       }
 
       const checkData = await checkResponse.json();
-      console.log('📦 Dependency check result:', checkData);
 
       if (checkData.hasDependencies) {
         const errorMsg = `Cannot delete ${deletingOwner.name}. ${checkData.message}. You cannot delete owners with historical data to maintain system integrity.`;
-        console.log('❌ Cannot delete - has dependencies:', errorMsg);
-
         setError(errorMsg);
         setDeleteModalOpen(false);
         setDeletingOwner(null);
         return;
       }
 
-      // Proceed with deletion if no dependencies
-      console.log('🚀 No dependencies found, proceeding with deletion...');
       const response = await fetch(`/api/owners/${deletingOwner.id}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
       });
 
-      console.log('📡 Response status:', response.status);
-
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.error || 'Failed to delete owner');
       }
-
-      const data = await response.json();
-      console.log('📦 Response data:', data);
 
       await fetchOwners();
       setDeleteModalOpen(false);
       setDeletingOwner(null);
       showSuccess(`Owner ${deletingOwner.name} deleted successfully!`);
     } catch (err) {
-      console.error('💥 Error deleting owner:', err);
       setError(err.message);
     }
-  }, [deletingOwner, showSuccess]);
+  }, [deletingOwner, showSuccess, fetchOwners]);
 
   const openEditModal = useCallback((owner) => {
     setEditingOwner(owner);
@@ -471,7 +437,7 @@ function Owners() {
   if (loading) {
     return (
       <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: theme.colors.background.primary }}>
-        <Sidebar user={user} onLogout={logout} hasRole={hasRole} />
+        <Sidebar user={user} onLogout={logout} hasRole={hasRole} isSiteAdmin={isSiteAdmin} />
         <div style={{ marginLeft: '260px', flex: 1, padding: theme.spacing['2xl'] }}>
           <div style={{ textAlign: 'center', padding: theme.spacing['2xl'] }}>
             <p style={{ color: theme.colors.text.secondary }}>Loading owners...</p>
@@ -483,7 +449,7 @@ function Owners() {
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: theme.colors.background.primary }}>
-      <Sidebar user={user} onLogout={logout} hasRole={hasRole} />
+      <Sidebar user={user} onLogout={logout} hasRole={hasRole} isSiteAdmin={isSiteAdmin} />
 
       <div style={{ marginLeft: '260px', flex: 1, padding: theme.spacing['2xl'] }}>
         {/* Success Message */}
@@ -550,7 +516,7 @@ function Owners() {
             </p>
           </div>
 
-          {hasRole('admin') && (
+          {(isSiteAdmin() || hasRole('admin') || hasRole('manager')) && (
             <button
               onClick={() => {
                 resetForm();
@@ -745,7 +711,7 @@ function Owners() {
                         </span>
                       </td>
                       <td style={{ padding: theme.spacing.md, textAlign: 'right' }}>
-                        {hasRole('admin') && (
+                        {(isSiteAdmin() || hasRole('admin') || hasRole('manager')) && (
                           <div style={{ display: 'flex', gap: theme.spacing.xs, justifyContent: 'flex-end' }}>
                             <button
                               onClick={() => openEditModal(owner)}

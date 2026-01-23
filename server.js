@@ -2245,6 +2245,36 @@ app.post("/api/tickets/create", async (req, res) => {
       ticketResponse.ticket_number
     );
 
+    // --- Broadcast notification to opted-in users ---
+    try {
+      const { data: optedInUsers } = await supabaseAdmin
+        .from("users")
+        .select("id")
+        .eq("notify_new_tickets", true)
+        .eq("is_active", true);
+
+      if (optedInUsers && optedInUsers.length > 0) {
+        const notifications = optedInUsers.map((u) => ({
+          ticket_id: ticketId,
+          notification_type: "new_ticket_broadcast",
+          recipient_type: "user",
+          recipient_user_id: u.id,
+          message_body: `New ticket #${ticketDetails.ticket_number}: ${ticketDetails.subject || ticketDetails.issue_summary}`,
+          metadata: {
+            ticket_number: ticketDetails.ticket_number,
+            subject: ticketDetails.subject || ticketDetails.issue_summary,
+            priority: ticketDetails.priority,
+            urgency: ticketDetails.urgency,
+            owner_name: ticketDetails.owner_name,
+          },
+        }));
+
+        await supabaseAdmin.from("ticket_notifications").insert(notifications);
+      }
+    } catch (broadcastErr) {
+      console.error("Broadcast notification error:", broadcastErr);
+    }
+
     // Return full ticket object with ticket_id
     res.status(201).json(ticketResponse);
   } catch (err) {
@@ -4994,6 +5024,7 @@ app.get(
         full_name,
         phone,
         is_active,
+        notify_new_tickets,
         created_at,
         last_login,
         user_roles (
@@ -5018,6 +5049,7 @@ app.get(
         full_name: user.full_name,
         phone: user.phone,
         is_active: user.is_active,
+        notify_new_tickets: user.notify_new_tickets || false,
         created_at: user.created_at,
         last_login: user.last_login,
         role: user.user_roles?.[0]?.roles || null,
@@ -5166,7 +5198,7 @@ app.put(
   async (req, res) => {
     try {
       const { id } = req.params;
-      const { full_name, phone, role_name, is_active } = req.body;
+      const { full_name, phone, role_name, is_active, notify_new_tickets } = req.body;
       console.log("✏️ Updating user:", id);
 
       // Security: Prevent users from modifying their own role
@@ -5242,6 +5274,7 @@ app.put(
       if (full_name !== undefined) updateData.full_name = full_name;
       if (phone !== undefined) updateData.phone = phone;
       if (is_active !== undefined) updateData.is_active = is_active;
+      if (notify_new_tickets !== undefined) updateData.notify_new_tickets = notify_new_tickets;
 
       if (Object.keys(updateData).length > 0) {
         const { error: updateError } = await supabase
@@ -5257,6 +5290,34 @@ app.put(
     } catch (error) {
       console.error("Error updating user:", error);
       res.status(500).json({ error: "Failed to update user" });
+    }
+  }
+);
+
+// Toggle notification preference for a user
+app.patch(
+  "/api/users/:id/notify-new-tickets",
+  authenticateToken,
+  requirePermission("manage_users"),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { notify_new_tickets } = req.body;
+
+      if (typeof notify_new_tickets !== 'boolean') {
+        return res.status(400).json({ error: "notify_new_tickets must be a boolean" });
+      }
+
+      const { error } = await supabaseAdmin
+        .from("users")
+        .update({ notify_new_tickets })
+        .eq("id", id);
+
+      if (error) throw error;
+      res.json({ success: true, notify_new_tickets });
+    } catch (err) {
+      console.error("Error updating notification preference:", err);
+      res.status(500).json({ error: "Failed to update notification preference" });
     }
   }
 );
@@ -5370,6 +5431,73 @@ app.put(
       res.status(500).json({
         error: error.message || "Failed to reset password",
       });
+    }
+  }
+);
+
+// ===== Notification Endpoints =====
+
+// Get unread notifications for current user
+app.get(
+  "/api/notifications/unread",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from("ticket_notifications")
+        .select("id, ticket_id, notification_type, message_body, metadata, created_at")
+        .eq("recipient_user_id", req.user.id)
+        .is("read_at", null)
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+      if (error) throw error;
+      res.json(data || []);
+    } catch (err) {
+      console.error("Error fetching notifications:", err);
+      res.status(500).json({ error: "Failed to fetch notifications" });
+    }
+  }
+);
+
+// Mark single notification as read
+app.post(
+  "/api/notifications/:id/read",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { error } = await supabaseAdmin
+        .from("ticket_notifications")
+        .update({ read_at: new Date().toISOString() })
+        .eq("id", req.params.id)
+        .eq("recipient_user_id", req.user.id);
+
+      if (error) throw error;
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Error marking notification as read:", err);
+      res.status(500).json({ error: "Failed to mark notification as read" });
+    }
+  }
+);
+
+// Mark all notifications as read
+app.post(
+  "/api/notifications/read-all",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { error } = await supabaseAdmin
+        .from("ticket_notifications")
+        .update({ read_at: new Date().toISOString() })
+        .eq("recipient_user_id", req.user.id)
+        .is("read_at", null);
+
+      if (error) throw error;
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Error marking all notifications as read:", err);
+      res.status(500).json({ error: "Failed to mark notifications as read" });
     }
   }
 );

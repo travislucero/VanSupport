@@ -16,6 +16,7 @@ import {
   AlertTriangle,
   User,
   Key,
+  Bell,
 } from 'lucide-react';
 import {
   validateEmail,
@@ -179,6 +180,28 @@ function Users() {
     setSuccess(message);
     setTimeout(() => setSuccess(''), 3000);
   }, []);
+
+  const handleToggleNotify = useCallback(async (targetUser) => {
+    try {
+      const newValue = !targetUser.notify_new_tickets;
+      const response = await fetch(`/api/users/${targetUser.id}/notify-new-tickets`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ notify_new_tickets: newValue }),
+      });
+
+      if (!response.ok) throw new Error('Failed to update notification preference');
+
+      setUsers(prev => prev.map(u =>
+        u.id === targetUser.id ? { ...u, notify_new_tickets: newValue } : u
+      ));
+      showSuccess(`Ticket notifications ${newValue ? 'enabled' : 'disabled'} for ${targetUser.email}`);
+    } catch (err) {
+      setError(err.message);
+      setTimeout(() => setError(''), 5000);
+    }
+  }, [showSuccess]);
 
   const handleCreateUser = useCallback(async () => {
     console.log('🔍 handleCreateUser called');
@@ -920,6 +943,17 @@ function Users() {
                     }}>
                       Status
                     </th>
+                    <th style={{
+                      padding: theme.spacing.md,
+                      textAlign: 'center',
+                      fontSize: theme.fontSize.xs,
+                      fontWeight: theme.fontWeight.semibold,
+                      color: theme.colors.text.secondary,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em',
+                    }}>
+                      Notify
+                    </th>
                     {canManageUsers && (
                       <th style={{
                         padding: theme.spacing.md,
@@ -1027,6 +1061,41 @@ function Users() {
                         }}>
                           {u.is_active ? 'Active' : 'Inactive'}
                         </span>
+                      </td>
+                      <td style={{
+                        padding: theme.spacing.md,
+                        textAlign: 'center',
+                      }}>
+                        <button
+                          onClick={() => handleToggleNotify(u)}
+                          aria-label={u.notify_new_tickets ? 'Disable ticket notifications' : 'Enable ticket notifications'}
+                          title={u.notify_new_tickets ? 'Receiving new ticket notifications' : 'Not receiving notifications'}
+                          style={{
+                            width: '36px',
+                            height: '20px',
+                            borderRadius: '10px',
+                            border: 'none',
+                            cursor: 'pointer',
+                            backgroundColor: u.notify_new_tickets
+                              ? theme.colors.accent.primary
+                              : theme.colors.border.medium,
+                            position: 'relative',
+                            transition: 'background-color 0.2s',
+                            padding: 0,
+                          }}
+                        >
+                          <span style={{
+                            position: 'absolute',
+                            top: '2px',
+                            left: u.notify_new_tickets ? '18px' : '2px',
+                            width: '16px',
+                            height: '16px',
+                            borderRadius: '50%',
+                            backgroundColor: 'white',
+                            transition: 'left 0.2s',
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
+                          }} />
+                        </button>
                       </td>
                       {canManageUsers && (
                         <td style={{

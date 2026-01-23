@@ -19,7 +19,7 @@ import {
 import patternValidator from '../../../utils/patternValidator.js';
 
 function TriggerPatterns() {
-  const { user, logout, hasRole } = useAuth();
+  const { user, logout, hasRole, isSiteAdmin } = useAuth();
   const [patterns, setPatterns] = useState([]);
   const [sequences, setSequences] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -56,8 +56,47 @@ function TriggerPatterns() {
   const [patternValidation, setPatternValidation] = useState({ valid: true, error: null, warning: null });
 
   useEffect(() => {
-    fetchPatterns();
-    fetchSequences();
+    const loadPatterns = async () => {
+      setLoading(true);
+      setError('');
+      try {
+        const response = await fetch('/api/patterns', {
+          credentials: 'include',
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch patterns');
+        }
+
+        const data = await response.json();
+        setPatterns(data);
+      } catch (err) {
+        console.error('Error fetching patterns:', err);
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    const loadSequences = async () => {
+      try {
+        const response = await fetch('/api/sequences', {
+          credentials: 'include',
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch sequences');
+        }
+
+        const data = await response.json();
+        setSequences(data);
+      } catch (err) {
+        console.error('Error fetching sequences:', err);
+      }
+    };
+
+    loadPatterns();
+    loadSequences();
   }, []);
 
   const fetchPatterns = async () => {
@@ -355,7 +394,7 @@ function TriggerPatterns() {
     }
   };
 
-  const filteredAndSortedPatterns = () => {
+  const filteredAndSortedPatterns = useMemo(() => {
     let filtered = [...patterns];
 
     // Filter by search query
@@ -395,7 +434,7 @@ function TriggerPatterns() {
     });
 
     return filtered;
-  };
+  }, [patterns, searchQuery, showActiveOnly, sortBy, sortOrder, sequences]);
 
   const PatternFormFields = useMemo(() => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.lg }}>
@@ -762,7 +801,7 @@ function TriggerPatterns() {
   if (loading) {
     return (
       <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: theme.colors.background.primary }}>
-        <Sidebar user={user} onLogout={logout} hasRole={hasRole} />
+        <Sidebar user={user} onLogout={logout} hasRole={hasRole} isSiteAdmin={isSiteAdmin} />
         <div style={{ marginLeft: '260px', flex: 1, padding: theme.spacing['2xl'] }}>
           <div style={{ textAlign: 'center', padding: theme.spacing['2xl'] }}>
             <p style={{ color: theme.colors.text.secondary }}>Loading patterns...</p>
@@ -774,7 +813,7 @@ function TriggerPatterns() {
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: theme.colors.background.primary }}>
-      <Sidebar user={user} onLogout={logout} hasRole={hasRole} />
+      <Sidebar user={user} onLogout={logout} hasRole={hasRole} isSiteAdmin={isSiteAdmin} />
 
       <div style={{ marginLeft: '260px', flex: 1, padding: theme.spacing['2xl'] }}>
         {/* Success Message */}
@@ -907,7 +946,7 @@ function TriggerPatterns() {
 
         {/* Patterns Table */}
         <Card>
-          {filteredAndSortedPatterns().length === 0 ? (
+          {filteredAndSortedPatterns.length === 0 ? (
             <div style={{
               textAlign: 'center',
               padding: theme.spacing['2xl'],
@@ -1000,7 +1039,7 @@ function TriggerPatterns() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredAndSortedPatterns().map((pattern) => (
+                  {filteredAndSortedPatterns.map((pattern) => (
                     <tr key={pattern.id} style={{
                       borderBottom: `1px solid ${theme.colors.border.light}`,
                       transition: 'background-color 0.2s',

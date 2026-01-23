@@ -8,7 +8,7 @@ import { theme } from '../styles/theme';
 import { Plus, FileText, AlertCircle, X, Loader } from 'lucide-react';
 
 function CreateSequence() {
-  const { user, logout, hasRole } = useAuth();
+  const { user, logout, hasRole, isSiteAdmin } = useAuth();
   const navigate = useNavigate();
 
   // Form state
@@ -167,7 +167,7 @@ function CreateSequence() {
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: theme.colors.background.primary }}>
-      <Sidebar user={user} onLogout={logout} hasRole={hasRole} />
+      <Sidebar user={user} onLogout={logout} hasRole={hasRole} isSiteAdmin={isSiteAdmin} />
 
       <div style={{ marginLeft: '260px', flex: 1, padding: theme.spacing['2xl'] }}>
         {/* Header */}

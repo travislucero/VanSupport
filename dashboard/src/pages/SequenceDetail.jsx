@@ -789,7 +789,7 @@ function StepSuppliesInline({ stepNum, tools, parts, onAddTool, onAddPart, onEdi
 
 function SequenceDetail() {
   const { key } = useParams();
-  const { user, logout, hasRole } = useAuth();
+  const { user, logout, hasRole, isSiteAdmin } = useAuth();
   const navigate = useNavigate();
 
   // Data state
@@ -864,10 +864,88 @@ function SequenceDetail() {
 
   // Fetch sequence details
   useEffect(() => {
-    fetchSequenceDetail();
-    fetchAllSequences();
-    fetchTriggerPatterns();
-    fetchSupplies();
+    const loadSequenceDetail = async () => {
+      setLoading(true);
+      setError('');
+      try {
+        const response = await fetch(`/api/sequences/${key}`, {
+          credentials: 'include',
+        });
+
+        if (!response.ok) {
+          if (response.status === 404) {
+            throw new Error('Sequence not found');
+          }
+          throw new Error('Failed to fetch sequence details');
+        }
+
+        const data = await response.json();
+        setSequence(data);
+        setMetadataForm({
+          displayName: data.display_name || '',
+          description: data.description || '',
+          category: data.category || '',
+        });
+      } catch (err) {
+        console.error('Error fetching sequence:', err);
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    const loadAllSequences = async () => {
+      try {
+        const response = await fetch('/api/sequences', {
+          credentials: 'include',
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setAllSequences(data.filter(seq => seq.sequence_key !== key));
+        }
+      } catch (err) {
+        console.error('Error fetching sequences:', err);
+      }
+    };
+
+    const loadTriggerPatterns = async () => {
+      try {
+        const response = await fetch(`/api/patterns?sequence_key=${key}`, {
+          credentials: 'include',
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setTriggerPatterns(data);
+        }
+      } catch (err) {
+        console.error('Error fetching trigger patterns:', err);
+      }
+    };
+
+    const loadSupplies = async () => {
+      setSuppliesLoading(true);
+      try {
+        const response = await fetch(`/api/sequences/${key}/supplies`, {
+          credentials: 'include',
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setSupplies({
+            tools: data.tools || [],
+            parts: data.parts || [],
+          });
+        }
+      } catch (err) {
+        console.error('Error fetching supplies:', err);
+      } finally {
+        setSuppliesLoading(false);
+      }
+    };
+
+    loadSequenceDetail();
+    loadAllSequences();
+    loadTriggerPatterns();
+    loadSupplies();
   }, [key]);
 
   const fetchSequenceDetail = async (skipLoadingState = false) => {
@@ -1543,7 +1621,7 @@ function SequenceDetail() {
   if (loading) {
     return (
       <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: theme.colors.background.primary }}>
-        <Sidebar user={user} onLogout={logout} hasRole={hasRole} />
+        <Sidebar user={user} onLogout={logout} hasRole={hasRole} isSiteAdmin={isSiteAdmin} />
         <div style={{ marginLeft: '260px', flex: 1, padding: theme.spacing['2xl'], display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.md }}>
             <Loader size={24} color={theme.colors.accent.primary} style={{ animation: 'spin 1s linear infinite' }} />
@@ -1557,7 +1635,7 @@ function SequenceDetail() {
   if (error && !sequence) {
     return (
       <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: theme.colors.background.primary }}>
-        <Sidebar user={user} onLogout={logout} hasRole={hasRole} />
+        <Sidebar user={user} onLogout={logout} hasRole={hasRole} isSiteAdmin={isSiteAdmin} />
         <div style={{ marginLeft: '260px', flex: 1, padding: theme.spacing['2xl'] }}>
           <div
             style={{
@@ -1601,7 +1679,7 @@ function SequenceDetail() {
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: theme.colors.background.primary }}>
-      <Sidebar user={user} onLogout={logout} hasRole={hasRole} />
+      <Sidebar user={user} onLogout={logout} hasRole={hasRole} isSiteAdmin={isSiteAdmin} />
 
       <div style={{ marginLeft: '260px', flex: 1, padding: theme.spacing['2xl'] }}>
         {/* Success Message */}

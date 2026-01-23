@@ -52,7 +52,7 @@ const SORT_OPTIONS = [
 const ActiveSequences = () => {
   const navigate = useNavigate();
   const { showToast } = useToast();
-  const { user, logout, hasRole } = useAuth();
+  const { user, logout, hasRole, isSiteAdmin } = useAuth();
 
   const [sequences, setSequences] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -353,7 +353,7 @@ const ActiveSequences = () => {
   if (loading) {
     return (
       <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: theme.colors.background.primary }}>
-        <Sidebar user={user} onLogout={logout} hasRole={hasRole} />
+        <Sidebar user={user} onLogout={logout} hasRole={hasRole} isSiteAdmin={isSiteAdmin} />
         <div style={{ flex: 1, marginLeft: '260px', padding: theme.spacing.xl }}>
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
             <Loader2 size={48} style={{ color: theme.colors.accent.primary, animation: 'spin 1s linear infinite' }} />
@@ -365,7 +365,7 @@ const ActiveSequences = () => {
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: theme.colors.background.primary }}>
-      <Sidebar user={user} onLogout={logout} hasRole={hasRole} />
+      <Sidebar user={user} onLogout={logout} hasRole={hasRole} isSiteAdmin={isSiteAdmin} />
 
       <div style={{ flex: 1, marginLeft: '260px', padding: theme.spacing.xl }}>
         {/* Header */}

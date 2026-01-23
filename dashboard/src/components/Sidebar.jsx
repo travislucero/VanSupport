@@ -16,18 +16,40 @@ import {
   MessageSquare
 } from 'lucide-react';
 import { theme } from '../styles/theme';
+import NotificationBell from './NotificationBell';
+import { useNotifications } from '../hooks/useNotifications.jsx';
+import { useToast } from '../hooks/useToast.jsx';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
-const Sidebar = ({ user, onLogout, hasRole }) => {
+const Sidebar = ({ user, onLogout, hasRole, isSiteAdmin }) => {
   const location = useLocation();
   const [adminExpanded, setAdminExpanded] = useState(true);
   const [activeSequencesCount, setActiveSequencesCount] = useState(0);
 
+  const toast = useToast();
+  const {
+    notifications,
+    unreadCount,
+    newNotifications,
+    clearNewNotifications,
+    markAsRead,
+    markAllAsRead,
+  } = useNotifications(!!user);
+
+  // Helper to check if user can access a feature (site_admin bypasses all)
+  const canAccess = (roles) => {
+    if (isSiteAdmin && isSiteAdmin()) return true;
+    return roles.some(role => hasRole(role));
+  };
+
   // Fetch active sequences count for the badge
   useEffect(() => {
     const fetchActiveCount = async () => {
-      if (!hasRole('manager') && !hasRole('admin')) return;
+      // Technician, manager, and admin can see active sequences
+      const hasAccess = (isSiteAdmin && isSiteAdmin()) ||
+        ['technician', 'manager', 'admin'].some(role => hasRole(role));
+      if (!hasAccess) return;
 
       try {
         const response = await fetch(`${API_BASE_URL}/api/sequences/active`, {
@@ -46,22 +68,35 @@ const Sidebar = ({ user, onLogout, hasRole }) => {
     // Refresh count every 30 seconds
     const interval = setInterval(fetchActiveCount, 30000);
     return () => clearInterval(interval);
-  }, [hasRole]);
+  }, [hasRole, isSiteAdmin]);
+
+  // Show toast for new broadcast notifications
+  useEffect(() => {
+    if (newNotifications.length > 0) {
+      newNotifications.forEach((n) => {
+        toast.info(n.message_body, 5000);
+      });
+      clearNewNotifications();
+    }
+  }, [newNotifications, clearNewNotifications, toast]);
 
   // Top-level menu items (always visible based on role)
   const getTopLevelItems = () => {
-    const items = [
-      {
+    const items = [];
+
+    // Dashboard for admin and manager only (not technician)
+    if (canAccess(['admin', 'manager'])) {
+      items.push({
         id: 'dashboard',
         label: 'Dashboard',
         Icon: LayoutDashboard,
         path: '/',
-        show: true // Always show dashboard
-      },
-    ];
+        show: true
+      });
+    }
 
-    // Add Support Tickets for manager and admin
-    if (hasRole('manager') || hasRole('admin')) {
+    // Support Tickets for technician, manager, and admin
+    if (canAccess(['technician', 'manager', 'admin'])) {
       items.push({
         id: 'support-tickets',
         label: 'Support Tickets',
@@ -71,8 +106,8 @@ const Sidebar = ({ user, onLogout, hasRole }) => {
       });
     }
 
-    // Add Active Sequences for manager and admin
-    if (hasRole('manager') || hasRole('admin')) {
+    // Active Sequences for technician, manager, and admin
+    if (canAccess(['technician', 'manager', 'admin'])) {
       items.push({
         id: 'active-sequences',
         label: 'Active Sequences',
@@ -90,8 +125,8 @@ const Sidebar = ({ user, onLogout, hasRole }) => {
   const getAdminItems = () => {
     const items = [];
 
-    // Add Sequences for viewer and above
-    if (hasRole('viewer') || hasRole('manager') || hasRole('admin')) {
+    // Sequences for technician, manager, admin
+    if (canAccess(['technician', 'manager', 'admin'])) {
       items.push({
         id: 'sequences',
         label: 'Sequences',
@@ -101,8 +136,8 @@ const Sidebar = ({ user, onLogout, hasRole }) => {
       });
     }
 
-    // Add Trigger Patterns for manager and admin
-    if (hasRole('manager') || hasRole('admin')) {
+    // Trigger Patterns for admin only
+    if (canAccess(['admin'])) {
       items.push({
         id: 'trigger-patterns',
         label: 'Trigger Patterns',
@@ -112,8 +147,8 @@ const Sidebar = ({ user, onLogout, hasRole }) => {
       });
     }
 
-    // Add Vans for viewer and above
-    if (hasRole('viewer') || hasRole('manager') || hasRole('admin')) {
+    // Vans for technician, manager, admin
+    if (canAccess(['technician', 'manager', 'admin'])) {
       items.push({
         id: 'vans',
         label: 'Vans',
@@ -123,8 +158,8 @@ const Sidebar = ({ user, onLogout, hasRole }) => {
       });
     }
 
-    // Add Owners for viewer and above
-    if (hasRole('viewer') || hasRole('manager') || hasRole('admin')) {
+    // Owners for technician, manager, admin
+    if (canAccess(['technician', 'manager', 'admin'])) {
       items.push({
         id: 'owners',
         label: 'Owners',
@@ -134,8 +169,8 @@ const Sidebar = ({ user, onLogout, hasRole }) => {
       });
     }
 
-    // Add Users for manager and admin
-    if (hasRole('manager') || hasRole('admin')) {
+    // Users for admin only
+    if (canAccess(['admin'])) {
       items.push({
         id: 'users',
         label: 'Users',
@@ -272,8 +307,8 @@ const Sidebar = ({ user, onLogout, hasRole }) => {
       boxShadow: `inset 3px 0 0 ${theme.colors.accent.primary}`,
     },
     badge: (isActive) => ({
-      backgroundColor: isActive ? theme.colors.accent.primary : theme.colors.accent.primary,
-      color: theme.colors.text.inverse,
+      backgroundColor: isActive ? theme.colors.accent.primary : theme.colors.background.tertiary,
+      color: isActive ? theme.colors.text.inverse : theme.colors.text.secondary,
       padding: '2px 8px',
       borderRadius: theme.radius.full,
       fontSize: theme.fontSize.xs,
@@ -346,7 +381,7 @@ const Sidebar = ({ user, onLogout, hasRole }) => {
   };
 
   return (
-    <div style={styles.sidebar}>
+    <nav aria-label="Main navigation" style={styles.sidebar}>
       {/* Logo/Brand */}
       <div style={styles.brand}>
         <img
@@ -378,6 +413,23 @@ const Sidebar = ({ user, onLogout, hasRole }) => {
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Notification Bell */}
+      {user && (
+        <div style={{
+          padding: `${theme.spacing.sm} ${theme.spacing.xl}`,
+          display: 'flex',
+          justifyContent: 'flex-end',
+          alignItems: 'center',
+        }}>
+          <NotificationBell
+            notifications={notifications}
+            unreadCount={unreadCount}
+            onMarkAsRead={markAsRead}
+            onMarkAllAsRead={markAllAsRead}
+          />
         </div>
       )}
 
@@ -429,6 +481,8 @@ const Sidebar = ({ user, onLogout, hasRole }) => {
             <button
               onClick={() => setAdminExpanded(!adminExpanded)}
               style={styles.adminHeader}
+              aria-expanded={adminExpanded}
+              aria-controls="admin-submenu"
               onMouseEnter={(e) => {
                 e.currentTarget.style.backgroundColor = theme.colors.background.tertiary;
               }}
@@ -449,7 +503,7 @@ const Sidebar = ({ user, onLogout, hasRole }) => {
 
             {/* Admin Submenu Items - Only show when expanded */}
             {adminExpanded && (
-              <div style={styles.adminSubmenu}>
+              <div id="admin-submenu" role="group" style={styles.adminSubmenu}>
                 {adminItems.map((item) => {
                   const Icon = item.Icon;
                   const isActive = location.pathname === item.path;
@@ -503,7 +557,7 @@ const Sidebar = ({ user, onLogout, hasRole }) => {
           Sign Out
         </button>
       </div>
-    </div>
+    </nav>
   );
 };
 

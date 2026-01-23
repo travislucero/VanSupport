@@ -86,124 +86,147 @@ function App() {
 
     if (!queryParams) return;
 
+    const controller = new AbortController();
+    const { signal } = controller;
+
     setLoading(true);
 
     const fetchPromises = [
       fetch(`${API_BASE}/api/resolution-by-step?${queryParams}`, {
         credentials: "include",
+        signal,
       })
         .then((res) => {
           if (!res.ok) throw new Error(`Resolution step error: ${res.status}`);
           return res.json();
         })
         .catch((err) => {
-          console.error("❌ Resolution step failed:", err);
+          if (err.name === 'AbortError') return [];
+          console.error("Resolution step failed:", err);
           return [];
         }),
       fetch(`${API_BASE}/api/dashboard-summary?${queryParams}`, {
         credentials: "include",
+        signal,
       })
         .then((res) => {
           if (!res.ok) throw new Error(`Summary error: ${res.status}`);
           return res.json();
         })
         .catch((err) => {
-          console.error("❌ Summary failed:", err);
+          if (err.name === 'AbortError') return [];
+          console.error("Summary failed:", err);
           return [];
         }),
       fetch(`${API_BASE}/api/issue-distribution?${queryParams}`, {
         credentials: "include",
+        signal,
       })
         .then((res) => {
           if (!res.ok) throw new Error(`Distribution error: ${res.status}`);
           return res.json();
         })
         .catch((err) => {
-          console.error("❌ Issue distribution failed:", err);
+          if (err.name === 'AbortError') return [];
+          console.error("Issue distribution failed:", err);
           return [];
         }),
       fetch(`${API_BASE}/api/resolution-time-trend?${queryParams}`, {
         credentials: "include",
+        signal,
       })
         .then((res) => {
           if (!res.ok) throw new Error(`Trend error: ${res.status}`);
           return res.json();
         })
         .catch((err) => {
-          console.error("❌ Resolution time trend failed:", err);
+          if (err.name === 'AbortError') return [];
+          console.error("Resolution time trend failed:", err);
           return [];
         }),
       fetch(`${API_BASE}/api/first-contact-resolution?${queryParams}`, {
         credentials: "include",
+        signal,
       })
         .then((res) => {
           if (!res.ok) throw new Error(`FCR error: ${res.status}`);
           return res.json();
         })
-        .then((data) => {
-          console.log("📊 FCR API Response:", data);
-          console.log("📊 FCR data length:", data?.length || 0);
-          if (data?.length > 0) {
-            console.log("📊 FCR first item:", data[0]);
-            console.log("📊 FCR first item keys:", Object.keys(data[0]));
-          }
-          return data;
-        })
         .catch((err) => {
-          console.error("❌ First contact resolution failed:", err);
+          if (err.name === 'AbortError') return [];
+          console.error("First contact resolution failed:", err);
           return [];
         }),
       fetch(`${API_BASE}/api/call-volume-heatmap?${queryParams}`, {
         credentials: "include",
+        signal,
       })
         .then((res) => {
           if (!res.ok) throw new Error(`Call volume heatmap error: ${res.status}`);
           return res.json();
         })
         .catch((err) => {
-          console.error("❌ Call volume heatmap failed:", err);
+          if (err.name === 'AbortError') return [];
+          console.error("Call volume heatmap failed:", err);
           return [];
         }),
     ];
 
+    // Track dynamic indices for conditional fetches
+    let vanPerformanceIdx = -1;
+    let handoffPatternsIdx = -1;
+    let chronicProblemVansIdx = -1;
+
     if (hasRole('admin') || hasRole('manager')) {
+      vanPerformanceIdx = fetchPromises.length;
       fetchPromises.push(
         fetch(`${API_BASE}/api/van-performance?${queryParams}`, {
           credentials: "include",
+          signal,
         })
           .then((res) => {
             if (!res.ok) throw new Error(`Van performance error: ${res.status}`);
             return res.json();
           })
           .catch((err) => {
-            console.error("❌ Van performance failed:", err);
+            if (err.name === 'AbortError') return [];
+            console.error("Van performance failed:", err);
             return [];
-          }),
+          })
+      );
+
+      handoffPatternsIdx = fetchPromises.length;
+      fetchPromises.push(
         fetch(`${API_BASE}/api/handoff-patterns?${queryParams}`, {
           credentials: "include",
+          signal,
         })
           .then((res) => {
             if (!res.ok) throw new Error(`Handoff patterns error: ${res.status}`);
             return res.json();
           })
           .catch((err) => {
-            console.error("❌ Handoff patterns failed:", err);
+            if (err.name === 'AbortError') return [];
+            console.error("Handoff patterns failed:", err);
             return [];
           })
       );
     }
 
     if (hasRole('admin')) {
+      chronicProblemVansIdx = fetchPromises.length;
       fetchPromises.push(
         fetch(`${API_BASE}/api/chronic-problem-vans?${queryParams}`, {
           credentials: "include",
+          signal,
         })
           .then((res) => {
             if (!res.ok) throw new Error(`Chronic problem vans error: ${res.status}`);
             return res.json();
           })
           .catch((err) => {
-            console.error("❌ Chronic problem vans failed:", err);
+            if (err.name === 'AbortError') return [];
+            console.error("Chronic problem vans failed:", err);
             return [];
           })
       );
@@ -211,31 +234,31 @@ function App() {
 
     Promise.all(fetchPromises)
       .then((results) => {
+        if (signal.aborted) return;
+
         const [resolutionData, summaryData, distributionData, trendData, fcrResponse, heatmapResponse] = results;
 
         setData(resolutionData || []);
         setSummary(summaryData?.[0] || null);
         setIssueDistribution(distributionData || []);
         setResolutionTimeTrend(trendData || []);
-        console.log("📊 Setting FCR Data:", fcrResponse);
-        console.log("📊 FCR Response type:", typeof fcrResponse);
-        console.log("📊 FCR is array:", Array.isArray(fcrResponse));
         setFcrData(fcrResponse || []);
         setHeatmapData(heatmapResponse || []);
 
-        if (hasRole('admin') || hasRole('manager')) {
-          const vanPerformanceData = results[6];
-          const handoffData = results[7];
-          setVanPerformance(vanPerformanceData || []);
-          setHandoffPatterns(handoffData || []);
+        if (vanPerformanceIdx !== -1) {
+          setVanPerformance(results[vanPerformanceIdx] || []);
         } else {
           setVanPerformance([]);
+        }
+
+        if (handoffPatternsIdx !== -1) {
+          setHandoffPatterns(results[handoffPatternsIdx] || []);
+        } else {
           setHandoffPatterns([]);
         }
 
-        if (hasRole('admin')) {
-          const chronicVansData = results[8];
-          setChronicProblemVans(chronicVansData || []);
+        if (chronicProblemVansIdx !== -1) {
+          setChronicProblemVans(results[chronicProblemVansIdx] || []);
         } else {
           setChronicProblemVans([]);
         }
@@ -245,10 +268,22 @@ function App() {
         setLoading(false);
       })
       .catch((err) => {
-        console.error("❌ Critical error fetching data:", err);
+        if (signal.aborted) return;
+        console.error("Critical error fetching dashboard data:", err);
         setLoading(false);
       });
+
+    return () => {
+      controller.abort();
+    };
   }, [rangeType, appliedCustomFrom, appliedCustomTo, isAuthenticated, hasRole]);
+
+  // Redirect technicians to the tickets page - they don't need the analytics dashboard
+  useEffect(() => {
+    if (isAuthenticated && hasRole('technician') && !hasRole('manager') && !hasRole('admin') && !isSiteAdmin()) {
+      navigate('/tickets', { replace: true });
+    }
+  }, [isAuthenticated, hasRole, isSiteAdmin, navigate]);
 
   const sequences = [...new Set(data.map((d) => d.sequence_key))];
   const sequenceDisplayNames = {};
@@ -279,13 +314,6 @@ function App() {
       </div>
     );
   }
-
-  // Redirect technicians to the tickets page - they don't need the analytics dashboard
-  useEffect(() => {
-    if (isAuthenticated && hasRole('technician') && !hasRole('manager') && !hasRole('admin') && !isSiteAdmin()) {
-      navigate('/tickets', { replace: true });
-    }
-  }, [isAuthenticated, hasRole, isSiteAdmin, navigate]);
 
   if (!isAuthenticated) {
     return <Login />;
@@ -622,7 +650,6 @@ function App() {
         </div>
 
         {/* First Contact Resolution */}
-        {console.log("📊 Render - fcrData:", fcrData, "length:", fcrData?.length)}
         <Card
           title="First Contact Resolution Rate"
           description="Resolution rate by troubleshooting sequence"

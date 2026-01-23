@@ -26,7 +26,7 @@ import {
 } from '../utils/validators';
 
 function Vans() {
-  const { user, logout, hasRole } = useAuth();
+  const { user, logout, hasRole, isSiteAdmin } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [vans, setVans] = useState([]);
@@ -72,14 +72,14 @@ function Vans() {
       // Reset to page 1 when search query changes
       if (searchQuery !== debouncedSearchQuery) {
         setCurrentPage(1);
-        const params = new URLSearchParams(searchParams);
+        const params = new URLSearchParams(window.location.search);
         params.set('page', '1');
         setSearchParams(params);
       }
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [searchQuery]);
+  }, [searchQuery, debouncedSearchQuery, setSearchParams]);
 
   const fetchVans = useCallback(async () => {
     setLoading(true);
@@ -107,9 +107,7 @@ function Vans() {
       setVans(data.vans || []);
       setPagination(data.pagination);
 
-      console.log('🚐 Vans fetched:', data.vans?.length || 0, 'Pagination:', data.pagination);
     } catch (err) {
-      console.error('Error fetching vans:', err);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -129,7 +127,7 @@ function Vans() {
       const data = await response.json();
       setOwners(data.owners || data);
     } catch (err) {
-      console.error('Error fetching owners:', err);
+      // Owners list is non-critical; silently ignore fetch failures
     }
   }, []);
 
@@ -198,16 +196,12 @@ function Vans() {
   }, []);
 
   const handleCreateVan = useCallback(async () => {
-    console.log('🔍 handleCreateVan called');
-    console.log('📝 vanForm:', vanForm);
-
     if (!validateForm()) {
       setError('Please fix validation errors');
       return;
     }
 
     try {
-      console.log('🚀 Submitting to API...');
       const response = await fetch('/api/vans', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -215,9 +209,7 @@ function Vans() {
         body: JSON.stringify(vanForm),
       });
 
-      console.log('📡 Response status:', response.status);
       const data = await response.json();
-      console.log('📦 Response data:', data);
 
       if (!response.ok) {
         throw new Error(data.error || 'Failed to create van');
@@ -228,24 +220,17 @@ function Vans() {
       resetForm();
       showSuccess('Van created successfully');
     } catch (err) {
-      console.error('💥 Error creating van:', err);
       setError(err.message);
     }
-  }, [vanForm, validateForm, resetForm, showSuccess]);
+  }, [vanForm, validateForm, fetchVans, resetForm, showSuccess]);
 
   const handleUpdateVan = useCallback(async () => {
-    console.log('🔍 handleUpdateVan called');
-    console.log('📝 editingVan:', editingVan);
-    console.log('📝 vanForm:', vanForm);
-
     if (!validateForm()) {
-      console.log('❌ Validation failed');
       setError('Please fix validation errors');
       return;
     }
 
     try {
-      console.log('🚀 Submitting to API...');
       const response = await fetch(`/api/vans/${editingVan.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -253,9 +238,7 @@ function Vans() {
         body: JSON.stringify(vanForm),
       });
 
-      console.log('📡 Response status:', response.status);
       const data = await response.json();
-      console.log('📦 Response data:', data);
 
       if (!response.ok) {
         throw new Error(data.error || 'Failed to update van');
@@ -267,18 +250,12 @@ function Vans() {
       resetForm();
       showSuccess('Van updated successfully');
     } catch (err) {
-      console.error('💥 Error updating van:', err);
       setError(err.message);
     }
-  }, [editingVan, vanForm, validateForm, resetForm, showSuccess]);
+  }, [editingVan, vanForm, validateForm, fetchVans, resetForm, showSuccess]);
 
   const handleDeleteVan = useCallback(async () => {
     try {
-      console.log('🔍 handleDeleteVan called');
-      console.log('📝 deletingVan:', deletingVan);
-
-      // First, check if van has historical data
-      console.log('🔍 Checking for dependencies...');
       const checkResponse = await fetch(`/api/vans/${deletingVan.id}/check-dependencies`, {
         credentials: 'include'
       });
@@ -288,44 +265,33 @@ function Vans() {
       }
 
       const checkData = await checkResponse.json();
-      console.log('📦 Dependency check result:', checkData);
 
       if (checkData.hasDependencies) {
         const errorMsg = `Cannot delete van ${deletingVan.van_number}. ${checkData.message}. You cannot delete vans with historical data to maintain analytics integrity.`;
-        console.log('❌ Cannot delete - has dependencies:', errorMsg);
-
         setError(errorMsg);
         setDeleteModalOpen(false);
         setDeletingVan(null);
         return;
       }
 
-      // Proceed with deletion if no dependencies
-      console.log('🚀 No dependencies found, proceeding with deletion...');
       const response = await fetch(`/api/vans/${deletingVan.id}`, {
         method: 'DELETE',
         credentials: 'include',
       });
-
-      console.log('📡 Response status:', response.status);
 
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.error || 'Failed to delete van');
       }
 
-      const data = await response.json();
-      console.log('📦 Response data:', data);
-
       await fetchVans();
       setDeleteModalOpen(false);
       setDeletingVan(null);
       showSuccess(`Van ${deletingVan.van_number} deleted successfully!`);
     } catch (err) {
-      console.error('💥 Error deleting van:', err);
       setError(err.message);
     }
-  }, [deletingVan, showSuccess]);
+  }, [deletingVan, fetchVans, showSuccess]);
 
   const openEditModal = useCallback((van) => {
     setEditingVan(van);
@@ -609,7 +575,7 @@ function Vans() {
   if (loading) {
     return (
       <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: theme.colors.background.primary }}>
-        <Sidebar user={user} onLogout={logout} hasRole={hasRole} />
+        <Sidebar user={user} onLogout={logout} hasRole={hasRole} isSiteAdmin={isSiteAdmin} />
         <div style={{ marginLeft: '260px', flex: 1, padding: theme.spacing['2xl'] }}>
           <div style={{ textAlign: 'center', padding: theme.spacing['2xl'] }}>
             <p style={{ color: theme.colors.text.secondary }}>Loading vans...</p>
@@ -621,7 +587,7 @@ function Vans() {
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: theme.colors.background.primary }}>
-      <Sidebar user={user} onLogout={logout} hasRole={hasRole} />
+      <Sidebar user={user} onLogout={logout} hasRole={hasRole} isSiteAdmin={isSiteAdmin} />
 
       <div style={{ marginLeft: '260px', flex: 1, padding: theme.spacing['2xl'] }}>
         {/* Success Message */}
@@ -688,7 +654,7 @@ function Vans() {
             </p>
           </div>
 
-          {hasRole('admin') && (
+          {(isSiteAdmin() || hasRole('admin') || hasRole('manager')) && (
             <button
               onClick={() => {
                 resetForm();
@@ -929,7 +895,7 @@ function Vans() {
                         )}
                       </td>
                       <td style={{ padding: theme.spacing.md, textAlign: 'right' }}>
-                        {hasRole('admin') && (
+                        {(isSiteAdmin() || hasRole('admin') || hasRole('manager')) && (
                           <div style={{ display: 'flex', gap: theme.spacing.xs, justifyContent: 'flex-end' }}>
                             <button
                               onClick={() => openEditModal(van)}
