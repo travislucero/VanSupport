@@ -67,6 +67,124 @@ const isValidUrl = (urlString) => {
   }
 };
 
+// Fix #1: TriggerInput extracted outside the component, receives addTrigger/removeTrigger as props
+const TriggerInput = ({ stepNum, type, triggers, addTrigger, removeTrigger }) => {
+  const [inputValue, setInputValue] = useState('');
+  const isSuccess = type === 'success';
+
+  return (
+    <div style={{ marginBottom: theme.spacing.md }}>
+      <label
+        style={{
+          display: 'block',
+          fontSize: theme.fontSize.xs,
+          fontWeight: theme.fontWeight.semibold,
+          color: isSuccess ? theme.colors.accent.success : theme.colors.accent.danger,
+          marginBottom: theme.spacing.xs,
+          textTransform: 'uppercase',
+          letterSpacing: '0.05em',
+        }}
+      >
+        {isSuccess ? 'Success Triggers' : 'Failure Triggers'}
+      </label>
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: theme.spacing.xs,
+          marginBottom: theme.spacing.sm,
+        }}
+      >
+        {triggers?.map((trigger, i) => (
+          <span
+            key={i}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: theme.spacing.xs,
+              padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
+              backgroundColor: isSuccess
+                ? theme.colors.accent.successLight
+                : theme.colors.accent.dangerLight,
+              color: isSuccess ? theme.colors.accent.success : theme.colors.accent.danger,
+              borderRadius: theme.radius.full,
+              fontSize: theme.fontSize.xs,
+              fontWeight: theme.fontWeight.medium,
+            }}
+          >
+            {trigger}
+            <button
+              type="button"
+              onClick={() => removeTrigger(stepNum, type, i)}
+              style={{
+                background: 'none',
+                border: 'none',
+                padding: 0,
+                cursor: 'pointer',
+                color: 'inherit',
+                display: 'flex',
+                alignItems: 'center',
+              }}
+              aria-label={`Remove ${trigger}`}
+            >
+              <X size={12} />
+            </button>
+          </span>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: theme.spacing.sm }}>
+        <input
+          type="text"
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              addTrigger(stepNum, type, inputValue);
+              setInputValue('');
+            }
+          }}
+          placeholder={`Add ${type} trigger...`}
+          style={{
+            flex: 1,
+            padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+            borderRadius: theme.radius.md,
+            border: `1px solid ${theme.colors.border.medium}`,
+            fontSize: theme.fontSize.sm,
+            backgroundColor: theme.colors.background.secondary,
+            color: theme.colors.text.primary,
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => {
+            addTrigger(stepNum, type, inputValue);
+            setInputValue('');
+          }}
+          style={{
+            padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+            borderRadius: theme.radius.md,
+            border: 'none',
+            backgroundColor: isSuccess
+              ? theme.colors.accent.success
+              : theme.colors.accent.danger,
+            color: theme.colors.text.inverse,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: theme.spacing.xs,
+            fontSize: theme.fontSize.sm,
+            fontWeight: theme.fontWeight.medium,
+          }}
+        >
+          <Plus size={14} />
+          Add
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) => {
   const modalRef = useRef(null);
   const closeButtonRef = useRef(null);
@@ -106,10 +224,25 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
   // Mobile detection for responsive layout
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
+  // Fix #11: Debounced resize handler
   useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    let timeoutId;
+    const handleResize = () => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => setIsMobile(window.innerWidth < 768), 150);
+    };
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      clearTimeout(timeoutId);
+    };
+  }, []);
+
+  // Fix #10: Lock body scroll when modal is open
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
   }, []);
 
   // Fetch all sequences for handoff dropdown
@@ -175,15 +308,24 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
         category: data.category || 'Other',
         keywords: data.keywords || [],
         steps: data.steps || [],
-        urls: data.urls || [],
+        urls: (data.urls || []).map((u) => ({
+          _id: crypto.randomUUID(),
+          url: u.url || '',
+          title: u.title || '',
+          category: u.category || 'documentation',
+        })),
+        // Fix #7: Add stable _id to each tool from AI response
         tools: (data.tools || []).map((t) => ({
+          _id: crypto.randomUUID(),
           tool_name: t.tool_name || '',
           tool_description: t.tool_description || '',
           tool_link: t.tool_link || '',
           is_required: t.is_required !== false,
           step_num: t.step_num || null,
         })),
+        // Fix #7: Add stable _id to each part from AI response
         parts: (data.parts || []).map((p) => ({
+          _id: crypto.randomUUID(),
           part_name: p.part_name || '',
           part_number: p.part_number || '',
           part_description: p.part_description || '',
@@ -234,13 +376,13 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
   // Handle escape key
   useEffect(() => {
     const handleEscape = (e) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' && !saving) {
         onClose();
       }
     };
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);
-  }, [onClose]);
+  }, [onClose, saving]);
 
   // Generate sequence key from name
   const generateSequenceKey = (name) => {
@@ -255,6 +397,58 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
 
   // Validate sequence key matches server-side requirements
   const isValidSequenceKey = (key) => /^[a-z0-9-]{1,50}$/.test(key) && key.length > 0;
+
+  // Common styles
+  const inputStyle = {
+    width: '100%',
+    padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+    borderRadius: theme.radius.md,
+    border: `1px solid ${theme.colors.border.medium}`,
+    fontSize: theme.fontSize.sm,
+    backgroundColor: theme.colors.background.secondary,
+    color: theme.colors.text.primary,
+  };
+
+  const labelStyle = {
+    display: 'block',
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.medium,
+    color: theme.colors.text.tertiary,
+    marginBottom: theme.spacing.xs,
+  };
+
+  const fieldLabelStyle = {
+    display: 'block',
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium,
+    color: theme.colors.text.secondary,
+    marginBottom: theme.spacing.sm,
+  };
+
+  const sectionHeaderStyle = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.semibold,
+    color: theme.colors.text.primary,
+    textTransform: 'uppercase',
+    letterSpacing: '0.05em',
+  };
+
+  const addButtonStyle = {
+    padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+    borderRadius: theme.radius.md,
+    border: 'none',
+    backgroundColor: theme.colors.accent.primary,
+    color: theme.colors.text.inverse,
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing.xs,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium,
+  };
 
   // Save abort controller ref
   const saveAbortControllerRef = useRef(null);
@@ -278,6 +472,29 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
         throw new Error('Invalid sequence name. Please use letters, numbers, and hyphens only.');
       }
 
+      // Fix #6: Validate URL fields before saving
+      const validateUrls = (items, linkField) => {
+        for (const item of items) {
+          if (item[linkField] && item[linkField].trim() && !isValidUrl(item[linkField].trim())) {
+            throw new Error('Invalid URL detected. Only http/https URLs are allowed.');
+          }
+        }
+      };
+      try {
+        validateUrls(sequenceData.tools, 'tool_link');
+        validateUrls(sequenceData.parts, 'part_link');
+        validateUrls(sequenceData.urls, 'url');
+        sequenceData.steps.forEach((step) => {
+          if (step.doc_url && step.doc_url.trim() && !isValidUrl(step.doc_url.trim())) {
+            throw new Error('Invalid document URL. Only http/https URLs are allowed.');
+          }
+        });
+      } catch (validationErr) {
+        setError(validationErr.message);
+        setSaving(false);
+        return;
+      }
+
       const payload = {
         ticket_id: ticketId,
         sequence_key: sequenceKey,
@@ -286,10 +503,17 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
         category: sequenceData.category,
         is_active: createAsActive,
         steps: sequenceData.steps,
-        urls: sequenceData.urls,
+        urls: sequenceData.urls.map(({ _id, ...rest }) => rest),
         keywords: sequenceData.keywords,
-        tools: sequenceData.tools,
-        parts: sequenceData.parts,
+        tools: sequenceData.tools
+          .filter((t) => t.tool_name && t.tool_name.trim())
+          .map(({ _id, ...rest }) => rest),
+        parts: sequenceData.parts
+          .filter((p) => p.part_name && p.part_name.trim())
+          .map(({ _id, estimated_price, ...rest }) => ({
+            ...rest,
+            estimated_price: estimated_price ? parseFloat(estimated_price) : null,
+          })),
       };
 
       const response = await fetch(`${API_BASE_URL}/api/sequences/from-ticket`, {
@@ -313,7 +537,10 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
         throw new Error(errorMessage);
       }
 
-      const result = await response.json();
+      // Fix #12: Remove unused result variable
+      await response.json();
+      // Fix #8: Reset saving state before calling onSuccess
+      setSaving(false);
       onSuccess(sequenceKey);
     } catch (err) {
       // Ignore abort errors
@@ -391,13 +618,38 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
     setExpandedSteps((prev) => ({ ...prev, [newStepNum]: true }));
   };
 
+  // Fix #4: removeStep now updates tool/part step_num references and expandedSteps
   const removeStep = (stepNum) => {
-    setSequenceData((prev) => ({
-      ...prev,
-      steps: prev.steps
+    setSequenceData((prev) => {
+      const newSteps = prev.steps
         .filter((step) => step.step_num !== stepNum)
-        .map((step, index) => ({ ...step, step_num: index + 1 })),
-    }));
+        .map((step, index) => ({ ...step, step_num: index + 1 }));
+
+      // Update tool/part step_num references
+      const updateStepRef = (item) => {
+        if (item.step_num === null) return item;
+        if (item.step_num === stepNum) return { ...item, step_num: null };
+        if (item.step_num > stepNum) return { ...item, step_num: item.step_num - 1 };
+        return item;
+      };
+
+      return {
+        ...prev,
+        steps: newSteps,
+        tools: prev.tools.map(updateStepRef),
+        parts: prev.parts.map(updateStepRef),
+      };
+    });
+    // Rebuild expandedSteps for renumbered steps
+    setExpandedSteps((prev) => {
+      const newExpanded = {};
+      Object.entries(prev).forEach(([key, val]) => {
+        const num = parseInt(key);
+        if (num < stepNum) newExpanded[num] = val;
+        else if (num > stepNum) newExpanded[num - 1] = val;
+      });
+      return newExpanded;
+    });
   };
 
   // URL handlers
@@ -415,12 +667,21 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
     }));
   };
 
-  // Keyword handlers
-  const addKeyword = () => {
-    if (!newKeyword.trim()) return;
+  const addUrl = () => {
     setSequenceData((prev) => ({
       ...prev,
-      keywords: [...prev.keywords, newKeyword.trim()],
+      urls: [...prev.urls, { _id: crypto.randomUUID(), url: '', title: '', category: 'documentation' }],
+    }));
+  };
+
+  // Fix #13: Prevent duplicate keywords (case-insensitive check)
+  const addKeyword = () => {
+    if (!newKeyword.trim()) return;
+    const trimmed = newKeyword.trim();
+    if (sequenceData.keywords.some((k) => k.toLowerCase() === trimmed.toLowerCase())) return;
+    setSequenceData((prev) => ({
+      ...prev,
+      keywords: [...prev.keywords, trimmed],
     }));
     setNewKeyword('');
   };
@@ -432,13 +693,14 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
     }));
   };
 
-  // Tool handlers
+  // Fix #7: Tool handlers with stable IDs
   const addTool = () => {
     setSequenceData((prev) => ({
       ...prev,
       tools: [
         ...prev.tools,
         {
+          _id: crypto.randomUUID(),
           tool_name: '',
           tool_description: '',
           tool_link: '',
@@ -463,13 +725,14 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
     }));
   };
 
-  // Part handlers
+  // Fix #7: Part handlers with stable IDs
   const addPart = () => {
     setSequenceData((prev) => ({
       ...prev,
       parts: [
         ...prev.parts,
         {
+          _id: crypto.randomUUID(),
           part_name: '',
           part_number: '',
           part_description: '',
@@ -496,127 +759,9 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
     }));
   };
 
-  // Trigger input component
-  const TriggerInput = ({ stepNum, type, triggers }) => {
-    const [inputValue, setInputValue] = useState('');
-    const isSuccess = type === 'success';
-
-    return (
-      <div style={{ marginBottom: theme.spacing.md }}>
-        <label
-          style={{
-            display: 'block',
-            fontSize: theme.fontSize.xs,
-            fontWeight: theme.fontWeight.semibold,
-            color: isSuccess ? theme.colors.accent.success : theme.colors.accent.danger,
-            marginBottom: theme.spacing.xs,
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em',
-          }}
-        >
-          {isSuccess ? 'Success Triggers' : 'Failure Triggers'}
-        </label>
-        <div
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: theme.spacing.xs,
-            marginBottom: theme.spacing.sm,
-          }}
-        >
-          {triggers?.map((trigger, i) => (
-            <span
-              key={i}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: theme.spacing.xs,
-                padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
-                backgroundColor: isSuccess
-                  ? theme.colors.accent.successLight
-                  : theme.colors.accent.dangerLight,
-                color: isSuccess ? theme.colors.accent.success : theme.colors.accent.danger,
-                borderRadius: theme.radius.full,
-                fontSize: theme.fontSize.xs,
-                fontWeight: theme.fontWeight.medium,
-              }}
-            >
-              {trigger}
-              <button
-                type="button"
-                onClick={() => removeTrigger(stepNum, type, i)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  padding: 0,
-                  cursor: 'pointer',
-                  color: 'inherit',
-                  display: 'flex',
-                  alignItems: 'center',
-                }}
-                aria-label={`Remove ${trigger}`}
-              >
-                <X size={12} />
-              </button>
-            </span>
-          ))}
-        </div>
-        <div style={{ display: 'flex', gap: theme.spacing.sm }}>
-          <input
-            type="text"
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                addTrigger(stepNum, type, inputValue);
-                setInputValue('');
-              }
-            }}
-            placeholder={`Add ${type} trigger...`}
-            style={{
-              flex: 1,
-              padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-              borderRadius: theme.radius.md,
-              border: `1px solid ${theme.colors.border.medium}`,
-              fontSize: theme.fontSize.sm,
-              backgroundColor: theme.colors.background.secondary,
-              color: theme.colors.text.primary,
-            }}
-          />
-          <button
-            type="button"
-            onClick={() => {
-              addTrigger(stepNum, type, inputValue);
-              setInputValue('');
-            }}
-            style={{
-              padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-              borderRadius: theme.radius.md,
-              border: 'none',
-              backgroundColor: isSuccess
-                ? theme.colors.accent.success
-                : theme.colors.accent.danger,
-              color: theme.colors.text.inverse,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: theme.spacing.xs,
-              fontSize: theme.fontSize.sm,
-              fontWeight: theme.fontWeight.medium,
-            }}
-          >
-            <Plus size={14} />
-            Add
-          </button>
-        </div>
-      </div>
-    );
-  };
-
   return (
     <div
-      onClick={onClose}
+      onClick={saving ? undefined : onClose}
       style={{
         position: 'fixed',
         top: 0,
@@ -700,7 +845,8 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
           </div>
           <button
             ref={closeButtonRef}
-            onClick={onClose}
+            onClick={saving ? undefined : onClose}
+            disabled={saving}
             aria-label="Close modal"
             style={{
               background: 'none',
@@ -998,9 +1144,10 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xl }}>
-              {/* Error banner if present */}
+              {/* Fix #9: Error banner with role="alert" */}
               {error && (
                 <div
+                  role="alert"
                   style={{
                     padding: theme.spacing.md,
                     backgroundColor: theme.colors.accent.dangerLight,
@@ -1027,13 +1174,7 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
               >
                 <div>
                   <label
-                    style={{
-                      display: 'block',
-                      fontSize: theme.fontSize.sm,
-                      fontWeight: theme.fontWeight.medium,
-                      color: theme.colors.text.secondary,
-                      marginBottom: theme.spacing.sm,
-                    }}
+                    style={fieldLabelStyle}
                   >
                     Sequence Name *
                   </label>
@@ -1043,27 +1184,25 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                     onChange={(e) =>
                       setSequenceData((prev) => ({ ...prev, sequence_name: e.target.value }))
                     }
-                    style={{
-                      width: '100%',
-                      padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-                      borderRadius: theme.radius.md,
-                      border: `1px solid ${theme.colors.border.medium}`,
-                      fontSize: theme.fontSize.base,
-                      backgroundColor: theme.colors.background.secondary,
-                      color: theme.colors.text.primary,
-                    }}
+                    style={{ ...inputStyle, fontSize: theme.fontSize.base }}
                   />
+                  {sequenceData.sequence_name && (
+                    <p style={{
+                      fontSize: theme.fontSize.xs,
+                      color: isValidSequenceKey(generateSequenceKey(sequenceData.sequence_name))
+                        ? theme.colors.text.tertiary
+                        : theme.colors.accent.danger,
+                      margin: 0,
+                      marginTop: theme.spacing.xs,
+                    }}>
+                      Key: {generateSequenceKey(sequenceData.sequence_name) || '(invalid characters)'}
+                    </p>
+                  )}
                 </div>
 
                 <div>
                   <label
-                    style={{
-                      display: 'block',
-                      fontSize: theme.fontSize.sm,
-                      fontWeight: theme.fontWeight.medium,
-                      color: theme.colors.text.secondary,
-                      marginBottom: theme.spacing.sm,
-                    }}
+                    style={fieldLabelStyle}
                   >
                     Category
                   </label>
@@ -1072,16 +1211,7 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                     onChange={(e) =>
                       setSequenceData((prev) => ({ ...prev, category: e.target.value }))
                     }
-                    style={{
-                      width: '100%',
-                      padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-                      borderRadius: theme.radius.md,
-                      border: `1px solid ${theme.colors.border.medium}`,
-                      fontSize: theme.fontSize.base,
-                      backgroundColor: theme.colors.background.secondary,
-                      color: theme.colors.text.primary,
-                      cursor: 'pointer',
-                    }}
+                    style={{ ...inputStyle, fontSize: theme.fontSize.base, cursor: 'pointer' }}
                   >
                     {CATEGORIES.map((cat) => (
                       <option key={cat} value={cat}>
@@ -1094,13 +1224,7 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
 
               <div>
                 <label
-                  style={{
-                    display: 'block',
-                    fontSize: theme.fontSize.sm,
-                    fontWeight: theme.fontWeight.medium,
-                    color: theme.colors.text.secondary,
-                    marginBottom: theme.spacing.sm,
-                  }}
+                  style={fieldLabelStyle}
                 >
                   Description
                 </label>
@@ -1111,13 +1235,9 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                   }
                   rows={3}
                   style={{
-                    width: '100%',
-                    padding: theme.spacing.md,
-                    borderRadius: theme.radius.md,
-                    border: `1px solid ${theme.colors.border.medium}`,
+                    ...inputStyle,
                     fontSize: theme.fontSize.base,
-                    backgroundColor: theme.colors.background.secondary,
-                    color: theme.colors.text.primary,
+                    padding: theme.spacing.md,
                     resize: 'vertical',
                     fontFamily: 'inherit',
                   }}
@@ -1195,32 +1315,12 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                       }
                     }}
                     placeholder="Add keyword..."
-                    style={{
-                      flex: 1,
-                      padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-                      borderRadius: theme.radius.md,
-                      border: `1px solid ${theme.colors.border.medium}`,
-                      fontSize: theme.fontSize.sm,
-                      backgroundColor: theme.colors.background.secondary,
-                      color: theme.colors.text.primary,
-                    }}
+                    style={{ ...inputStyle, flex: 1, width: 'auto' }}
                   />
                   <button
                     type="button"
                     onClick={addKeyword}
-                    style={{
-                      padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-                      borderRadius: theme.radius.md,
-                      border: 'none',
-                      backgroundColor: theme.colors.accent.primary,
-                      color: theme.colors.text.inverse,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: theme.spacing.xs,
-                      fontSize: theme.fontSize.sm,
-                      fontWeight: theme.fontWeight.medium,
-                    }}
+                    style={addButtonStyle}
                   >
                     <Plus size={14} />
                     Add
@@ -1238,33 +1338,13 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                     marginBottom: theme.spacing.md,
                   }}
                 >
-                  <label
-                    style={{
-                      fontSize: theme.fontSize.sm,
-                      fontWeight: theme.fontWeight.semibold,
-                      color: theme.colors.text.primary,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.05em',
-                    }}
-                  >
+                  <label style={sectionHeaderStyle}>
                     Steps ({sequenceData.steps.length})
                   </label>
                   <button
                     type="button"
                     onClick={addStep}
-                    style={{
-                      padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-                      borderRadius: theme.radius.md,
-                      border: 'none',
-                      backgroundColor: theme.colors.accent.primary,
-                      color: theme.colors.text.inverse,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: theme.spacing.xs,
-                      fontSize: theme.fontSize.sm,
-                      fontWeight: theme.fontWeight.medium,
-                    }}
+                    style={addButtonStyle}
                   >
                     <Plus size={14} />
                     Add Step
@@ -1379,13 +1459,7 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                         <div id={`step-content-${step.step_num}`} style={{ padding: theme.spacing.lg }}>
                           <div style={{ marginBottom: theme.spacing.lg }}>
                             <label
-                              style={{
-                                display: 'block',
-                                fontSize: theme.fontSize.sm,
-                                fontWeight: theme.fontWeight.medium,
-                                color: theme.colors.text.secondary,
-                                marginBottom: theme.spacing.sm,
-                              }}
+                              style={fieldLabelStyle}
                             >
                               Message
                             </label>
@@ -1396,29 +1470,29 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                               }
                               rows={4}
                               style={{
-                                width: '100%',
+                                ...inputStyle,
                                 padding: theme.spacing.md,
-                                borderRadius: theme.radius.md,
-                                border: `1px solid ${theme.colors.border.medium}`,
-                                fontSize: theme.fontSize.sm,
-                                backgroundColor: theme.colors.background.secondary,
-                                color: theme.colors.text.primary,
                                 resize: 'vertical',
                                 fontFamily: 'inherit',
                               }}
                             />
                           </div>
 
+                          {/* Fix #1: Pass addTrigger and removeTrigger as props */}
                           <TriggerInput
                             stepNum={step.step_num}
                             type="success"
                             triggers={step.success_triggers}
+                            addTrigger={addTrigger}
+                            removeTrigger={removeTrigger}
                           />
 
                           <TriggerInput
                             stepNum={step.step_num}
                             type="failure"
                             triggers={step.failure_triggers}
+                            addTrigger={addTrigger}
+                            removeTrigger={removeTrigger}
                           />
 
                           {/* Document URL and Title */}
@@ -1431,15 +1505,7 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                             }}
                           >
                             <div>
-                              <label
-                                style={{
-                                  display: 'block',
-                                  fontSize: theme.fontSize.xs,
-                                  fontWeight: theme.fontWeight.medium,
-                                  color: theme.colors.text.secondary,
-                                  marginBottom: theme.spacing.xs,
-                                }}
-                              >
+                              <label style={{ ...labelStyle, color: theme.colors.text.secondary }}>
                                 Document URL
                               </label>
                               <input
@@ -1447,27 +1513,11 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                                 value={step.doc_url || ''}
                                 onChange={(e) => updateStep(step.step_num, 'doc_url', e.target.value)}
                                 placeholder="https://..."
-                                style={{
-                                  width: '100%',
-                                  padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-                                  borderRadius: theme.radius.md,
-                                  border: `1px solid ${theme.colors.border.medium}`,
-                                  fontSize: theme.fontSize.sm,
-                                  backgroundColor: theme.colors.background.secondary,
-                                  color: theme.colors.text.primary,
-                                }}
+                                style={inputStyle}
                               />
                             </div>
                             <div>
-                              <label
-                                style={{
-                                  display: 'block',
-                                  fontSize: theme.fontSize.xs,
-                                  fontWeight: theme.fontWeight.medium,
-                                  color: theme.colors.text.secondary,
-                                  marginBottom: theme.spacing.xs,
-                                }}
-                              >
+                              <label style={{ ...labelStyle, color: theme.colors.text.secondary }}>
                                 Document Title
                               </label>
                               <input
@@ -1475,20 +1525,12 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                                 value={step.doc_title || ''}
                                 onChange={(e) => updateStep(step.step_num, 'doc_title', e.target.value)}
                                 placeholder="Reference doc title"
-                                style={{
-                                  width: '100%',
-                                  padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-                                  borderRadius: theme.radius.md,
-                                  border: `1px solid ${theme.colors.border.medium}`,
-                                  fontSize: theme.fontSize.sm,
-                                  backgroundColor: theme.colors.background.secondary,
-                                  color: theme.colors.text.primary,
-                                }}
+                                style={inputStyle}
                               />
                             </div>
                           </div>
 
-                          {/* Handoff Configuration */}
+                          {/* Fix #3: Handoff Configuration with proper state management */}
                           <div
                             style={{
                               padding: theme.spacing.md,
@@ -1503,19 +1545,25 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                                 alignItems: 'center',
                                 gap: theme.spacing.sm,
                                 cursor: 'pointer',
-                                marginBottom: step.handoff_trigger !== undefined && step.handoff_trigger !== null && step.handoff_trigger !== '' ? theme.spacing.md : 0,
+                                marginBottom: step.handoff_trigger !== undefined && step.handoff_trigger !== null ? theme.spacing.md : 0,
                               }}
                             >
                               <input
                                 type="checkbox"
-                                checked={!!step.handoff_trigger}
+                                checked={step.handoff_trigger !== null && step.handoff_trigger !== undefined}
                                 onChange={(e) => {
-                                  if (!e.target.checked) {
-                                    updateStep(step.step_num, 'handoff_trigger', '');
-                                    updateStep(step.step_num, 'handoff_sequence_key', '');
-                                  } else {
-                                    updateStep(step.step_num, 'handoff_trigger', ' ');
-                                  }
+                                  setSequenceData((prev) => ({
+                                    ...prev,
+                                    steps: prev.steps.map((s) =>
+                                      s.step_num === step.step_num
+                                        ? {
+                                            ...s,
+                                            handoff_trigger: e.target.checked ? '' : null,
+                                            handoff_sequence_key: e.target.checked ? '' : null,
+                                          }
+                                        : s
+                                    ),
+                                  }));
                                 }}
                                 style={{
                                   width: '16px',
@@ -1535,7 +1583,11 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                                 Configure Handoff
                               </span>
                             </label>
-                            {!!step.handoff_trigger && (
+                            {step.handoff_trigger !== null && step.handoff_trigger !== undefined && (
+                              <>
+                              <p style={{ fontSize: theme.fontSize.xs, color: theme.colors.text.tertiary, margin: `0 0 ${theme.spacing.sm} 0` }}>
+                                When the customer responds with the trigger word, the conversation will switch to the target sequence.
+                              </p>
                               <div
                                 style={{
                                   display: 'grid',
@@ -1544,58 +1596,25 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                                 }}
                               >
                                 <div>
-                                  <label
-                                    style={{
-                                      display: 'block',
-                                      fontSize: theme.fontSize.xs,
-                                      fontWeight: theme.fontWeight.medium,
-                                      color: theme.colors.text.tertiary,
-                                      marginBottom: theme.spacing.xs,
-                                    }}
-                                  >
+                                  <label style={labelStyle}>
                                     Trigger Word
                                   </label>
                                   <input
                                     type="text"
-                                    value={step.handoff_trigger?.trim() || ''}
+                                    value={step.handoff_trigger || ''}
                                     onChange={(e) => updateStep(step.step_num, 'handoff_trigger', e.target.value)}
-                                    placeholder="e.g. electrical"
-                                    style={{
-                                      width: '100%',
-                                      padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-                                      borderRadius: theme.radius.md,
-                                      border: `1px solid ${theme.colors.border.medium}`,
-                                      fontSize: theme.fontSize.sm,
-                                      backgroundColor: theme.colors.background.tertiary,
-                                      color: theme.colors.text.primary,
-                                    }}
+                                    placeholder="e.g. yes, ready"
+                                    style={{ ...inputStyle, backgroundColor: theme.colors.background.tertiary }}
                                   />
                                 </div>
                                 <div>
-                                  <label
-                                    style={{
-                                      display: 'block',
-                                      fontSize: theme.fontSize.xs,
-                                      fontWeight: theme.fontWeight.medium,
-                                      color: theme.colors.text.tertiary,
-                                      marginBottom: theme.spacing.xs,
-                                    }}
-                                  >
+                                  <label style={labelStyle}>
                                     Target Sequence
                                   </label>
                                   <select
                                     value={step.handoff_sequence_key || ''}
                                     onChange={(e) => updateStep(step.step_num, 'handoff_sequence_key', e.target.value)}
-                                    style={{
-                                      width: '100%',
-                                      padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-                                      borderRadius: theme.radius.md,
-                                      border: `1px solid ${theme.colors.border.medium}`,
-                                      fontSize: theme.fontSize.sm,
-                                      backgroundColor: theme.colors.background.tertiary,
-                                      color: theme.colors.text.primary,
-                                      cursor: 'pointer',
-                                    }}
+                                    style={{ ...inputStyle, backgroundColor: theme.colors.background.tertiary, cursor: 'pointer' }}
                                   >
                                     <option value="">Select a sequence...</option>
                                     {allSequences.map((seq) => (
@@ -1606,6 +1625,7 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                                   </select>
                                 </div>
                               </div>
+                              </>
                             )}
                           </div>
                         </div>
@@ -1616,7 +1636,10 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
               </div>
 
               {/* Tools */}
-              <div>
+              <div style={{
+                borderTop: `1px solid ${theme.colors.border.light}`,
+                paddingTop: theme.spacing.xl,
+              }}>
                 <div
                   style={{
                     display: 'flex',
@@ -1625,48 +1648,45 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                     marginBottom: theme.spacing.md,
                   }}
                 >
-                  <label
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: theme.spacing.sm,
-                      fontSize: theme.fontSize.sm,
-                      fontWeight: theme.fontWeight.semibold,
-                      color: theme.colors.text.primary,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.05em',
-                    }}
-                  >
+                  <label style={sectionHeaderStyle}>
                     <Wrench size={16} />
                     Tools ({sequenceData.tools.length})
                   </label>
                   <button
                     type="button"
                     onClick={addTool}
-                    style={{
-                      padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-                      borderRadius: theme.radius.md,
-                      border: 'none',
-                      backgroundColor: theme.colors.accent.primary,
-                      color: theme.colors.text.inverse,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: theme.spacing.xs,
-                      fontSize: theme.fontSize.sm,
-                      fontWeight: theme.fontWeight.medium,
-                    }}
+                    style={addButtonStyle}
                   >
                     <Plus size={14} />
                     Add Tool
                   </button>
                 </div>
 
+                {sequenceData.tools.length === 0 && (
+                  <div style={{
+                    padding: `${theme.spacing.lg} ${theme.spacing.xl}`,
+                    textAlign: 'center',
+                    backgroundColor: theme.colors.background.tertiary,
+                    borderRadius: theme.radius.md,
+                    border: `1px dashed ${theme.colors.border.medium}`,
+                  }}>
+                    <Wrench size={20} style={{ color: theme.colors.text.tertiary, marginBottom: theme.spacing.xs }} />
+                    <p style={{
+                      color: theme.colors.text.tertiary,
+                      fontSize: theme.fontSize.sm,
+                      margin: 0,
+                    }}>
+                      No tools added. Click &quot;Add Tool&quot; to specify tools needed for this sequence.
+                    </p>
+                  </div>
+                )}
+
                 {sequenceData.tools.length > 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
+                    {/* Fix #7: Use tool._id as React key instead of index */}
                     {sequenceData.tools.map((tool, i) => (
                       <div
-                        key={i}
+                        key={tool._id}
                         style={{
                           padding: theme.spacing.md,
                           backgroundColor: theme.colors.background.tertiary,
@@ -1683,15 +1703,7 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                           }}
                         >
                           <div>
-                            <label
-                              style={{
-                                display: 'block',
-                                fontSize: theme.fontSize.xs,
-                                fontWeight: theme.fontWeight.medium,
-                                color: theme.colors.text.tertiary,
-                                marginBottom: theme.spacing.xs,
-                              }}
-                            >
+                            <label style={labelStyle}>
                               Tool Name *
                             </label>
                             <input
@@ -1699,27 +1711,11 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                               value={tool.tool_name}
                               onChange={(e) => updateTool(i, 'tool_name', e.target.value)}
                               placeholder="e.g. Multimeter"
-                              style={{
-                                width: '100%',
-                                padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-                                borderRadius: theme.radius.md,
-                                border: `1px solid ${theme.colors.border.medium}`,
-                                fontSize: theme.fontSize.sm,
-                                backgroundColor: theme.colors.background.secondary,
-                                color: theme.colors.text.primary,
-                              }}
+                              style={inputStyle}
                             />
                           </div>
                           <div>
-                            <label
-                              style={{
-                                display: 'block',
-                                fontSize: theme.fontSize.xs,
-                                fontWeight: theme.fontWeight.medium,
-                                color: theme.colors.text.tertiary,
-                                marginBottom: theme.spacing.xs,
-                              }}
-                            >
+                            <label style={labelStyle}>
                               Link
                             </label>
                             <input
@@ -1727,28 +1723,12 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                               value={tool.tool_link}
                               onChange={(e) => updateTool(i, 'tool_link', e.target.value)}
                               placeholder="https://..."
-                              style={{
-                                width: '100%',
-                                padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-                                borderRadius: theme.radius.md,
-                                border: `1px solid ${theme.colors.border.medium}`,
-                                fontSize: theme.fontSize.sm,
-                                backgroundColor: theme.colors.background.secondary,
-                                color: theme.colors.text.primary,
-                              }}
+                              style={inputStyle}
                             />
                           </div>
                         </div>
                         <div style={{ marginBottom: theme.spacing.md }}>
-                          <label
-                            style={{
-                              display: 'block',
-                              fontSize: theme.fontSize.xs,
-                              fontWeight: theme.fontWeight.medium,
-                              color: theme.colors.text.tertiary,
-                              marginBottom: theme.spacing.xs,
-                            }}
-                          >
+                          <label style={labelStyle}>
                             Description
                           </label>
                           <input
@@ -1756,15 +1736,7 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                             value={tool.tool_description}
                             onChange={(e) => updateTool(i, 'tool_description', e.target.value)}
                             placeholder="Brief description..."
-                            style={{
-                              width: '100%',
-                              padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-                              borderRadius: theme.radius.md,
-                              border: `1px solid ${theme.colors.border.medium}`,
-                              fontSize: theme.fontSize.sm,
-                              backgroundColor: theme.colors.background.secondary,
-                              color: theme.colors.text.primary,
-                            }}
+                            style={inputStyle}
                           />
                         </div>
                         <div
@@ -1825,7 +1797,7 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                                 <option value="">All Steps</option>
                                 {sequenceData.steps.map((s) => (
                                   <option key={s.step_num} value={s.step_num}>
-                                    Step {s.step_num}
+                                    Step {s.step_num}: {(s.message_template || '').substring(0, 25)}{(s.message_template || '').length > 25 ? '...' : ''}
                                   </option>
                                 ))}
                               </select>
@@ -1856,7 +1828,10 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
               </div>
 
               {/* Parts */}
-              <div>
+              <div style={{
+                borderTop: `1px solid ${theme.colors.border.light}`,
+                paddingTop: theme.spacing.xl,
+              }}>
                 <div
                   style={{
                     display: 'flex',
@@ -1865,48 +1840,45 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                     marginBottom: theme.spacing.md,
                   }}
                 >
-                  <label
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: theme.spacing.sm,
-                      fontSize: theme.fontSize.sm,
-                      fontWeight: theme.fontWeight.semibold,
-                      color: theme.colors.text.primary,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.05em',
-                    }}
-                  >
+                  <label style={sectionHeaderStyle}>
                     <Package size={16} />
                     Parts ({sequenceData.parts.length})
                   </label>
                   <button
                     type="button"
                     onClick={addPart}
-                    style={{
-                      padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-                      borderRadius: theme.radius.md,
-                      border: 'none',
-                      backgroundColor: theme.colors.accent.primary,
-                      color: theme.colors.text.inverse,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: theme.spacing.xs,
-                      fontSize: theme.fontSize.sm,
-                      fontWeight: theme.fontWeight.medium,
-                    }}
+                    style={addButtonStyle}
                   >
                     <Plus size={14} />
                     Add Part
                   </button>
                 </div>
 
+                {sequenceData.parts.length === 0 && (
+                  <div style={{
+                    padding: `${theme.spacing.lg} ${theme.spacing.xl}`,
+                    textAlign: 'center',
+                    backgroundColor: theme.colors.background.tertiary,
+                    borderRadius: theme.radius.md,
+                    border: `1px dashed ${theme.colors.border.medium}`,
+                  }}>
+                    <Package size={20} style={{ color: theme.colors.text.tertiary, marginBottom: theme.spacing.xs }} />
+                    <p style={{
+                      color: theme.colors.text.tertiary,
+                      fontSize: theme.fontSize.sm,
+                      margin: 0,
+                    }}>
+                      No parts added. Click &quot;Add Part&quot; to specify parts or materials needed.
+                    </p>
+                  </div>
+                )}
+
                 {sequenceData.parts.length > 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
+                    {/* Fix #7: Use part._id as React key instead of index */}
                     {sequenceData.parts.map((part, i) => (
                       <div
-                        key={i}
+                        key={part._id}
                         style={{
                           padding: theme.spacing.md,
                           backgroundColor: theme.colors.background.tertiary,
@@ -1923,15 +1895,7 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                           }}
                         >
                           <div>
-                            <label
-                              style={{
-                                display: 'block',
-                                fontSize: theme.fontSize.xs,
-                                fontWeight: theme.fontWeight.medium,
-                                color: theme.colors.text.tertiary,
-                                marginBottom: theme.spacing.xs,
-                              }}
-                            >
+                            <label style={labelStyle}>
                               Part Name *
                             </label>
                             <input
@@ -1939,27 +1903,11 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                               value={part.part_name}
                               onChange={(e) => updatePart(i, 'part_name', e.target.value)}
                               placeholder="e.g. 30A Fuse"
-                              style={{
-                                width: '100%',
-                                padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-                                borderRadius: theme.radius.md,
-                                border: `1px solid ${theme.colors.border.medium}`,
-                                fontSize: theme.fontSize.sm,
-                                backgroundColor: theme.colors.background.secondary,
-                                color: theme.colors.text.primary,
-                              }}
+                              style={inputStyle}
                             />
                           </div>
                           <div>
-                            <label
-                              style={{
-                                display: 'block',
-                                fontSize: theme.fontSize.xs,
-                                fontWeight: theme.fontWeight.medium,
-                                color: theme.colors.text.tertiary,
-                                marginBottom: theme.spacing.xs,
-                              }}
-                            >
+                            <label style={labelStyle}>
                               Part Number
                             </label>
                             <input
@@ -1967,15 +1915,7 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                               value={part.part_number}
                               onChange={(e) => updatePart(i, 'part_number', e.target.value)}
                               placeholder="e.g. ABC-123"
-                              style={{
-                                width: '100%',
-                                padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-                                borderRadius: theme.radius.md,
-                                border: `1px solid ${theme.colors.border.medium}`,
-                                fontSize: theme.fontSize.sm,
-                                backgroundColor: theme.colors.background.secondary,
-                                color: theme.colors.text.primary,
-                              }}
+                              style={inputStyle}
                             />
                           </div>
                         </div>
@@ -1988,15 +1928,7 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                           }}
                         >
                           <div>
-                            <label
-                              style={{
-                                display: 'block',
-                                fontSize: theme.fontSize.xs,
-                                fontWeight: theme.fontWeight.medium,
-                                color: theme.colors.text.tertiary,
-                                marginBottom: theme.spacing.xs,
-                              }}
-                            >
+                            <label style={labelStyle}>
                               Buy Link
                             </label>
                             <input
@@ -2004,28 +1936,12 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                               value={part.part_link}
                               onChange={(e) => updatePart(i, 'part_link', e.target.value)}
                               placeholder="https://..."
-                              style={{
-                                width: '100%',
-                                padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-                                borderRadius: theme.radius.md,
-                                border: `1px solid ${theme.colors.border.medium}`,
-                                fontSize: theme.fontSize.sm,
-                                backgroundColor: theme.colors.background.secondary,
-                                color: theme.colors.text.primary,
-                              }}
+                              style={inputStyle}
                             />
                           </div>
                           <div>
-                            <label
-                              style={{
-                                display: 'block',
-                                fontSize: theme.fontSize.xs,
-                                fontWeight: theme.fontWeight.medium,
-                                color: theme.colors.text.tertiary,
-                                marginBottom: theme.spacing.xs,
-                              }}
-                            >
-                              Estimated Price ($)
+                            <label style={labelStyle}>
+                              Estimated Price
                             </label>
                             <div style={{ position: 'relative' }}>
                               <DollarSign
@@ -2045,30 +1961,13 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                                 value={part.estimated_price}
                                 onChange={(e) => updatePart(i, 'estimated_price', e.target.value)}
                                 placeholder="0.00"
-                                style={{
-                                  width: '100%',
-                                  padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-                                  paddingLeft: '28px',
-                                  borderRadius: theme.radius.md,
-                                  border: `1px solid ${theme.colors.border.medium}`,
-                                  fontSize: theme.fontSize.sm,
-                                  backgroundColor: theme.colors.background.secondary,
-                                  color: theme.colors.text.primary,
-                                }}
+                                style={{ ...inputStyle, paddingLeft: '28px' }}
                               />
                             </div>
                           </div>
                         </div>
                         <div style={{ marginBottom: theme.spacing.md }}>
-                          <label
-                            style={{
-                              display: 'block',
-                              fontSize: theme.fontSize.xs,
-                              fontWeight: theme.fontWeight.medium,
-                              color: theme.colors.text.tertiary,
-                              marginBottom: theme.spacing.xs,
-                            }}
-                          >
+                          <label style={labelStyle}>
                             Description
                           </label>
                           <input
@@ -2076,15 +1975,7 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                             value={part.part_description}
                             onChange={(e) => updatePart(i, 'part_description', e.target.value)}
                             placeholder="Brief description..."
-                            style={{
-                              width: '100%',
-                              padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-                              borderRadius: theme.radius.md,
-                              border: `1px solid ${theme.colors.border.medium}`,
-                              fontSize: theme.fontSize.sm,
-                              backgroundColor: theme.colors.background.secondary,
-                              color: theme.colors.text.primary,
-                            }}
+                            style={inputStyle}
                           />
                         </div>
                         <div
@@ -2145,7 +2036,7 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                                 <option value="">All Steps</option>
                                 {sequenceData.steps.map((s) => (
                                   <option key={s.step_num} value={s.step_num}>
-                                    Step {s.step_num}
+                                    Step {s.step_num}: {(s.message_template || '').substring(0, 25)}{(s.message_template || '').length > 25 ? '...' : ''}
                                   </option>
                                 ))}
                               </select>
@@ -2176,29 +2067,52 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
               </div>
 
               {/* URLs */}
-              {sequenceData.urls.length > 0 && (
-                <div>
-                  <label
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: theme.spacing.sm,
-                      fontSize: theme.fontSize.sm,
-                      fontWeight: theme.fontWeight.semibold,
-                      color: theme.colors.text.primary,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.05em',
-                      marginBottom: theme.spacing.md,
-                    }}
-                  >
+              <div style={{
+                borderTop: `1px solid ${theme.colors.border.light}`,
+                paddingTop: theme.spacing.xl,
+              }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: theme.spacing.md,
+                  }}
+                >
+                  <label style={sectionHeaderStyle}>
                     <Link2 size={16} />
-                    Extracted URLs ({sequenceData.urls.length})
+                    URLs ({sequenceData.urls.length})
                   </label>
+                  <button
+                    type="button"
+                    onClick={addUrl}
+                    style={addButtonStyle}
+                  >
+                    <Plus size={14} />
+                    Add URL
+                  </button>
+                </div>
 
+                {sequenceData.urls.length === 0 && (
+                  <div style={{
+                    padding: `${theme.spacing.lg} ${theme.spacing.xl}`,
+                    textAlign: 'center',
+                    backgroundColor: theme.colors.background.tertiary,
+                    borderRadius: theme.radius.md,
+                    border: `1px dashed ${theme.colors.border.medium}`,
+                  }}>
+                    <Link2 size={20} style={{ color: theme.colors.text.tertiary, marginBottom: theme.spacing.xs }} />
+                    <p style={{ color: theme.colors.text.tertiary, fontSize: theme.fontSize.sm, margin: 0 }}>
+                      No reference URLs. Click &quot;Add URL&quot; to add documentation or video links.
+                    </p>
+                  </div>
+                )}
+
+                {sequenceData.urls.length > 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
                     {sequenceData.urls.map((url, i) => (
                       <div
-                        key={i}
+                        key={url._id}
                         style={{
                           padding: theme.spacing.md,
                           backgroundColor: theme.colors.background.tertiary,
@@ -2215,54 +2129,25 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                             value={url.title}
                             onChange={(e) => updateUrl(i, 'title', e.target.value)}
                             placeholder="Title"
-                            style={{
-                              width: '100%',
-                              padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-                              borderRadius: theme.radius.md,
-                              border: `1px solid ${theme.colors.border.medium}`,
-                              fontSize: theme.fontSize.sm,
-                              backgroundColor: theme.colors.background.secondary,
-                              color: theme.colors.text.primary,
-                              marginBottom: theme.spacing.xs,
-                            }}
+                            style={{ ...inputStyle, marginBottom: theme.spacing.xs }}
                           />
-                          {isValidUrl(url.url) ? (
-                            <a
-                              href={url.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              style={{
-                                color: theme.colors.accent.primary,
-                                fontSize: theme.fontSize.xs,
-                                textDecoration: 'none',
-                                wordBreak: 'break-all',
-                              }}
-                            >
-                              {url.url}
-                            </a>
-                          ) : (
-                            <span style={{
-                              color: theme.colors.text.tertiary,
-                              fontSize: theme.fontSize.xs,
-                              wordBreak: 'break-all',
-                            }}>
-                              {url.url} <span style={{ color: theme.colors.accent.warning }}>(invalid URL)</span>
+                          <input
+                            type="text"
+                            value={url.url}
+                            onChange={(e) => updateUrl(i, 'url', e.target.value)}
+                            placeholder="https://..."
+                            style={{ ...inputStyle, marginBottom: theme.spacing.xs }}
+                          />
+                          {url.url && !isValidUrl(url.url) && (
+                            <span style={{ color: theme.colors.accent.warning, fontSize: theme.fontSize.xs }}>
+                              URL must start with http:// or https://
                             </span>
                           )}
                         </div>
                         <select
                           value={url.category}
                           onChange={(e) => updateUrl(i, 'category', e.target.value)}
-                          style={{
-                            padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-                            borderRadius: theme.radius.md,
-                            border: `1px solid ${theme.colors.border.medium}`,
-                            fontSize: theme.fontSize.sm,
-                            backgroundColor: theme.colors.background.secondary,
-                            color: theme.colors.text.primary,
-                            cursor: 'pointer',
-                            width: isMobile ? '100%' : 'auto',
-                          }}
+                          style={{ ...inputStyle, cursor: 'pointer', width: isMobile ? '100%' : 'auto' }}
                         >
                           {URL_CATEGORIES.map((cat) => (
                             <option key={cat.value} value={cat.value}>
@@ -2291,14 +2176,14 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           )}
         </div>
 
-        {/* Modal Footer */}
-        {!loading && !error && (
+        {/* Fix #2: Modal Footer - visible when there's data to work with (save errors vs initial load errors) */}
+        {!loading && (!error || sequenceData.sequence_name) && (
           <div
             style={{
               padding: theme.spacing.xl,
@@ -2340,10 +2225,11 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
               </span>
             </label>
 
-            <div style={{ display: 'flex', gap: theme.spacing.md, justifyContent: isMobile ? 'stretch' : 'flex-end' }}>
+            <div style={{ display: 'flex', gap: theme.spacing.md, justifyContent: 'flex-end' }}>
               <button
                 type="button"
-                onClick={onClose}
+                onClick={saving ? undefined : onClose}
+                disabled={saving}
                 style={{
                   padding: `${theme.spacing.sm} ${theme.spacing.xl}`,
                   borderRadius: theme.radius.md,
@@ -2353,6 +2239,7 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                   cursor: 'pointer',
                   fontSize: theme.fontSize.sm,
                   fontWeight: theme.fontWeight.medium,
+                  flex: isMobile ? 1 : undefined,
                 }}
               >
                 Cancel
@@ -2379,14 +2266,17 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                   fontWeight: theme.fontWeight.medium,
                   display: 'flex',
                   alignItems: 'center',
+                  justifyContent: 'center',
                   gap: theme.spacing.sm,
+                  flex: isMobile ? 1 : undefined,
                 }}
               >
                 {saving ? (
                   <>
+                    {/* Fix #5: Use correct keyframe name */}
                     <Loader2
                       size={16}
-                      style={{ animation: 'spin 1s linear infinite' }}
+                      style={{ animation: 'skeleton-spin 1s linear infinite' }}
                     />
                     Creating...
                   </>

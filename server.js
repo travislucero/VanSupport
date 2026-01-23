@@ -3289,6 +3289,10 @@ EXAMPLE OUTPUT (abbreviated):
         max_tokens: 3000,
       });
 
+      if (!completion.choices || !completion.choices[0] || !completion.choices[0].message) {
+        console.error("🤖 Generate Sequence - Empty response from OpenAI");
+        return res.status(500).json({ error: "AI service returned an empty response. Please try again." });
+      }
       const responseText = completion.choices[0].message.content;
       console.log("🤖 Generate Sequence - AI response received");
 
@@ -3332,11 +3336,24 @@ EXAMPLE OUTPUT (abbreviated):
         ? aiResponse.parts.filter((p) => p && typeof p.part_name === "string" && p.part_name.trim())
         : [];
 
+      // Validate category against allowed list
+      const VALID_AI_CATEGORIES = ['Electrical', 'Plumbing', 'HVAC', 'Appliances', 'Mechanical', 'Other'];
+      if (aiResponse.category && !VALID_AI_CATEGORIES.includes(aiResponse.category)) {
+        aiResponse.category = 'Other';
+      }
+
       // Return the AI-generated data along with ticket reference
       res.json({
         ticket_id: uuid,
         ticket_number: ticketData.ticket_number,
-        ...aiResponse,
+        sequence_name: aiResponse.sequence_name,
+        description: aiResponse.description || '',
+        category: aiResponse.category || 'Other',
+        keywords: aiResponse.keywords,
+        steps: aiResponse.steps,
+        urls: aiResponse.urls,
+        tools: aiResponse.tools,
+        parts: aiResponse.parts,
       });
     } catch (err) {
       console.error("🤖 Generate Sequence - Error:", err);
@@ -3391,7 +3408,7 @@ app.post(
       console.log("🔧 Create Sequence from Ticket - Creating:", sequence_key);
 
       // Validate required fields
-      if (!sequence_key || !display_name || !steps || steps.length === 0) {
+      if (!sequence_key || !display_name || !Array.isArray(steps) || steps.length === 0) {
         return res.status(400).json({
           error: "Missing required fields: sequence_key, display_name, and at least one step are required",
         });
@@ -3431,6 +3448,25 @@ app.post(
         });
       }
 
+      const isValidHttpUrl = (str) => {
+        if (!str) return true; // null/empty is fine
+        try {
+          const url = new URL(str);
+          return ["http:", "https:"].includes(url.protocol);
+        } catch {
+          return false;
+        }
+      };
+
+      // Validate step data
+      for (const step of steps) {
+        if (typeof step.step_num !== 'number' || !step.message_template) {
+          return res.status(400).json({
+            error: "Each step must have a numeric step_num and a message_template",
+          });
+        }
+      }
+
       // Create the sequence using existing function
       const firstStep = steps[0];
       const { data: sequenceData, error: sequenceError } = await supabase.rpc(
@@ -3442,14 +3478,14 @@ app.post(
           p_category: category || null,
           p_created_by: req.user.id,
           p_first_step_message: firstStep.message_template,
-          p_first_step_url: firstStep.doc_url || null,
+          p_first_step_url: isValidHttpUrl(firstStep.doc_url) ? firstStep.doc_url : null,
           p_first_step_title: firstStep.doc_title || null,
         }
       );
 
       if (sequenceError) {
         console.error("🔧 Create Sequence from Ticket - Create error:", sequenceError);
-        return res.status(500).json({ error: sequenceError.message });
+        return res.status(500).json({ error: "Failed to create sequence" });
       }
 
       console.log("🔧 Create Sequence from Ticket - Sequence created, adding remaining steps...");
@@ -3464,7 +3500,7 @@ app.post(
           p_sequence_key: sequence_key,
           p_step_num: step.step_num,
           p_message_template: step.message_template,
-          p_doc_url: step.doc_url || null,
+          p_doc_url: isValidHttpUrl(step.doc_url) ? step.doc_url : null,
           p_doc_title: step.doc_title || null,
           p_success_triggers: step.success_triggers || [],
           p_failure_triggers: step.failure_triggers || [],
@@ -3478,25 +3514,35 @@ app.post(
 
       // Update first step with triggers if provided
       if (firstStep.success_triggers?.length || firstStep.failure_triggers?.length) {
-        await supabase.rpc("fn_update_sequence_step", {
+        const { error: firstStepError } = await supabase.rpc("fn_update_sequence_step", {
           p_sequence_key: sequence_key,
           p_step_num: 1,
           p_message_template: firstStep.message_template,
-          p_doc_url: firstStep.doc_url || null,
+          p_doc_url: isValidHttpUrl(firstStep.doc_url) ? firstStep.doc_url : null,
           p_doc_title: firstStep.doc_title || null,
           p_success_triggers: firstStep.success_triggers || [],
           p_failure_triggers: firstStep.failure_triggers || [],
         });
+        if (firstStepError) {
+          console.error("🔧 Create Sequence from Ticket - First step trigger update error:", firstStepError);
+          failedSteps.push(1);
+        }
       }
 
       // Update steps with handoff configuration
       for (const step of steps) {
         if (step.handoff_trigger && step.handoff_trigger.trim() && step.handoff_sequence_key) {
+          // Validate handoff_sequence_key format
+          if (!SEQUENCE_KEY_REGEX.test(step.handoff_sequence_key)) {
+            console.error(`🔧 Create Sequence from Ticket - Invalid handoff_sequence_key: "${step.handoff_sequence_key}"`);
+            continue; // skip this handoff
+          }
+
           const { error: handoffError } = await supabase.rpc("fn_update_sequence_step", {
             p_sequence_key: sequence_key,
             p_step_num: step.step_num,
             p_message_template: step.message_template,
-            p_doc_url: step.doc_url || null,
+            p_doc_url: isValidHttpUrl(step.doc_url) ? step.doc_url : null,
             p_doc_title: step.doc_title || null,
             p_success_triggers: step.success_triggers || [],
             p_failure_triggers: step.failure_triggers || [],
@@ -3513,11 +3559,15 @@ app.post(
       // Add tools from URLs where category is "tool"
       const toolUrls = (urls || []).filter((u) => u.category === "tool");
       for (const tool of toolUrls) {
+        // Validate URL
+        const toolUrl = tool.url && tool.url.trim() ? tool.url.trim() : null;
+        if (toolUrl && !isValidHttpUrl(toolUrl)) continue; // skip invalid URLs
+
         await supabase.rpc("fn_add_sequence_tool", {
           p_sequence_key: sequence_key,
           p_tool_name: tool.title || "Tool",
           p_tool_description: null,
-          p_tool_link: tool.url,
+          p_tool_link: toolUrl,
           p_is_required: false,
           p_sort_order: 0,
           p_step_num: null,
@@ -3531,14 +3581,16 @@ app.post(
           const tool = tools[i];
           if (!tool.tool_name || !tool.tool_name.trim()) continue;
 
-          const toolLink = tool.tool_link && tool.tool_link.trim() ? tool.tool_link.trim() : null;
+          let toolLink = tool.tool_link && tool.tool_link.trim() ? tool.tool_link.trim() : null;
           // Validate tool link if provided
           if (toolLink) {
             try {
               const parsed = new URL(toolLink);
-              if (!["http:", "https:"].includes(parsed.protocol)) continue;
+              if (!["http:", "https:"].includes(parsed.protocol)) {
+                toolLink = null; // Invalid protocol - null out the link, but still add the tool
+              }
             } catch {
-              // Skip invalid URLs - don't add the link but still add the tool
+              toolLink = null; // Unparseable URL - null out the link, but still add the tool
             }
           }
 
@@ -3549,7 +3601,7 @@ app.post(
             p_tool_link: toolLink,
             p_is_required: tool.is_required !== false,
             p_sort_order: i,
-            p_step_num: tool.step_num || null,
+            p_step_num: (typeof tool.step_num === 'number') ? tool.step_num : null,
           });
 
           if (toolError) {
@@ -3565,19 +3617,25 @@ app.post(
           const part = parts[i];
           if (!part.part_name || !part.part_name.trim()) continue;
 
-          const partLink = part.part_link && part.part_link.trim() ? part.part_link.trim() : null;
+          let partLink = part.part_link && part.part_link.trim() ? part.part_link.trim() : null;
           // Validate part link if provided
           if (partLink) {
             try {
               const parsed = new URL(partLink);
-              if (!["http:", "https:"].includes(parsed.protocol)) continue;
+              if (!["http:", "https:"].includes(parsed.protocol)) {
+                partLink = null;
+              }
             } catch {
-              // Skip invalid URLs - don't add the link but still add the part
+              partLink = null;
             }
           }
 
           const estimatedPrice = part.estimated_price
             ? parseFloat(part.estimated_price)
+            : null;
+          // Reject negative prices and NaN
+          const validPrice = (estimatedPrice != null && !isNaN(estimatedPrice) && estimatedPrice >= 0)
+            ? estimatedPrice
             : null;
 
           const { error: partError } = await supabase.rpc("fn_add_sequence_part", {
@@ -3586,10 +3644,10 @@ app.post(
             p_part_number: part.part_number?.trim() || null,
             p_part_description: part.part_description?.trim() || null,
             p_part_link: partLink,
-            p_estimated_price: isNaN(estimatedPrice) ? null : estimatedPrice,
+            p_estimated_price: validPrice,
             p_is_required: part.is_required !== false,
             p_sort_order: i,
-            p_step_num: part.step_num || null,
+            p_step_num: (typeof part.step_num === 'number') ? part.step_num : null,
           });
 
           if (partError) {
@@ -3599,7 +3657,7 @@ app.post(
       }
 
       // Update sequence active status if specified
-      if (is_active !== undefined) {
+      if (is_active !== undefined && typeof is_active === 'boolean') {
         await supabase
           .from("sequences")
           .update({ is_active: is_active })
@@ -3663,7 +3721,7 @@ app.post(
             van_makes: null,
             years: null,
             van_versions: null,
-            is_active: is_active !== undefined ? is_active : false,
+            is_active: (typeof is_active === 'boolean') ? is_active : false,
           };
 
           const { data: patternData, error: patternError } = await supabase
