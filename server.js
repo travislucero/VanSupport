@@ -3239,7 +3239,9 @@ REQUIRED JSON STRUCTURE:
     "step_num": 1,
     "message_template": "Direct instruction to customer",
     "success_triggers": ["3-5 step-specific success phrases"],
-    "failure_triggers": ["3-5 step-specific failure phrases"]
+    "failure_triggers": ["3-5 step-specific failure phrases"],
+    "doc_url": "relevant documentation URL for this step if found in ticket",
+    "doc_title": "title for the documentation link"
   }],
   "urls": [{"url": "exact URL from ticket", "category": "tool|video|documentation", "title": "descriptive title"}],
   "tools": [{"tool_name": "name of the tool", "tool_description": "brief description or usage context", "tool_link": "URL if mentioned", "is_required": true, "step_num": null}],
@@ -3257,6 +3259,7 @@ EXTRACTION RULES:
 8. Extract ALL tools mentioned in the conversation (multimeter, screwdriver, wrench, etc.). Set step_num to the step number where the tool is needed, or null if it applies to all steps. Set is_required to true if the tool is essential for the repair
 9. Extract ALL parts/supplies mentioned in the conversation (fuses, connectors, wires, filters, etc.). Include part_number if a specific model/SKU is mentioned. Set estimated_price if a price is discussed. Set step_num to the step where the part is needed, or null if general
 10. Return tools and parts as empty arrays [] if none are mentioned in the ticket
+11. If a documentation URL from the ticket is specifically relevant to a step, include it as doc_url/doc_title on that step. Set to null if no specific documentation applies to the step
 
 EXAMPLE OUTPUT (abbreviated):
 {
@@ -3265,8 +3268,8 @@ EXAMPLE OUTPUT (abbreviated):
   "category": "Appliances",
   "keywords": ["water heater", "pilot light", "propane", "no hot water"],
   "steps": [
-    {"step_num": 1, "message_template": "Locate the gas control valve on the water heater...", "success_triggers": ["found it", "see it", "yes"], "failure_triggers": ["cant find", "where is it", "no valve"]},
-    {"step_num": 2, "message_template": "Turn the knob to the OFF position and wait 5 minutes...", "success_triggers": ["done", "waited", "ok"], "failure_triggers": ["stuck", "won't turn", "broken knob"]}
+    {"step_num": 1, "message_template": "Locate the gas control valve on the water heater...", "success_triggers": ["found it", "see it", "yes"], "failure_triggers": ["cant find", "where is it", "no valve"], "doc_url": null, "doc_title": null},
+    {"step_num": 2, "message_template": "Turn the knob to the OFF position and wait 5 minutes...", "success_triggers": ["done", "waited", "ok"], "failure_triggers": ["stuck", "won't turn", "broken knob"], "doc_url": null, "doc_title": null}
   ],
   "urls": [],
   "tools": [{"tool_name": "Long-reach lighter", "tool_description": "For relighting the pilot", "tool_link": "", "is_required": true, "step_num": 3}],
@@ -3484,6 +3487,27 @@ app.post(
           p_success_triggers: firstStep.success_triggers || [],
           p_failure_triggers: firstStep.failure_triggers || [],
         });
+      }
+
+      // Update steps with handoff configuration
+      for (const step of steps) {
+        if (step.handoff_trigger && step.handoff_trigger.trim() && step.handoff_sequence_key) {
+          const { error: handoffError } = await supabase.rpc("fn_update_sequence_step", {
+            p_sequence_key: sequence_key,
+            p_step_num: step.step_num,
+            p_message_template: step.message_template,
+            p_doc_url: step.doc_url || null,
+            p_doc_title: step.doc_title || null,
+            p_success_triggers: step.success_triggers || [],
+            p_failure_triggers: step.failure_triggers || [],
+            p_handoff_trigger: step.handoff_trigger.trim(),
+            p_handoff_sequence_key: step.handoff_sequence_key,
+          });
+
+          if (handoffError) {
+            console.error(`🔧 Create Sequence from Ticket - Handoff for step ${step.step_num} error:`, handoffError);
+          }
+        }
       }
 
       // Add tools from URLs where category is "tool"

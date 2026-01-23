@@ -16,6 +16,7 @@ import {
   RefreshCw,
   Package,
   DollarSign,
+  GitBranch,
 } from 'lucide-react';
 import { theme } from '../styles/theme';
 
@@ -96,6 +97,9 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
   // New keyword input
   const [newKeyword, setNewKeyword] = useState('');
 
+  // Available sequences for handoff dropdown
+  const [allSequences, setAllSequences] = useState([]);
+
   // Abort controller ref for cleanup
   const abortControllerRef = useRef(null);
 
@@ -106,6 +110,24 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
     const handleResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Fetch all sequences for handoff dropdown
+  useEffect(() => {
+    const fetchSequences = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/sequences`, {
+          credentials: 'include',
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setAllSequences(data || []);
+        }
+      } catch {
+        // Non-critical - handoff dropdown just won't be populated
+      }
+    };
+    fetchSequences();
   }, []);
 
   // Fetch AI-generated data - extracted as callback for retry functionality
@@ -1398,6 +1420,194 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                             type="failure"
                             triggers={step.failure_triggers}
                           />
+
+                          {/* Document URL and Title */}
+                          <div
+                            style={{
+                              display: 'grid',
+                              gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+                              gap: theme.spacing.md,
+                              marginBottom: theme.spacing.md,
+                            }}
+                          >
+                            <div>
+                              <label
+                                style={{
+                                  display: 'block',
+                                  fontSize: theme.fontSize.xs,
+                                  fontWeight: theme.fontWeight.medium,
+                                  color: theme.colors.text.secondary,
+                                  marginBottom: theme.spacing.xs,
+                                }}
+                              >
+                                Document URL
+                              </label>
+                              <input
+                                type="text"
+                                value={step.doc_url || ''}
+                                onChange={(e) => updateStep(step.step_num, 'doc_url', e.target.value)}
+                                placeholder="https://..."
+                                style={{
+                                  width: '100%',
+                                  padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                                  borderRadius: theme.radius.md,
+                                  border: `1px solid ${theme.colors.border.medium}`,
+                                  fontSize: theme.fontSize.sm,
+                                  backgroundColor: theme.colors.background.secondary,
+                                  color: theme.colors.text.primary,
+                                }}
+                              />
+                            </div>
+                            <div>
+                              <label
+                                style={{
+                                  display: 'block',
+                                  fontSize: theme.fontSize.xs,
+                                  fontWeight: theme.fontWeight.medium,
+                                  color: theme.colors.text.secondary,
+                                  marginBottom: theme.spacing.xs,
+                                }}
+                              >
+                                Document Title
+                              </label>
+                              <input
+                                type="text"
+                                value={step.doc_title || ''}
+                                onChange={(e) => updateStep(step.step_num, 'doc_title', e.target.value)}
+                                placeholder="Reference doc title"
+                                style={{
+                                  width: '100%',
+                                  padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                                  borderRadius: theme.radius.md,
+                                  border: `1px solid ${theme.colors.border.medium}`,
+                                  fontSize: theme.fontSize.sm,
+                                  backgroundColor: theme.colors.background.secondary,
+                                  color: theme.colors.text.primary,
+                                }}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Handoff Configuration */}
+                          <div
+                            style={{
+                              padding: theme.spacing.md,
+                              backgroundColor: theme.colors.background.secondary,
+                              borderRadius: theme.radius.md,
+                              border: `1px solid ${theme.colors.border.light}`,
+                            }}
+                          >
+                            <label
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: theme.spacing.sm,
+                                cursor: 'pointer',
+                                marginBottom: step.handoff_trigger !== undefined && step.handoff_trigger !== null && step.handoff_trigger !== '' ? theme.spacing.md : 0,
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={!!step.handoff_trigger}
+                                onChange={(e) => {
+                                  if (!e.target.checked) {
+                                    updateStep(step.step_num, 'handoff_trigger', '');
+                                    updateStep(step.step_num, 'handoff_sequence_key', '');
+                                  } else {
+                                    updateStep(step.step_num, 'handoff_trigger', ' ');
+                                  }
+                                }}
+                                style={{
+                                  width: '16px',
+                                  height: '16px',
+                                  cursor: 'pointer',
+                                  accentColor: theme.colors.accent.warning,
+                                }}
+                              />
+                              <GitBranch size={16} style={{ color: theme.colors.accent.warning }} />
+                              <span
+                                style={{
+                                  fontSize: theme.fontSize.sm,
+                                  fontWeight: theme.fontWeight.medium,
+                                  color: theme.colors.text.secondary,
+                                }}
+                              >
+                                Configure Handoff
+                              </span>
+                            </label>
+                            {!!step.handoff_trigger && (
+                              <div
+                                style={{
+                                  display: 'grid',
+                                  gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+                                  gap: theme.spacing.md,
+                                }}
+                              >
+                                <div>
+                                  <label
+                                    style={{
+                                      display: 'block',
+                                      fontSize: theme.fontSize.xs,
+                                      fontWeight: theme.fontWeight.medium,
+                                      color: theme.colors.text.tertiary,
+                                      marginBottom: theme.spacing.xs,
+                                    }}
+                                  >
+                                    Trigger Word
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={step.handoff_trigger?.trim() || ''}
+                                    onChange={(e) => updateStep(step.step_num, 'handoff_trigger', e.target.value)}
+                                    placeholder="e.g. electrical"
+                                    style={{
+                                      width: '100%',
+                                      padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                                      borderRadius: theme.radius.md,
+                                      border: `1px solid ${theme.colors.border.medium}`,
+                                      fontSize: theme.fontSize.sm,
+                                      backgroundColor: theme.colors.background.tertiary,
+                                      color: theme.colors.text.primary,
+                                    }}
+                                  />
+                                </div>
+                                <div>
+                                  <label
+                                    style={{
+                                      display: 'block',
+                                      fontSize: theme.fontSize.xs,
+                                      fontWeight: theme.fontWeight.medium,
+                                      color: theme.colors.text.tertiary,
+                                      marginBottom: theme.spacing.xs,
+                                    }}
+                                  >
+                                    Target Sequence
+                                  </label>
+                                  <select
+                                    value={step.handoff_sequence_key || ''}
+                                    onChange={(e) => updateStep(step.step_num, 'handoff_sequence_key', e.target.value)}
+                                    style={{
+                                      width: '100%',
+                                      padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                                      borderRadius: theme.radius.md,
+                                      border: `1px solid ${theme.colors.border.medium}`,
+                                      fontSize: theme.fontSize.sm,
+                                      backgroundColor: theme.colors.background.tertiary,
+                                      color: theme.colors.text.primary,
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    <option value="">Select a sequence...</option>
+                                    {allSequences.map((seq) => (
+                                      <option key={seq.sequence_key} value={seq.sequence_key}>
+                                        {seq.display_name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>
