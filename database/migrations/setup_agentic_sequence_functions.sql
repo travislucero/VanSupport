@@ -194,7 +194,9 @@ RETURNS TABLE(
     success BOOLEAN,
     ticket_id UUID,
     ticket_number INTEGER,
-    message TEXT
+    message TEXT,
+    owner_name TEXT,
+    van_number TEXT
 )
 LANGUAGE plpgsql
 AS $$
@@ -205,6 +207,7 @@ DECLARE
     v_sequence_key TEXT;
     v_sequence_name TEXT;
     v_van_id UUID;
+    v_van_number TEXT;
     v_owner_id UUID;
     v_owner_name TEXT;
     v_owner_email TEXT;
@@ -212,9 +215,9 @@ DECLARE
 BEGIN
     -- Get session and related info
     SELECT ss.phone_number, ss.sequence_key, ss.van_id, ss.current_step,
-           sm.display_name, o.id, o.name, o.email
+           sm.display_name, v.van_number, o.id, o.name, o.email
     INTO v_phone, v_sequence_key, v_van_id, v_current_step,
-         v_sequence_name, v_owner_id, v_owner_name, v_owner_email
+         v_sequence_name, v_van_number, v_owner_id, v_owner_name, v_owner_email
     FROM sequence_sessions ss
     LEFT JOIN sequences_metadata sm ON ss.sequence_key = sm.sequence_key
     LEFT JOIN vans v ON ss.van_id = v.id
@@ -222,7 +225,7 @@ BEGIN
     WHERE ss.id = p_sequence_session_id;
 
     IF NOT FOUND THEN
-        RETURN QUERY SELECT FALSE, NULL::UUID, NULL::INTEGER, 'Session not found'::TEXT;
+        RETURN QUERY SELECT FALSE, NULL::UUID, NULL::INTEGER, 'Session not found'::TEXT, NULL::TEXT, NULL::TEXT;
         RETURN;
     END IF;
 
@@ -258,11 +261,13 @@ BEGIN
         NOW(),
         NOW()
     )
-    RETURNING id, ticket_number INTO v_ticket_id, v_ticket_number;
+    RETURNING tickets.id, tickets.ticket_number INTO v_ticket_id, v_ticket_number;
 
     RETURN QUERY SELECT TRUE, v_ticket_id, v_ticket_number,
-        format('I''ve created support ticket #%s for you. A technician will contact you within 2 hours. If urgent, call (760) 214-7766.',
-               v_ticket_number)::TEXT;
+        format('I''ve created support ticket #%s for you. A technician will contact you within 2 hours.',
+               v_ticket_number)::TEXT,
+        v_owner_name,
+        v_van_number;
 END;
 $$;
 
