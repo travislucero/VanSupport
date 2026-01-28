@@ -29,6 +29,7 @@ import {
   Link as LinkIcon,
   Circle,
   DollarSign,
+  AlertCircle,
 } from 'lucide-react';
 
 // Helper function to format external URLs
@@ -195,13 +196,36 @@ function StepModal({
   handleHandoffTriggerChange,
   handleHandoffSequenceChange,
   handleIsActiveChange,
+  sequenceType,
 }) {
+  const isLinear = sequenceType === 'linear';
+
   return (
     <Modal
       onClose={onClose}
       title={isEdit ? 'Edit Step' : 'Add Step'}
     >
       <div style={{ display: 'grid', gap: theme.spacing.lg }}>
+        {/* Linear sequence info banner */}
+        {isLinear && (
+          <div
+            style={{
+              padding: theme.spacing.md,
+              backgroundColor: '#eff6ff',
+              border: '1px solid #bfdbfe',
+              borderRadius: theme.radius.md,
+              display: 'flex',
+              alignItems: 'center',
+              gap: theme.spacing.sm,
+            }}
+          >
+            <AlertCircle size={18} color="#3b82f6" />
+            <span style={{ color: '#1e40af', fontSize: theme.fontSize.sm }}>
+              Linear sequences auto-advance on any customer response. You only need escalation triggers.
+            </span>
+          </div>
+        )}
+
         <FormField
           label="Step Number"
           required
@@ -231,19 +255,23 @@ function StepModal({
           value={stepForm.docTitle}
           onChange={handleDocTitleChange}
         />
+        {!isLinear && (
+          <FormField
+            label="Success Triggers"
+            required
+            value={stepForm.successTriggers}
+            onChange={handleSuccessTriggersChange}
+            helpText="Comma-separated responses meaning 'problem fixed'"
+          />
+        )}
         <FormField
-          label="Success Triggers"
-          required
-          value={stepForm.successTriggers}
-          onChange={handleSuccessTriggersChange}
-          helpText="Comma-separated responses meaning 'problem fixed'"
-        />
-        <FormField
-          label="Failure Triggers"
-          required
+          label={isLinear ? 'Escalation Triggers' : 'Failure Triggers'}
+          required={!isLinear}
           value={stepForm.failureTriggers}
           onChange={handleFailureTriggersChange}
-          helpText="Comma-separated responses meaning 'still broken'"
+          helpText={isLinear
+            ? 'Optional keywords like HELP or STUCK that trigger escalation to a technician'
+            : "Comma-separated responses meaning 'still broken'"}
         />
 
         {/* Handoff Configuration */}
@@ -816,6 +844,7 @@ function SequenceDetail() {
     displayName: '',
     description: '',
     category: '',
+    sequenceType: 'troubleshooting',
   });
   const [stepForm, setStepForm] = useState({
     stepNum: '',
@@ -885,6 +914,7 @@ function SequenceDetail() {
           displayName: data.display_name || '',
           description: data.description || '',
           category: data.category || '',
+          sequenceType: data.sequence_type || 'troubleshooting',
         });
       } catch (err) {
         console.error('Error fetching sequence:', err);
@@ -971,6 +1001,7 @@ function SequenceDetail() {
         displayName: data.display_name || '',
         description: data.description || '',
         category: data.category || '',
+        sequenceType: data.sequence_type || 'troubleshooting',
       });
     } catch (err) {
       console.error('Error fetching sequence:', err);
@@ -1305,6 +1336,7 @@ function SequenceDetail() {
           name: metadataForm.displayName,
           description: metadataForm.description,
           category: metadataForm.category,
+          sequence_type: metadataForm.sequenceType,
         }),
       });
 
@@ -1784,6 +1816,12 @@ function SequenceDetail() {
                     {sequence.category}
                   </Badge>
                 )}
+                <Badge
+                  variant={(sequence?.sequence_type || 'troubleshooting') === 'linear' ? 'info' : 'warning'}
+                  soft
+                >
+                  {(sequence?.sequence_type || 'troubleshooting') === 'linear' ? 'Linear' : 'Troubleshooting'}
+                </Badge>
                 <button
                   onClick={toggleSequenceActive}
                   style={{
@@ -2152,28 +2190,34 @@ function SequenceDetail() {
 
                       {/* Triggers */}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm, marginTop: theme.spacing.md }}>
-                        {/* Success Triggers */}
-                        {step.success_triggers && step.success_triggers.length > 0 && (
+                        {/* Success Triggers — or Auto-advance badge for linear */}
+                        {(sequence?.sequence_type || 'troubleshooting') === 'linear' ? (
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: theme.spacing.xs, alignItems: 'center' }}>
-                            <span style={{ fontSize: theme.fontSize.xs, color: theme.colors.text.tertiary, fontWeight: theme.fontWeight.medium }}>
-                              Success:
-                            </span>
-                            {step.success_triggers.slice(0, 3).map((trigger, i) => (
-                              <Badge key={i} variant="success" size="sm">{trigger}</Badge>
-                            ))}
-                            {step.success_triggers.length > 3 && (
-                              <span style={{ fontSize: theme.fontSize.xs, color: theme.colors.text.tertiary }}>
-                                +{step.success_triggers.length - 3} more
-                              </span>
-                            )}
+                            <Badge variant="info" size="sm">Auto-advance</Badge>
                           </div>
+                        ) : (
+                          step.success_triggers && step.success_triggers.length > 0 && (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: theme.spacing.xs, alignItems: 'center' }}>
+                              <span style={{ fontSize: theme.fontSize.xs, color: theme.colors.text.tertiary, fontWeight: theme.fontWeight.medium }}>
+                                Success:
+                              </span>
+                              {step.success_triggers.slice(0, 3).map((trigger, i) => (
+                                <Badge key={i} variant="success" size="sm">{trigger}</Badge>
+                              ))}
+                              {step.success_triggers.length > 3 && (
+                                <span style={{ fontSize: theme.fontSize.xs, color: theme.colors.text.tertiary }}>
+                                  +{step.success_triggers.length - 3} more
+                                </span>
+                              )}
+                            </div>
+                          )
                         )}
 
-                        {/* Failure Triggers */}
+                        {/* Failure / Escalation Triggers */}
                         {step.failure_triggers && step.failure_triggers.length > 0 && (
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: theme.spacing.xs, alignItems: 'center' }}>
                             <span style={{ fontSize: theme.fontSize.xs, color: theme.colors.text.tertiary, fontWeight: theme.fontWeight.medium }}>
-                              Failure:
+                              {(sequence?.sequence_type || 'troubleshooting') === 'linear' ? 'Escalation:' : 'Failure:'}
                             </span>
                             {step.failure_triggers.slice(0, 3).map((trigger, i) => (
                               <Badge key={i} variant="danger" size="sm">{trigger}</Badge>
@@ -2358,6 +2402,7 @@ function SequenceDetail() {
             handleHandoffTriggerChange={handleHandoffTriggerChange}
             handleHandoffSequenceChange={handleHandoffSequenceChange}
             handleIsActiveChange={handleIsActiveChange}
+            sequenceType={sequence?.sequence_type || 'troubleshooting'}
           />
         )}
 
@@ -2379,6 +2424,7 @@ function SequenceDetail() {
             handleHandoffTriggerChange={handleHandoffTriggerChange}
             handleHandoffSequenceChange={handleHandoffSequenceChange}
             handleIsActiveChange={handleIsActiveChange}
+            sequenceType={sequence?.sequence_type || 'troubleshooting'}
           />
         )}
 
@@ -2978,6 +3024,17 @@ function SequenceDetail() {
               { value: 'Mechanical', label: 'Mechanical' },
               { value: 'Other', label: 'Other' },
             ]}
+          />
+          <FormField
+            label="Sequence Type"
+            type="select"
+            value={metadataForm.sequenceType}
+            onChange={(e) => setMetadataForm({ ...metadataForm, sequenceType: e.target.value })}
+            options={[
+              { value: 'troubleshooting', label: 'Troubleshooting' },
+              { value: 'linear', label: 'Linear' },
+            ]}
+            helpText="Troubleshooting: step-by-step issue diagnosis. Linear: walkthrough guide (e.g., onboarding)."
           />
           <div style={{ display: 'flex', gap: theme.spacing.md, justifyContent: 'flex-end' }}>
             <button

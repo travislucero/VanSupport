@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth.jsx';
 import Sidebar from '../components/Sidebar';
@@ -17,6 +17,7 @@ function CreateSequence() {
     displayName: '',
     description: '',
     category: '',
+    sequenceType: 'troubleshooting',
     messageTemplate: '',
     docUrl: '',
     docTitle: '',
@@ -24,10 +25,20 @@ function CreateSequence() {
     failureTriggers: '',
   });
 
+  // Derived state
+  const isLinear = formData.sequenceType === 'linear';
+
   // UI state
   const [errors, setErrors] = useState({});
   const [globalError, setGlobalError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Clear success triggers when switching to linear
+  useEffect(() => {
+    if (isLinear) {
+      setFormData(prev => ({ ...prev, successTriggers: '' }));
+    }
+  }, [isLinear]);
 
   // Parse comma-separated triggers into array of badges
   const parseTriggers = (value) => {
@@ -93,13 +104,13 @@ function CreateSequence() {
       newErrors.docTitle = 'Document title is required';
     }
 
-    // Validate success triggers
-    if (successTriggerList.length === 0) {
+    // Validate success triggers (not required for linear sequences)
+    if (!isLinear && successTriggerList.length === 0) {
       newErrors.successTriggers = 'At least one success trigger is required';
     }
 
-    // Validate failure triggers
-    if (failureTriggerList.length === 0) {
+    // Validate failure triggers (optional for linear sequences)
+    if (!isLinear && failureTriggerList.length === 0) {
       newErrors.failureTriggers = 'At least one failure trigger is required';
     }
 
@@ -128,6 +139,7 @@ function CreateSequence() {
           name: formData.displayName,
           description: formData.description,
           category: formData.category,
+          sequence_type: formData.sequenceType,
           first_step: {
             message: formData.messageTemplate,
             doc_url: formData.docUrl,
@@ -392,12 +404,74 @@ function CreateSequence() {
                   </p>
                 )}
               </div>
+
+              {/* Sequence Type */}
+              <div>
+                <label
+                  style={{
+                    display: 'block',
+                    marginBottom: theme.spacing.sm,
+                    fontSize: theme.fontSize.sm,
+                    fontWeight: theme.fontWeight.medium,
+                    color: theme.colors.text.primary,
+                  }}
+                >
+                  Sequence Type
+                </label>
+                <div style={{ display: 'flex', gap: theme.spacing.lg }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs, cursor: 'pointer' }}>
+                    <input
+                      type="radio"
+                      name="sequenceType"
+                      value="troubleshooting"
+                      checked={formData.sequenceType === 'troubleshooting'}
+                      onChange={(e) => handleInputChange('sequenceType', e.target.value)}
+                      disabled={loading}
+                    />
+                    <span style={{ fontSize: theme.fontSize.base, color: theme.colors.text.primary }}>Troubleshooting</span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs, cursor: 'pointer' }}>
+                    <input
+                      type="radio"
+                      name="sequenceType"
+                      value="linear"
+                      checked={formData.sequenceType === 'linear'}
+                      onChange={(e) => handleInputChange('sequenceType', e.target.value)}
+                      disabled={loading}
+                    />
+                    <span style={{ fontSize: theme.fontSize.base, color: theme.colors.text.primary }}>Linear</span>
+                  </label>
+                </div>
+                <p style={{ margin: `${theme.spacing.xs} 0 0 0`, fontSize: theme.fontSize.sm, color: theme.colors.text.tertiary }}>
+                  Troubleshooting: step-by-step issue diagnosis. Linear: walkthrough guide (e.g., onboarding).
+                </p>
+              </div>
             </div>
           </Card>
 
           {/* Section 2: First Step */}
           <Card title="First Step" style={{ marginBottom: theme.spacing.lg }}>
             <div style={{ display: 'grid', gap: theme.spacing.lg }}>
+              {/* Linear sequence info banner */}
+              {isLinear && (
+                <div
+                  style={{
+                    padding: theme.spacing.md,
+                    backgroundColor: '#eff6ff',
+                    border: '1px solid #bfdbfe',
+                    borderRadius: theme.radius.md,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: theme.spacing.sm,
+                  }}
+                >
+                  <AlertCircle size={18} color="#3b82f6" />
+                  <span style={{ color: '#1e40af', fontSize: theme.fontSize.sm }}>
+                    Linear sequences auto-advance on any customer response. You only need escalation triggers.
+                  </span>
+                </div>
+              )}
+
               {/* Message Template */}
               <div>
                 <label
@@ -527,91 +601,93 @@ function CreateSequence() {
                 )}
               </div>
 
-              {/* Success Triggers */}
-              <div>
-                <label
-                  htmlFor="successTriggers"
-                  style={{
-                    display: 'block',
-                    marginBottom: theme.spacing.xs,
-                    fontSize: theme.fontSize.sm,
-                    fontWeight: theme.fontWeight.medium,
-                    color: theme.colors.text.primary,
-                  }}
-                >
-                  Success Triggers <span style={{ color: theme.colors.accent.danger }}>*</span>
-                </label>
-                <input
-                  id="successTriggers"
-                  type="text"
-                  value={formData.successTriggers}
-                  onChange={(e) => handleInputChange('successTriggers', e.target.value)}
-                  placeholder="FIXED, YES, WORKING, DONE"
-                  disabled={loading}
-                  style={{
-                    width: '100%',
-                    padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-                    border: `1px solid ${errors.successTriggers ? theme.colors.accent.danger : theme.colors.border.light}`,
-                    borderRadius: theme.radius.md,
-                    fontSize: theme.fontSize.base,
-                    color: theme.colors.text.primary,
-                    backgroundColor: loading ? theme.colors.background.tertiary : theme.colors.background.primary,
-                    outline: 'none',
-                  }}
-                  onFocus={(e) => !errors.successTriggers && (e.target.style.borderColor = theme.colors.accent.primary)}
-                  onBlur={(e) => (e.target.style.borderColor = errors.successTriggers ? theme.colors.accent.danger : theme.colors.border.light)}
-                />
-                {errors.successTriggers ? (
-                  <p style={{ margin: `${theme.spacing.xs} 0 0 0`, fontSize: theme.fontSize.sm, color: theme.colors.accent.danger }}>
-                    {errors.successTriggers}
-                  </p>
-                ) : (
-                  <p style={{ margin: `${theme.spacing.xs} 0 0 0`, fontSize: theme.fontSize.sm, color: theme.colors.text.tertiary }}>
-                    Comma-separated responses meaning 'problem fixed'
-                  </p>
-                )}
-                {/* Success Trigger Badges */}
-                {successTriggerList.length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: theme.spacing.xs, marginTop: theme.spacing.sm }}>
-                    {successTriggerList.map((trigger, index) => (
-                      <span
-                        key={index}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: theme.spacing.xs,
-                          padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
-                          backgroundColor: theme.colors.accent.success,
-                          color: '#ffffff',
-                          borderRadius: theme.radius.full,
-                          fontSize: theme.fontSize.sm,
-                          fontWeight: theme.fontWeight.medium,
-                        }}
-                      >
-                        {trigger}
-                        <button
-                          type="button"
-                          onClick={() => removeTrigger('successTriggers', trigger)}
-                          disabled={loading}
+              {/* Success Triggers — hidden for linear sequences */}
+              {!isLinear && (
+                <div>
+                  <label
+                    htmlFor="successTriggers"
+                    style={{
+                      display: 'block',
+                      marginBottom: theme.spacing.xs,
+                      fontSize: theme.fontSize.sm,
+                      fontWeight: theme.fontWeight.medium,
+                      color: theme.colors.text.primary,
+                    }}
+                  >
+                    Success Triggers <span style={{ color: theme.colors.accent.danger }}>*</span>
+                  </label>
+                  <input
+                    id="successTriggers"
+                    type="text"
+                    value={formData.successTriggers}
+                    onChange={(e) => handleInputChange('successTriggers', e.target.value)}
+                    placeholder="FIXED, YES, WORKING, DONE"
+                    disabled={loading}
+                    style={{
+                      width: '100%',
+                      padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                      border: `1px solid ${errors.successTriggers ? theme.colors.accent.danger : theme.colors.border.light}`,
+                      borderRadius: theme.radius.md,
+                      fontSize: theme.fontSize.base,
+                      color: theme.colors.text.primary,
+                      backgroundColor: loading ? theme.colors.background.tertiary : theme.colors.background.primary,
+                      outline: 'none',
+                    }}
+                    onFocus={(e) => !errors.successTriggers && (e.target.style.borderColor = theme.colors.accent.primary)}
+                    onBlur={(e) => (e.target.style.borderColor = errors.successTriggers ? theme.colors.accent.danger : theme.colors.border.light)}
+                  />
+                  {errors.successTriggers ? (
+                    <p style={{ margin: `${theme.spacing.xs} 0 0 0`, fontSize: theme.fontSize.sm, color: theme.colors.accent.danger }}>
+                      {errors.successTriggers}
+                    </p>
+                  ) : (
+                    <p style={{ margin: `${theme.spacing.xs} 0 0 0`, fontSize: theme.fontSize.sm, color: theme.colors.text.tertiary }}>
+                      Comma-separated responses meaning 'problem fixed'
+                    </p>
+                  )}
+                  {/* Success Trigger Badges */}
+                  {successTriggerList.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: theme.spacing.xs, marginTop: theme.spacing.sm }}>
+                      {successTriggerList.map((trigger, index) => (
+                        <span
+                          key={index}
                           style={{
-                            background: 'none',
-                            border: 'none',
-                            padding: 0,
-                            cursor: 'pointer',
-                            display: 'flex',
+                            display: 'inline-flex',
                             alignItems: 'center',
+                            gap: theme.spacing.xs,
+                            padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
+                            backgroundColor: theme.colors.accent.success,
                             color: '#ffffff',
+                            borderRadius: theme.radius.full,
+                            fontSize: theme.fontSize.sm,
+                            fontWeight: theme.fontWeight.medium,
                           }}
                         >
-                          <X size={14} />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
+                          {trigger}
+                          <button
+                            type="button"
+                            onClick={() => removeTrigger('successTriggers', trigger)}
+                            disabled={loading}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              padding: 0,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              color: '#ffffff',
+                            }}
+                          >
+                            <X size={14} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
-              {/* Failure Triggers */}
+              {/* Failure / Escalation Triggers */}
               <div>
                 <label
                   htmlFor="failureTriggers"
@@ -623,14 +699,15 @@ function CreateSequence() {
                     color: theme.colors.text.primary,
                   }}
                 >
-                  Failure Triggers <span style={{ color: theme.colors.accent.danger }}>*</span>
+                  {isLinear ? 'Escalation Triggers' : 'Failure Triggers'}{' '}
+                  {!isLinear && <span style={{ color: theme.colors.accent.danger }}>*</span>}
                 </label>
                 <input
                   id="failureTriggers"
                   type="text"
                   value={formData.failureTriggers}
                   onChange={(e) => handleInputChange('failureTriggers', e.target.value)}
-                  placeholder="NO, STILL BROKEN, NOT WORKING, HELP"
+                  placeholder={isLinear ? 'HELP, STUCK, CONFUSED' : 'NO, STILL BROKEN, NOT WORKING, HELP'}
                   disabled={loading}
                   style={{
                     width: '100%',
@@ -651,7 +728,9 @@ function CreateSequence() {
                   </p>
                 ) : (
                   <p style={{ margin: `${theme.spacing.xs} 0 0 0`, fontSize: theme.fontSize.sm, color: theme.colors.text.tertiary }}>
-                    Comma-separated responses meaning 'still broken'
+                    {isLinear
+                      ? 'Optional keywords like HELP or STUCK that trigger escalation to a technician'
+                      : "Comma-separated responses meaning 'still broken'"}
                   </p>
                 )}
                 {/* Failure Trigger Badges */}

@@ -68,9 +68,10 @@ const isValidUrl = (urlString) => {
 };
 
 // Fix #1: TriggerInput extracted outside the component, receives addTrigger/removeTrigger as props
-const TriggerInput = ({ stepNum, type, triggers, addTrigger, removeTrigger }) => {
+const TriggerInput = ({ stepNum, type, triggers, addTrigger, removeTrigger, label }) => {
   const [inputValue, setInputValue] = useState('');
   const isSuccess = type === 'success';
+  const displayLabel = label || (isSuccess ? 'Success Triggers' : 'Failure Triggers');
 
   return (
     <div style={{ marginBottom: theme.spacing.md }}>
@@ -85,7 +86,7 @@ const TriggerInput = ({ stepNum, type, triggers, addTrigger, removeTrigger }) =>
           letterSpacing: '0.05em',
         }}
       >
-        {isSuccess ? 'Success Triggers' : 'Failure Triggers'}
+        {displayLabel}
       </label>
       <div
         style={{
@@ -199,6 +200,7 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
     sequence_name: '',
     description: '',
     category: 'Other',
+    sequence_type: 'troubleshooting',
     keywords: [],
     steps: [],
     urls: [],
@@ -501,6 +503,7 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
         display_name: sequenceData.sequence_name,
         description: sequenceData.description,
         category: sequenceData.category,
+        sequence_type: sequenceData.sequence_type,
         is_active: createAsActive,
         steps: sequenceData.steps,
         urls: sequenceData.urls.map(({ _id, ...rest }) => rest),
@@ -1220,6 +1223,40 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                     ))}
                   </select>
                 </div>
+
+                <div>
+                  <label
+                    style={fieldLabelStyle}
+                  >
+                    Sequence Type
+                  </label>
+                  <select
+                    value={sequenceData.sequence_type}
+                    onChange={(e) => {
+                      const newType = e.target.value;
+                      setSequenceData((prev) => ({
+                        ...prev,
+                        sequence_type: newType,
+                        // Clear success_triggers from all steps when switching to linear
+                        ...(newType === 'linear' ? {
+                          steps: prev.steps.map(step => ({ ...step, success_triggers: [] })),
+                        } : {}),
+                      }));
+                    }}
+                    style={{ ...inputStyle, fontSize: theme.fontSize.base, cursor: 'pointer' }}
+                  >
+                    <option value="troubleshooting">Troubleshooting</option>
+                    <option value="linear">Linear</option>
+                  </select>
+                  <p style={{
+                    margin: 0,
+                    marginTop: theme.spacing.xs,
+                    fontSize: theme.fontSize.xs,
+                    color: theme.colors.text.tertiary,
+                  }}>
+                    Troubleshooting: step-by-step issue diagnosis. Linear: walkthrough guide (e.g., onboarding).
+                  </p>
+                </div>
               </div>
 
               <div>
@@ -1351,6 +1388,27 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                   </button>
                 </div>
 
+                {/* Linear sequence info banner */}
+                {sequenceData.sequence_type === 'linear' && (
+                  <div
+                    style={{
+                      padding: theme.spacing.md,
+                      backgroundColor: '#eff6ff',
+                      border: '1px solid #bfdbfe',
+                      borderRadius: theme.radius.md,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: theme.spacing.sm,
+                      marginBottom: theme.spacing.md,
+                    }}
+                  >
+                    <AlertCircle size={18} color="#3b82f6" style={{ flexShrink: 0 }} />
+                    <span style={{ color: '#1e40af', fontSize: theme.fontSize.sm }}>
+                      Linear sequences auto-advance on any customer response. You only need escalation triggers.
+                    </span>
+                  </div>
+                )}
+
                 <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
                   {sequenceData.steps.map((step) => (
                     <div
@@ -1479,13 +1537,15 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                           </div>
 
                           {/* Fix #1: Pass addTrigger and removeTrigger as props */}
-                          <TriggerInput
-                            stepNum={step.step_num}
-                            type="success"
-                            triggers={step.success_triggers}
-                            addTrigger={addTrigger}
-                            removeTrigger={removeTrigger}
-                          />
+                          {sequenceData.sequence_type !== 'linear' && (
+                            <TriggerInput
+                              stepNum={step.step_num}
+                              type="success"
+                              triggers={step.success_triggers}
+                              addTrigger={addTrigger}
+                              removeTrigger={removeTrigger}
+                            />
+                          )}
 
                           <TriggerInput
                             stepNum={step.step_num}
@@ -1493,6 +1553,7 @@ const ConvertToSequenceModal = ({ ticketId, ticketNumber, onClose, onSuccess }) 
                             triggers={step.failure_triggers}
                             addTrigger={addTrigger}
                             removeTrigger={removeTrigger}
+                            label={sequenceData.sequence_type === 'linear' ? 'Escalation Triggers' : undefined}
                           />
 
                           {/* Document URL and Title */}
