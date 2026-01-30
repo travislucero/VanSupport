@@ -29,7 +29,8 @@ BEGIN
     INTO v_current_step, v_sequence_key
     FROM sequence_sessions ss
     WHERE ss.id = p_sequence_session_id
-    AND ss.completed_at IS NULL;
+    AND ss.completed_at IS NULL
+    FOR UPDATE;
 
     IF NOT FOUND THEN
         RETURN QUERY SELECT FALSE, NULL::INTEGER, 'Sequence not found or already completed'::TEXT,
@@ -148,7 +149,8 @@ BEGIN
     SELECT ss.phone_number, ss.van_id, COALESCE(ss.handoff_count, 0)
     INTO v_phone, v_van_id, v_handoff_count
     FROM sequence_sessions ss
-    WHERE ss.id = p_current_session_id;
+    WHERE ss.id = p_current_session_id
+    FOR UPDATE;
 
     IF NOT FOUND THEN
         RETURN QUERY SELECT FALSE, NULL::UUID, 'Current session not found'::TEXT, NULL::TEXT, NULL::TEXT;
@@ -222,7 +224,9 @@ BEGIN
     LEFT JOIN sequences_metadata sm ON ss.sequence_key = sm.sequence_key
     LEFT JOIN vans v ON ss.van_id = v.id
     LEFT JOIN owners o ON v.owner_id = o.id
-    WHERE ss.id = p_sequence_session_id;
+    WHERE ss.id = p_sequence_session_id
+    AND ss.completed_at IS NULL
+    FOR UPDATE OF ss;
 
     IF NOT FOUND THEN
         RETURN QUERY SELECT FALSE, NULL::UUID, NULL::INTEGER, 'Session not found'::TEXT, NULL::TEXT, NULL::TEXT;

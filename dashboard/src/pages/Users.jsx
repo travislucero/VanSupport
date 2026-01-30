@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth.jsx';
 import Sidebar from '../components/Sidebar';
 import Card from '../components/Card';
@@ -61,6 +61,10 @@ function Users() {
   // Validation state
   const [formErrors, setFormErrors] = useState({});
 
+  // Timeout refs for message cleanup
+  const successTimeoutRef = useRef(null);
+  const errorTimeoutRef = useRef(null);
+
   useEffect(() => {
     fetchUsers();
     fetchRoles();
@@ -70,7 +74,6 @@ function Users() {
     setLoading(true);
     setError('');
     try {
-      console.log('📋 Fetching users...');
       const response = await fetch('/api/users', {
         credentials: 'include',
       });
@@ -80,10 +83,8 @@ function Users() {
       }
 
       const data = await response.json();
-      console.log('📦 Users data:', data);
       setUsers(data);
     } catch (err) {
-      console.error('💥 Error fetching users:', err);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -92,7 +93,6 @@ function Users() {
 
   const fetchRoles = async () => {
     try {
-      console.log('🔐 Fetching roles...');
       const response = await fetch('/api/roles', {
         credentials: 'include',
       });
@@ -108,10 +108,8 @@ function Users() {
       }
 
       const data = await response.json();
-      console.log('📦 Roles data:', data);
       setRoles(data);
     } catch (err) {
-      console.error('💥 Error fetching roles:', err);
       // Fallback to default roles
       setRoles([
         { name: 'admin', description: 'Full system access' },
@@ -178,7 +176,16 @@ function Users() {
 
   const showSuccess = useCallback((message) => {
     setSuccess(message);
-    setTimeout(() => setSuccess(''), 3000);
+    clearTimeout(successTimeoutRef.current);
+    successTimeoutRef.current = setTimeout(() => setSuccess(''), 3000);
+  }, []);
+
+  // Clean up timeouts on unmount
+  useEffect(() => {
+    return () => {
+      clearTimeout(successTimeoutRef.current);
+      clearTimeout(errorTimeoutRef.current);
+    };
   }, []);
 
   const handleToggleNotify = useCallback(async (targetUser) => {
@@ -199,17 +206,16 @@ function Users() {
       showSuccess(`Ticket notifications ${newValue ? 'enabled' : 'disabled'} for ${targetUser.email}`);
     } catch (err) {
       setError(err.message);
-      setTimeout(() => setError(''), 5000);
+      clearTimeout(errorTimeoutRef.current);
+      errorTimeoutRef.current = setTimeout(() => setError(''), 5000);
     }
   }, [showSuccess]);
 
   const handleCreateUser = useCallback(async () => {
-    console.log('🔍 handleCreateUser called');
-    console.log('📝 userForm:', userForm);
-
     if (!validateForm(false)) {
       setError('Please fix validation errors');
-      setTimeout(() => setError(''), 5000);
+      clearTimeout(errorTimeoutRef.current);
+      errorTimeoutRef.current = setTimeout(() => setError(''), 5000);
       return;
     }
 
@@ -219,13 +225,11 @@ function Users() {
         '⚠️ You are creating an admin user with full system access. Are you sure?'
       );
       if (!confirmed) {
-        console.log('❌ Admin user creation cancelled by user');
         return;
       }
     }
 
     try {
-      console.log('🚀 Submitting to API...');
       const response = await fetch('/api/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -233,9 +237,7 @@ function Users() {
         body: JSON.stringify(userForm),
       });
 
-      console.log('📡 Response status:', response.status);
       const data = await response.json();
-      console.log('📦 Response data:', data);
 
       if (!response.ok) {
         throw new Error(data.error || 'Failed to create user');
@@ -246,28 +248,25 @@ function Users() {
       resetForm();
       showSuccess('User created successfully');
     } catch (err) {
-      console.error('💥 Error creating user:', err);
       setError(err.message);
-      setTimeout(() => setError(''), 5000);
+      clearTimeout(errorTimeoutRef.current);
+      errorTimeoutRef.current = setTimeout(() => setError(''), 5000);
     }
   }, [userForm, validateForm, resetForm, showSuccess]);
 
   const handleUpdateUser = useCallback(async () => {
-    console.log('🔍 handleUpdateUser called');
-    console.log('📝 editingUser:', editingUser);
-    console.log('📝 userForm:', userForm);
-
     if (!validateForm(true)) {
-      console.log('❌ Validation failed');
       setError('Please fix validation errors');
-      setTimeout(() => setError(''), 5000);
+      clearTimeout(errorTimeoutRef.current);
+      errorTimeoutRef.current = setTimeout(() => setError(''), 5000);
       return;
     }
 
     // Check if trying to edit own role
     if (editingUser.id === user.id && userForm.role_name !== editingUser.role?.name) {
       setError('Cannot modify your own role');
-      setTimeout(() => setError(''), 5000);
+      clearTimeout(errorTimeoutRef.current);
+      errorTimeoutRef.current = setTimeout(() => setError(''), 5000);
       return;
     }
 
@@ -277,13 +276,11 @@ function Users() {
         '⚠️ You are assigning admin role with full system access. Are you sure?'
       );
       if (!confirmed) {
-        console.log('❌ Admin role assignment cancelled by user');
         return;
       }
     }
 
     try {
-      console.log('🚀 Submitting to API...');
       // Don't send password for updates
       const { password, ...updateData } = userForm;
 
@@ -294,9 +291,7 @@ function Users() {
         body: JSON.stringify(updateData),
       });
 
-      console.log('📡 Response status:', response.status);
       const data = await response.json();
-      console.log('📦 Response data:', data);
 
       if (!response.ok) {
         throw new Error(data.error || 'Failed to update user');
@@ -308,50 +303,42 @@ function Users() {
       resetForm();
       showSuccess('User updated successfully');
     } catch (err) {
-      console.error('💥 Error updating user:', err);
       setError(err.message);
-      setTimeout(() => setError(''), 5000);
+      clearTimeout(errorTimeoutRef.current);
+      errorTimeoutRef.current = setTimeout(() => setError(''), 5000);
     }
   }, [editingUser, userForm, validateForm, resetForm, showSuccess, user]);
 
   const handleDeactivateUser = useCallback(async () => {
     try {
-      console.log('🔍 handleDeactivateUser called');
-      console.log('📝 deactivatingUser:', deactivatingUser);
-
       // Check if trying to deactivate self
       if (deactivatingUser.id === user.id) {
         setError('Cannot deactivate your own account');
-        setTimeout(() => setError(''), 5000);
+        clearTimeout(errorTimeoutRef.current);
+        errorTimeoutRef.current = setTimeout(() => setError(''), 5000);
         setDeactivateModalOpen(false);
         setDeactivatingUser(null);
         return;
       }
 
-      console.log('🚀 Sending deactivation request...');
       const response = await fetch(`/api/users/${deactivatingUser.id}`, {
         method: 'DELETE',
         credentials: 'include',
       });
-
-      console.log('📡 Response status:', response.status);
 
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.error || 'Failed to deactivate user');
       }
 
-      const data = await response.json();
-      console.log('📦 Response data:', data);
-
       await fetchUsers();
       setDeactivateModalOpen(false);
       setDeactivatingUser(null);
       showSuccess(`User ${deactivatingUser.email} deactivated successfully!`);
     } catch (err) {
-      console.error('💥 Error deactivating user:', err);
       setError(err.message);
-      setTimeout(() => setError(''), 5000);
+      clearTimeout(errorTimeoutRef.current);
+      errorTimeoutRef.current = setTimeout(() => setError(''), 5000);
     }
   }, [deactivatingUser, showSuccess, user]);
 
@@ -382,9 +369,6 @@ function Users() {
 
   const handleResetPassword = useCallback(async () => {
     try {
-      console.log('🔑 handleResetPassword called');
-      console.log('📝 resettingUser:', resettingUser);
-
       setPasswordError('');
 
       // Validation
@@ -393,7 +377,6 @@ function Users() {
         return;
       }
 
-      console.log('🚀 Sending password reset request...');
       const response = await fetch(`/api/users/${resettingUser.id}/reset-password`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -401,9 +384,7 @@ function Users() {
         body: JSON.stringify({ new_password: newPassword })
       });
 
-      console.log('📡 Response status:', response.status);
       const data = await response.json();
-      console.log('📦 Response data:', data);
 
       if (!response.ok) {
         throw new Error(data.error || 'Failed to reset password');
@@ -416,7 +397,6 @@ function Users() {
       setPasswordError('');
 
     } catch (err) {
-      console.error('💥 Error resetting password:', err);
       setPasswordError(err.message || 'Failed to reset password');
     }
   }, [resettingUser, newPassword, showSuccess]);

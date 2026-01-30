@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth.jsx';
 import Sidebar from '../components/Sidebar';
@@ -31,6 +31,8 @@ import {
   DollarSign,
   AlertCircle,
 } from 'lucide-react';
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 // Helper function to format external URLs
 const formatExternalUrl = (url) => {
@@ -829,6 +831,14 @@ function SequenceDetail() {
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
 
+  // Timeout ref for success message cleanup
+  const successTimeoutRef = useRef(null);
+
+  // Clean up success timeout on unmount
+  useEffect(() => {
+    return () => clearTimeout(successTimeoutRef.current);
+  }, []);
+
   // Modal state
   const [editMetadataOpen, setEditMetadataOpen] = useState(false);
   const [addStepOpen, setAddStepOpen] = useState(false);
@@ -897,7 +907,7 @@ function SequenceDetail() {
       setLoading(true);
       setError('');
       try {
-        const response = await fetch(`/api/sequences/${key}`, {
+        const response = await fetch(`${API_BASE_URL}/api/sequences/${key}`, {
           credentials: 'include',
         });
 
@@ -926,7 +936,7 @@ function SequenceDetail() {
 
     const loadAllSequences = async () => {
       try {
-        const response = await fetch('/api/sequences', {
+        const response = await fetch(`${API_BASE_URL}/api/sequences`, {
           credentials: 'include',
         });
         if (response.ok) {
@@ -940,7 +950,7 @@ function SequenceDetail() {
 
     const loadTriggerPatterns = async () => {
       try {
-        const response = await fetch(`/api/patterns?sequence_key=${key}`, {
+        const response = await fetch(`${API_BASE_URL}/api/patterns?sequence_key=${key}`, {
           credentials: 'include',
         });
         if (response.ok) {
@@ -955,7 +965,7 @@ function SequenceDetail() {
     const loadSupplies = async () => {
       setSuppliesLoading(true);
       try {
-        const response = await fetch(`/api/sequences/${key}/supplies`, {
+        const response = await fetch(`${API_BASE_URL}/api/sequences/${key}/supplies`, {
           credentials: 'include',
         });
         if (response.ok) {
@@ -984,7 +994,7 @@ function SequenceDetail() {
     }
     setError('');
     try {
-      const response = await fetch(`/api/sequences/${key}`, {
+      const response = await fetch(`${API_BASE_URL}/api/sequences/${key}`, {
         credentials: 'include',
       });
 
@@ -1015,7 +1025,7 @@ function SequenceDetail() {
 
   const fetchAllSequences = async () => {
     try {
-      const response = await fetch('/api/sequences', {
+      const response = await fetch(`${API_BASE_URL}/api/sequences`, {
         credentials: 'include',
       });
       if (response.ok) {
@@ -1029,7 +1039,7 @@ function SequenceDetail() {
 
   const fetchTriggerPatterns = async () => {
     try {
-      const response = await fetch(`/api/patterns?sequence_key=${key}`, {
+      const response = await fetch(`${API_BASE_URL}/api/patterns?sequence_key=${key}`, {
         credentials: 'include',
       });
       if (response.ok) {
@@ -1044,7 +1054,7 @@ function SequenceDetail() {
   const fetchSupplies = async () => {
     setSuppliesLoading(true);
     try {
-      const response = await fetch(`/api/sequences/${key}/supplies`, {
+      const response = await fetch(`${API_BASE_URL}/api/sequences/${key}/supplies`, {
         credentials: 'include',
       });
       if (response.ok) {
@@ -1099,7 +1109,7 @@ function SequenceDetail() {
 
   const addTool = async () => {
     try {
-      const response = await fetch(`/api/sequences/${key}/tools`, {
+      const response = await fetch(`${API_BASE_URL}/api/sequences/${key}/tools`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -1122,7 +1132,7 @@ function SequenceDetail() {
 
   const updateTool = async () => {
     try {
-      const response = await fetch(`/api/sequences/tools/${editingTool.id}`, {
+      const response = await fetch(`${API_BASE_URL}/api/sequences/tools/${editingTool.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -1145,7 +1155,7 @@ function SequenceDetail() {
 
   const deleteTool = async () => {
     try {
-      const response = await fetch(`/api/sequences/tools/${deletingTool.id}`, {
+      const response = await fetch(`${API_BASE_URL}/api/sequences/tools/${deletingTool.id}`, {
         method: 'DELETE',
         credentials: 'include',
       });
@@ -1206,7 +1216,7 @@ function SequenceDetail() {
 
   const addPart = async () => {
     try {
-      const response = await fetch(`/api/sequences/${key}/parts`, {
+      const response = await fetch(`${API_BASE_URL}/api/sequences/${key}/parts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -1232,7 +1242,7 @@ function SequenceDetail() {
 
   const updatePart = async () => {
     try {
-      const response = await fetch(`/api/sequences/parts/${editingPart.id}`, {
+      const response = await fetch(`${API_BASE_URL}/api/sequences/parts/${editingPart.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -1258,7 +1268,7 @@ function SequenceDetail() {
 
   const deletePart = async () => {
     try {
-      const response = await fetch(`/api/sequences/parts/${deletingPart.id}`, {
+      const response = await fetch(`${API_BASE_URL}/api/sequences/parts/${deletingPart.id}`, {
         method: 'DELETE',
         credentials: 'include',
       });
@@ -1280,7 +1290,7 @@ function SequenceDetail() {
   const validateSequence = async () => {
     setValidating(true);
     try {
-      const response = await fetch(`/api/sequences/${key}/validate`, {
+      const response = await fetch(`${API_BASE_URL}/api/sequences/${key}/validate`, {
         credentials: 'include',
       });
 
@@ -1307,7 +1317,7 @@ function SequenceDetail() {
 
   const toggleSequenceActive = async () => {
     try {
-      const response = await fetch(`/api/sequences/${key}/toggle`, {
+      const response = await fetch(`${API_BASE_URL}/api/sequences/${key}/toggle`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -1328,7 +1338,7 @@ function SequenceDetail() {
 
   const updateMetadata = async () => {
     try {
-      const response = await fetch(`/api/sequences/${key}`, {
+      const response = await fetch(`${API_BASE_URL}/api/sequences/${key}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -1355,7 +1365,7 @@ function SequenceDetail() {
 
   const addStep = async () => {
     try {
-      const response = await fetch(`/api/sequences/${key}/steps`, {
+      const response = await fetch(`${API_BASE_URL}/api/sequences/${key}/steps`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -1390,7 +1400,7 @@ function SequenceDetail() {
 
   const updateStep = async () => {
     try {
-      const response = await fetch(`/api/sequences/${key}/steps/${editingStep.step_num}`, {
+      const response = await fetch(`${API_BASE_URL}/api/sequences/${key}/steps/${editingStep.step_num}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -1422,7 +1432,7 @@ function SequenceDetail() {
   };
 
   const updateStepHandoff = async (stepNum) => {
-    await fetch(`/api/sequences/${key}/steps/${stepNum}`, {
+    await fetch(`${API_BASE_URL}/api/sequences/${key}/steps/${stepNum}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -1435,7 +1445,7 @@ function SequenceDetail() {
 
   const deleteStep = async () => {
     try {
-      const response = await fetch(`/api/sequences/${key}/steps/${deletingStep.step_num}`, {
+      const response = await fetch(`${API_BASE_URL}/api/sequences/${key}/steps/${deletingStep.step_num}`, {
         method: 'DELETE',
         credentials: 'include',
       });
@@ -1456,7 +1466,7 @@ function SequenceDetail() {
 
   const deleteSequence = async () => {
     try {
-      const response = await fetch(`/api/sequences/${key}`, {
+      const response = await fetch(`${API_BASE_URL}/api/sequences/${key}`, {
         method: 'DELETE',
         credentials: 'include',
       });
@@ -1488,7 +1498,7 @@ function SequenceDetail() {
   const swapSteps = async (step1, step2) => {
     try {
       // Swap content by updating step1's position with step2's content
-      const response1 = await fetch(`/api/sequences/${key}/steps/${step1.step_num}`, {
+      const response1 = await fetch(`${API_BASE_URL}/api/sequences/${key}/steps/${step1.step_num}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -1509,7 +1519,7 @@ function SequenceDetail() {
       }
 
       // Update step2's position with step1's content
-      const response2 = await fetch(`/api/sequences/${key}/steps/${step2.step_num}`, {
+      const response2 = await fetch(`${API_BASE_URL}/api/sequences/${key}/steps/${step2.step_num}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -1540,7 +1550,7 @@ function SequenceDetail() {
 
   const toggleStepActive = async (step) => {
     try {
-      const response = await fetch(`/api/sequences/${key}/steps/${step.step_num}`, {
+      const response = await fetch(`${API_BASE_URL}/api/sequences/${key}/steps/${step.step_num}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -1568,7 +1578,8 @@ function SequenceDetail() {
 
   const showSuccess = (message) => {
     setSuccessMessage(message);
-    setTimeout(() => setSuccessMessage(''), 3000);
+    clearTimeout(successTimeoutRef.current);
+    successTimeoutRef.current = setTimeout(() => setSuccessMessage(''), 3000);
   };
 
   const resetStepForm = () => {

@@ -18,7 +18,7 @@ import {
 import { Phone, CheckCircle, Clock, Calendar, Loader2 } from "lucide-react";
 import Login from "./Login";
 import { useAuth } from "./hooks/useAuth.jsx";
-import Sidebar from "./components/Sidebar";
+import Sidebar, { SIDEBAR_WIDTH } from "./components/Sidebar";
 import Card from "./components/Card";
 import StatCard from "./components/StatCard";
 import Badge from "./components/Badge";
@@ -364,7 +364,7 @@ function App() {
     <div style={{ display: "flex", minHeight: "100vh", backgroundColor: theme.colors.background.page }}>
       <Sidebar user={user} onLogout={logout} hasRole={hasRole} isSiteAdmin={isSiteAdmin} />
 
-      <div style={{ marginLeft: "260px", flex: 1, padding: theme.spacing['2xl'] }}>
+      <div style={{ marginLeft: SIDEBAR_WIDTH, flex: 1, padding: theme.spacing['2xl'] }}>
         {/* Header */}
         <div style={{
           marginBottom: theme.spacing['2xl'],

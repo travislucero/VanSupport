@@ -2,6 +2,14 @@ import React from 'react';
 import { Loader2 } from 'lucide-react';
 import { theme } from '../styles/theme';
 
+/** Darken a hex color by a given amount (0-255). Used for hover states without a dedicated theme token. */
+const darkenHex = (hex, amount = 30) => {
+  const r = Math.max(0, parseInt(hex.slice(1, 3), 16) - amount);
+  const g = Math.max(0, parseInt(hex.slice(3, 5), 16) - amount);
+  const b = Math.max(0, parseInt(hex.slice(5, 7), 16) - amount);
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+};
+
 const Button = ({
   children,
   variant = 'primary',
@@ -47,7 +55,7 @@ const Button = ({
     },
     danger: {
       background: theme.colors.accent.danger,
-      backgroundHover: '#b91c1c',
+      backgroundHover: darkenHex(theme.colors.accent.danger),
       color: theme.colors.text.inverse,
       border: 'none',
     },
@@ -59,7 +67,7 @@ const Button = ({
     },
     success: {
       background: theme.colors.accent.success,
-      backgroundHover: '#047857',
+      backgroundHover: theme.colors.accent.successHover,
       color: theme.colors.text.inverse,
       border: 'none',
     },

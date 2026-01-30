@@ -7,6 +7,8 @@ import Badge from '../components/Badge';
 import { theme } from '../styles/theme';
 import { Plus, FileText, AlertCircle, X, Loader } from 'lucide-react';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+
 function CreateSequence() {
   const { user, logout, hasRole, isSiteAdmin } = useAuth();
   const navigate = useNavigate();
@@ -130,7 +132,7 @@ function CreateSequence() {
     setGlobalError('');
 
     try {
-      const response = await fetch('/api/sequences', {
+      const response = await fetch(`${API_BASE_URL}/api/sequences`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

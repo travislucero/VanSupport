@@ -1,4 +1,4 @@
-import React, { forwardRef, useState } from 'react';
+import React, { forwardRef, useState, useId } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { theme } from '../styles/theme';
 
@@ -18,6 +18,8 @@ const Select = forwardRef(({
   style = {},
   ...props
 }, ref) => {
+  const generatedId = useId();
+  const selectId = props.id || generatedId;
   const [isFocused, setIsFocused] = useState(false);
 
   const sizes = {
@@ -112,7 +114,7 @@ const Select = forwardRef(({
   return (
     <div className={className} style={styles.container}>
       {label && (
-        <label style={styles.label}>
+        <label htmlFor={selectId} style={styles.label}>
           {label}
           {required && <span style={styles.required}>*</span>}
         </label>
@@ -120,6 +122,7 @@ const Select = forwardRef(({
       <div style={styles.selectWrapper}>
         <select
           ref={ref}
+          id={selectId}
           value={value}
           onChange={onChange}
           onFocus={() => setIsFocused(true)}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth.jsx';
 import Sidebar from '../components/Sidebar';
@@ -64,6 +64,14 @@ function Vans() {
 
   // Validation state
   const [formErrors, setFormErrors] = useState({});
+
+  // Timeout ref for success message cleanup
+  const successTimeoutRef = useRef(null);
+
+  // Clean up success timeout on unmount
+  useEffect(() => {
+    return () => clearTimeout(successTimeoutRef.current);
+  }, []);
 
   // Debounce search query (500ms delay)
   useEffect(() => {
@@ -192,7 +200,8 @@ function Vans() {
 
   const showSuccess = useCallback((message) => {
     setSuccess(message);
-    setTimeout(() => setSuccess(''), 3000);
+    clearTimeout(successTimeoutRef.current);
+    successTimeoutRef.current = setTimeout(() => setSuccess(''), 3000);
   }, []);
 
   const handleCreateVan = useCallback(async () => {

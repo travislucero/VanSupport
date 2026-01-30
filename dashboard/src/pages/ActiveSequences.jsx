@@ -64,6 +64,7 @@ const ActiveSequences = () => {
 
   // Filter and sort state
   const [filterSequenceType, setFilterSequenceType] = useState('all');
+  const [filterSeqType, setFilterSeqType] = useState('all');
   const [sortBy, setSortBy] = useState('recent');
 
   // Messages state
@@ -139,11 +140,16 @@ const ActiveSequences = () => {
   const filteredAndSortedSequences = useMemo(() => {
     let result = [...sequences];
 
-    // Apply filter
+    // Apply sequence name filter
     if (filterSequenceType !== 'all') {
       result = result.filter(s =>
         (s.sequence_name === filterSequenceType) || (s.sequence_key === filterSequenceType)
       );
+    }
+
+    // Apply sequence type filter (linear/troubleshooting)
+    if (filterSeqType !== 'all') {
+      result = result.filter(s => (s.sequence_type || 'troubleshooting') === filterSeqType);
     }
 
     // Apply sort
@@ -172,7 +178,7 @@ const ActiveSequences = () => {
     }
 
     return result;
-  }, [sequences, filterSequenceType, sortBy]);
+  }, [sequences, filterSequenceType, filterSeqType, sortBy]);
 
   // Get status based on minutes since last interaction
   const getStatus = (minutesSinceLastInteraction) => {
@@ -265,11 +271,15 @@ const ActiveSequences = () => {
   const copyPhoneNumber = (phone, e) => {
     e.stopPropagation();
     const cleaned = phone.replace(/\D/g, '');
-    navigator.clipboard.writeText(cleaned).then(() => {
-      showToast('Phone number copied!', 'success');
-    }).catch(() => {
-      showToast('Failed to copy phone number', 'error');
-    });
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(cleaned).then(() => {
+        showToast('Phone number copied!', 'success');
+      }).catch(() => {
+        showToast('Failed to copy phone number', 'error');
+      });
+    } else {
+      showToast('Clipboard not available in this browser', 'error');
+    }
   };
 
   // Close sequence handler
@@ -504,6 +514,28 @@ const ActiveSequences = () => {
             </select>
           </div>
 
+          {/* Filter by sequence type (linear/troubleshooting) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+            <select
+              value={filterSeqType}
+              onChange={(e) => setFilterSeqType(e.target.value)}
+              style={{
+                padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                backgroundColor: theme.colors.background.secondary,
+                color: theme.colors.text.primary,
+                border: `1px solid ${theme.colors.border.medium}`,
+                borderRadius: theme.radius.md,
+                fontSize: theme.fontSize.sm,
+                cursor: 'pointer',
+                minWidth: '180px'
+              }}
+            >
+              <option value="all">All Types</option>
+              <option value="troubleshooting">Troubleshooting</option>
+              <option value="linear">Linear</option>
+            </select>
+          </div>
+
           {/* Sort dropdown */}
           <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
             <ArrowUpDown size={16} style={{ color: theme.colors.text.tertiary }} />
@@ -528,7 +560,7 @@ const ActiveSequences = () => {
           </div>
 
           {/* Show filtered count if filter is active */}
-          {filterSequenceType !== 'all' && (
+          {(filterSequenceType !== 'all' || filterSeqType !== 'all') && (
             <span style={{ color: theme.colors.text.tertiary, fontSize: theme.fontSize.sm }}>
               Showing {filteredAndSortedSequences.length} of {sequences.length}
             </span>
@@ -645,8 +677,17 @@ const ActiveSequences = () => {
                       }}>
                         {sequence.sequence_name || sequence.sequence_key}
                       </div>
-                      <div style={{ color: theme.colors.text.tertiary, fontSize: theme.fontSize.xs }}>
-                        Step {sequence.current_step}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.xs, marginTop: '2px' }}>
+                        <Badge
+                          variant={(sequence.sequence_type || 'troubleshooting') === 'linear' ? 'info' : 'warning'}
+                          soft
+                          size="sm"
+                        >
+                          {(sequence.sequence_type || 'troubleshooting') === 'linear' ? 'Linear' : 'Troubleshooting'}
+                        </Badge>
+                        <span style={{ color: theme.colors.text.tertiary, fontSize: theme.fontSize.xs }}>
+                          Step {sequence.current_step}
+                        </span>
                       </div>
                     </div>
 

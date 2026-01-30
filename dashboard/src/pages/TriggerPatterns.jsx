@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth.jsx';
 import Sidebar from '../components/Sidebar';
 import Card from '../components/Card';
@@ -54,6 +54,9 @@ function TriggerPatterns() {
 
   // Pattern validation state
   const [patternValidation, setPatternValidation] = useState({ valid: true, error: null, warning: null });
+
+  // Timeout ref for success message cleanup
+  const successTimeoutRef = useRef(null);
 
   useEffect(() => {
     const loadPatterns = async () => {
@@ -215,8 +218,14 @@ function TriggerPatterns() {
 
   const showSuccess = (message) => {
     setSuccess(message);
-    setTimeout(() => setSuccess(''), 3000);
+    clearTimeout(successTimeoutRef.current);
+    successTimeoutRef.current = setTimeout(() => setSuccess(''), 3000);
   };
+
+  // Clean up success timeout on unmount
+  useEffect(() => {
+    return () => clearTimeout(successTimeoutRef.current);
+  }, []);
 
   const handleCreatePattern = async () => {
     // Validate pattern before submitting

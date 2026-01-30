@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS sms_routing_state (
     phone_number TEXT NOT NULL,
     -- State machine: awaiting_message -> awaiting_confirmation -> awaiting_selection
     state TEXT NOT NULL DEFAULT 'awaiting_message',
+    CONSTRAINT chk_routing_state CHECK (state IN ('awaiting_message', 'awaiting_confirmation', 'awaiting_selection', 'completed')),
     -- The routing decision the agent wants to confirm
     pending_action JSONB,
     -- All active conversations found for this phone
@@ -61,7 +62,14 @@ BEGIN
                     'type', 'sequence',
                     'sequence_key', ss.sequence_key,
                     'sequence_name', sm.display_name,
+                    'sequence_type', COALESCE(sm.sequence_type, 'troubleshooting'),
                     'current_step', ss.current_step,
+                    'total_steps', (
+                        SELECT MAX(step_num)
+                        FROM doc_sequences
+                        WHERE sequence_key = ss.sequence_key
+                        AND is_active = TRUE
+                    ),
                     'current_step_message', ds.message_template,
                     'success_triggers', ds.success_triggers,
                     'failure_triggers', ds.failure_triggers,

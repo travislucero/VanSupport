@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   Ticket,
@@ -54,8 +54,9 @@ const PublicTicket = () => {
   const [reopenName, setReopenName] = useState('');
   const [reopening, setReopening] = useState(false);
 
-  // Success messages
+  // Success/error messages
   const [successMessage, setSuccessMessage] = useState('');
+  const [statusMessage, setStatusMessage] = useState(null);
 
   // Attachments state
   const [attachments, setAttachments] = useState([]);
@@ -71,6 +72,20 @@ const PublicTicket = () => {
   const [uploadError, setUploadError] = useState(null);
   const [uploadAuthorName, setUploadAuthorName] = useState('');
   const fileInputRef = useRef(null);
+  const successTimeoutRef = useRef(null);
+
+  // Compute object URL for file preview (triggers re-render when selectedFile changes)
+  const objectUrl = useMemo(() => {
+    if (selectedFile) return URL.createObjectURL(selectedFile);
+    return null;
+  }, [selectedFile]);
+
+  // Clean up object URL when it changes or on unmount
+  useEffect(() => {
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [objectUrl]);
 
   // Fetch ticket data
   const fetchTicket = useCallback(async (silent = false) => {
@@ -108,7 +123,6 @@ const PublicTicket = () => {
       if (response.ok) {
         const data = await response.json();
         setAttachments(data || []);
-        console.log('📎 Attachments fetched:', data?.length || 0);
       }
     } catch (error) {
       console.error('Error fetching attachments:', error);
@@ -138,20 +152,26 @@ const PublicTicket = () => {
   // Show success message temporarily
   const showSuccess = (message) => {
     setSuccessMessage(message);
-    setTimeout(() => setSuccessMessage(''), 5000);
+    clearTimeout(successTimeoutRef.current);
+    successTimeoutRef.current = setTimeout(() => setSuccessMessage(''), 5000);
   };
+
+  // Clean up success timeout on unmount
+  useEffect(() => {
+    return () => clearTimeout(successTimeoutRef.current);
+  }, []);
 
   // Add comment
   const handleAddComment = async (e) => {
     e.preventDefault();
 
     if (!commentText.trim() || commentText.trim().length < 10) {
-      alert('Comment must be at least 10 characters');
+      setStatusMessage({ type: 'error', text: 'Comment must be at least 10 characters' });
       return;
     }
 
     if (!authorName.trim()) {
-      alert('Please enter your name');
+      setStatusMessage({ type: 'error', text: 'Please enter your name' });
       return;
     }
 
@@ -182,7 +202,7 @@ const PublicTicket = () => {
       }, 100);
     } catch (err) {
       console.error('Error adding comment:', err);
-      alert('Failed to add comment. Please try again.');
+      setStatusMessage({ type: 'error', text: 'Failed to add comment. Please try again.' });
     } finally {
       setAddingComment(false);
     }
@@ -211,7 +231,7 @@ const PublicTicket = () => {
       await fetchTicket();
     } catch (err) {
       console.error('Error resolving ticket:', err);
-      alert('Failed to mark ticket as resolved. Please try again.');
+      setStatusMessage({ type: 'error', text: 'Failed to mark ticket as resolved. Please try again.' });
     } finally {
       setResolving(false);
     }
@@ -220,12 +240,12 @@ const PublicTicket = () => {
   // Reopen ticket
   const handleReopen = async () => {
     if (!reopenReason.trim()) {
-      alert('Please provide a reason for reopening');
+      setStatusMessage({ type: 'error', text: 'Please provide a reason for reopening' });
       return;
     }
 
     if (!reopenName.trim()) {
-      alert('Please enter your name');
+      setStatusMessage({ type: 'error', text: 'Please enter your name' });
       return;
     }
 
@@ -260,7 +280,7 @@ const PublicTicket = () => {
       }
     } catch (err) {
       console.error('Error reopening ticket:', err);
-      alert('Failed to reopen ticket. Please try again.');
+      setStatusMessage({ type: 'error', text: 'Failed to reopen ticket. Please try again.' });
     } finally {
       setReopening(false);
     }
@@ -516,6 +536,46 @@ const PublicTicket = () => {
             <span style={{ color: '#065f46', fontSize: '0.875rem', fontWeight: '500' }}>
               {successMessage}
             </span>
+          </div>
+        )}
+
+        {/* Status Message (error/info) */}
+        {statusMessage && (
+          <div style={{
+            padding: '16px',
+            backgroundColor: statusMessage.type === 'error' ? '#fef2f2' : '#d1fae5',
+            border: `1px solid ${statusMessage.type === 'error' ? '#fecaca' : '#6ee7b7'}`,
+            borderRadius: '8px',
+            marginBottom: '24px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px'
+          }}>
+            {statusMessage.type === 'error'
+              ? <XCircle style={{ width: '20px', height: '20px', color: '#dc2626', flexShrink: 0 }} />
+              : <CheckCircle style={{ width: '20px', height: '20px', color: '#059669', flexShrink: 0 }} />
+            }
+            <span style={{
+              color: statusMessage.type === 'error' ? '#991b1b' : '#065f46',
+              fontSize: '0.875rem',
+              fontWeight: '500',
+              flex: 1
+            }}>
+              {statusMessage.text}
+            </span>
+            <button
+              onClick={() => setStatusMessage(null)}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '4px',
+                color: statusMessage.type === 'error' ? '#991b1b' : '#065f46',
+                flexShrink: 0
+              }}
+            >
+              <X size={16} />
+            </button>
           </div>
         )}
 
@@ -1266,7 +1326,7 @@ const PublicTicket = () => {
                           backgroundColor: '#000'
                         }}>
                           <video
-                            src={URL.createObjectURL(selectedFile)}
+                            src={objectUrl}
                             style={{
                               width: '100%',
                               height: '100%',
@@ -1291,7 +1351,7 @@ const PublicTicket = () => {
                         </div>
                       ) : (
                         <img
-                          src={URL.createObjectURL(selectedFile)}
+                          src={objectUrl}
                           alt="Preview"
                           style={{
                             width: '100px',

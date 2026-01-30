@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth.jsx';
 import Sidebar from '../components/Sidebar';
 import Card from '../components/Card';
 import Badge from '../components/Badge';
 import { theme } from '../styles/theme';
-import { List, Plus, Edit, Trash2, ToggleLeft, ToggleRight, Search, Loader } from 'lucide-react';
+import { List, Plus, Edit, Trash2, ToggleLeft, ToggleRight, Search, Loader, X } from 'lucide-react';
 
 function Sequences() {
   const { user, logout, hasRole, isSiteAdmin } = useAuth();
@@ -15,20 +15,21 @@ function Sequences() {
   const canManageSequences = isSiteAdmin() || hasRole('admin') || hasRole('manager');
 
   const [sequences, setSequences] = useState([]);
-  const [filteredSequences, setFilteredSequences] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterType, setFilterType] = useState('all');
   const [sortBy, setSortBy] = useState('name');
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [sequenceToDelete, setSequenceToDelete] = useState(null);
+  const [errorMessage, setErrorMessage] = useState('');
 
   // Fetch sequences on mount
   useEffect(() => {
     fetchSequences();
   }, []);
 
-  // Filter and sort sequences when data or filters change
-  useEffect(() => {
+  // Derive filtered and sorted sequences from state (no synchronization needed)
+  const filteredSequences = useMemo(() => {
     let filtered = [...sequences];
 
     // Apply search filter
@@ -39,6 +40,11 @@ function Sequences() {
         seq.sequence_key?.toLowerCase().includes(term) ||
         seq.category?.toLowerCase().includes(term)
       );
+    }
+
+    // Apply type filter
+    if (filterType !== 'all') {
+      filtered = filtered.filter(seq => (seq.sequence_type || 'troubleshooting') === filterType);
     }
 
     // Apply sorting
@@ -55,8 +61,8 @@ function Sequences() {
       }
     });
 
-    setFilteredSequences(filtered);
-  }, [sequences, searchTerm, sortBy]);
+    return filtered;
+  }, [sequences, searchTerm, filterType, sortBy]);
 
   const fetchSequences = async () => {
     setLoading(true);
@@ -95,7 +101,7 @@ function Sequences() {
       await fetchSequences();
     } catch (error) {
       console.error('Error toggling sequence:', error);
-      alert('Failed to toggle sequence status');
+      setErrorMessage('Failed to toggle sequence status');
     }
   };
 
@@ -123,7 +129,7 @@ function Sequences() {
       setSequenceToDelete(null);
     } catch (error) {
       console.error('Error deleting sequence:', error);
-      alert('Failed to delete sequence');
+      setErrorMessage('Failed to delete sequence');
     }
   };
 
@@ -193,6 +199,36 @@ function Sequences() {
           </div>
         </div>
 
+        {/* Error Message */}
+        {errorMessage && (
+          <div style={{
+            padding: theme.spacing.md,
+            backgroundColor: theme.colors.accent.danger + '20',
+            border: `1px solid ${theme.colors.accent.danger}`,
+            borderRadius: theme.radius.md,
+            marginBottom: theme.spacing.lg,
+            color: theme.colors.accent.danger,
+            fontSize: theme.fontSize.sm,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}>
+            <span>{errorMessage}</span>
+            <button
+              onClick={() => setErrorMessage('')}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '4px',
+                color: theme.colors.accent.danger,
+              }}
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
+
         {/* Search and Filter Controls */}
         <Card style={{ marginBottom: theme.spacing.lg }}>
           <div style={{ display: 'flex', gap: theme.spacing.md, alignItems: 'center' }}>
@@ -220,6 +256,26 @@ function Sequences() {
                 }}
               />
             </div>
+
+            {/* Type Filter */}
+            <select
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
+              style={{
+                padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                border: `1px solid ${theme.colors.border.light}`,
+                borderRadius: theme.radius.md,
+                fontSize: theme.fontSize.base,
+                color: theme.colors.text.primary,
+                backgroundColor: theme.colors.background.primary,
+                cursor: 'pointer',
+                outline: 'none',
+              }}
+            >
+              <option value="all">All Types</option>
+              <option value="troubleshooting">Troubleshooting</option>
+              <option value="linear">Linear</option>
+            </select>
 
             {/* Sort */}
             <select
@@ -288,6 +344,9 @@ function Sequences() {
                     <th style={{ padding: theme.spacing.md, textAlign: 'left', color: theme.colors.text.primary, fontWeight: theme.fontWeight.semibold, fontSize: theme.fontSize.sm }}>
                       Category
                     </th>
+                    <th style={{ padding: theme.spacing.md, textAlign: 'left', color: theme.colors.text.primary, fontWeight: theme.fontWeight.semibold, fontSize: theme.fontSize.sm }}>
+                      Type
+                    </th>
                     <th style={{ padding: theme.spacing.md, textAlign: 'center', color: theme.colors.text.primary, fontWeight: theme.fontWeight.semibold, fontSize: theme.fontSize.sm }}>
                       Steps
                     </th>
@@ -346,6 +405,15 @@ function Sequences() {
                         ) : (
                           <span style={{ color: theme.colors.text.tertiary, fontSize: theme.fontSize.sm }}>-</span>
                         )}
+                      </td>
+                      <td style={{ padding: theme.spacing.md }}>
+                        <Badge
+                          variant={(sequence.sequence_type || 'troubleshooting') === 'linear' ? 'info' : 'warning'}
+                          soft
+                          size="sm"
+                        >
+                          {(sequence.sequence_type || 'troubleshooting') === 'linear' ? 'Linear' : 'Troubleshooting'}
+                        </Badge>
                       </td>
                       <td style={{ padding: theme.spacing.md, textAlign: 'center' }}>
                         <span style={{

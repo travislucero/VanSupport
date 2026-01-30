@@ -266,7 +266,7 @@ export const TableSkeleton = ({ rows = 5, columns = 4 }) => {
               <div
                 style={{
                   ...styles.skeleton,
-                  width: `${60 + Math.random() * 30}%`,
+                  width: `${60 + ((rowIndex * columns + colIndex) * 17 % 30)}%`,
                 }}
               />
             </TableCell>

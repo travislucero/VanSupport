@@ -11,11 +11,15 @@ import patternValidator from "./utils/patternValidator.js";
 import multer from "multer";
 import { BlobServiceClient } from "@azure/storage-blob";
 import OpenAI from "openai";
+import helmet from "helmet";
+import rateLimit from 'express-rate-limit';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+app.set('trust proxy', 1);
+app.use(helmet());
 app.use(
   cors({
     credentials: true,
@@ -25,13 +29,29 @@ app.use(
         : "http://localhost:5173",
   })
 );
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 const port = process.env.PORT || 3000;
 
-// JWT Secret (should be in .env file)
-const JWT_SECRET =
-  process.env.JWT_SECRET || "your-secret-key-change-in-production";
+// JWT Secret - required environment variable
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.error("FATAL: JWT_SECRET environment variable is not set.");
+  process.exit(1);
+}
+
+const requiredEnvVars = ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY'];
+for (const envVar of requiredEnvVars) {
+  if (!process.env[envVar]) {
+    console.error(`FATAL: ${envVar} environment variable is not set.`);
+    process.exit(1);
+  }
+}
+
+if (process.env.NODE_ENV === 'production' && !process.env.CLIENT_URL) {
+  console.error("FATAL: CLIENT_URL environment variable is required in production.");
+  process.exit(1);
+}
 
 // 1. Create the Supabase client using your environment variables
 const supabase = createClient(
@@ -132,8 +152,6 @@ const requireRole = (allowedRoles) => {
     if (!hasRequiredRole) {
       return res.status(403).json({
         error: "Forbidden: Insufficient permissions",
-        required: allowedRoles,
-        current: userRoleNames,
       });
     }
 
@@ -158,8 +176,6 @@ const requirePermission = (requiredPermission) => {
     if (!userPermissions.includes(requiredPermission)) {
       return res.status(403).json({
         error: "Forbidden: Missing required permission",
-        required: requiredPermission,
-        current: userPermissions,
       });
     }
 
@@ -178,6 +194,36 @@ const validateUuid = (req, res, next) => {
   next();
 };
 
+// Sanitize search input to prevent PostgREST filter injection
+const sanitizeSearch = (input) => input.replace(/[,.()\[\]]/g, '');
+
+// Rate limiters
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' },
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many login attempts, please try again later.' },
+});
+
+const publicLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' },
+});
+
+app.use(generalLimiter);
+
 // Similarity scoring constants
 const SIMILARITY_SCORES = {
   EXACT_CATEGORY_MATCH: 30,
@@ -189,9 +235,12 @@ const MAX_TICKETS_TO_SEARCH = 100;
 // Helper function to trigger comment notification webhook
 const triggerCommentNotification = async (ticketId, commentId) => {
   try {
-    const webhookUrl =
-      process.env.N8N_COMMENT_NOTIFICATION_WEBHOOK ||
-      "https://n8n-xsrq.onrender.com/webhook/ticket-comment-notification";
+    const webhookUrl = process.env.N8N_COMMENT_NOTIFICATION_WEBHOOK;
+
+    if (!webhookUrl) {
+      console.warn("⚠️ N8N_COMMENT_NOTIFICATION_WEBHOOK is not set. Skipping comment notification.");
+      return;
+    }
 
     console.log(
       "🔔 Triggering comment notification webhook for ticket:",
@@ -236,7 +285,7 @@ const triggerCommentNotification = async (ticketId, commentId) => {
 };
 
 // 3. Authentication endpoints
-app.post("/api/auth/login", async (req, res) => {
+app.post("/api/auth/login", authLimiter, async (req, res) => {
   const { email, password } = req.body;
 
   if (!email || !password) {
@@ -388,7 +437,7 @@ app.get(
 
       if (error) {
         console.error("Error fetching users:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: 'Internal server error' });
       }
 
       // Group roles by user
@@ -565,7 +614,7 @@ app.put(
 
       if (error) {
         console.error("Error resetting password:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: 'Internal server error' });
       }
 
       res.json({ success: true });
@@ -613,7 +662,7 @@ app.delete(
 
       if (error) {
         console.error("Error deleting user:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: 'Internal server error' });
       }
 
       res.json({ success: true });
@@ -638,7 +687,7 @@ app.get(
 
       if (error) {
         console.error("Error fetching roles:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: 'Internal server error' });
       }
 
       // Filter out site_admin role for non-site_admin users
@@ -671,15 +720,30 @@ app.get(
 
       if (error) {
         console.error("📋 List Sequences - Supabase error:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: 'Internal server error' });
+      }
+
+      // Merge sequence_type from sequences_metadata
+      const items = data || [];
+      if (items.length > 0) {
+        const keys = items.map((s) => s.sequence_key).filter(Boolean);
+        const { data: typesData } = await supabase
+          .from("sequences_metadata")
+          .select("sequence_key, sequence_type")
+          .in("sequence_key", keys);
+        if (typesData) {
+          const typeMap = {};
+          typesData.forEach((t) => { typeMap[t.sequence_key] = t.sequence_type; });
+          items.forEach((s) => { s.sequence_type = typeMap[s.sequence_key] || "troubleshooting"; });
+        }
       }
 
       console.log(
         "📋 List Sequences - Success, returned",
-        data?.length || 0,
+        items.length,
         "sequences"
       );
-      res.json(data || []);
+      res.json(items);
     } catch (err) {
       console.error("📋 List Sequences - Error:", err);
       res.status(500).json({ error: "Internal server error" });
@@ -703,15 +767,30 @@ app.get(
 
       if (error) {
         console.error("📱 Get Active Sequences - Supabase error:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: 'Internal server error' });
+      }
+
+      // Merge sequence_type from sequences_metadata
+      const items = data || [];
+      if (items.length > 0) {
+        const keys = [...new Set(items.map((s) => s.sequence_key).filter(Boolean))];
+        const { data: typesData } = await supabase
+          .from("sequences_metadata")
+          .select("sequence_key, sequence_type")
+          .in("sequence_key", keys);
+        if (typesData) {
+          const typeMap = {};
+          typesData.forEach((t) => { typeMap[t.sequence_key] = t.sequence_type; });
+          items.forEach((s) => { s.sequence_type = typeMap[s.sequence_key] || "troubleshooting"; });
+        }
       }
 
       console.log(
         "📱 Get Active Sequences - Success, returned",
-        data?.length || 0,
+        items.length,
         "active sequences"
       );
-      res.json(data || []);
+      res.json(items);
     } catch (err) {
       console.error("📱 Get Active Sequences - Error:", err);
       res.status(500).json({ error: "Internal server error" });
@@ -747,7 +826,7 @@ app.post(
 
       if (error) {
         console.error("📱 Close Sequence - Supabase error:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: 'Internal server error' });
       }
 
       // Handle array response from Supabase - return first item
@@ -796,7 +875,7 @@ app.get(
 
       if (error) {
         console.error("📱 Get Sequence Messages - Supabase error:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: 'Internal server error' });
       }
 
       console.log(
@@ -828,7 +907,7 @@ app.get(
 
       if (error) {
         console.error("📖 Get Sequence Detail - Supabase error:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: 'Internal server error' });
       }
 
       // Handle array response from Supabase - return first item
@@ -846,6 +925,14 @@ app.get(
       ) {
         sequenceData.is_active = sequenceData.sequence_active;
       }
+
+      // Merge sequence_type from sequences_metadata
+      const { data: typeRow } = await supabase
+        .from("sequences_metadata")
+        .select("sequence_type")
+        .eq("sequence_key", key)
+        .single();
+      sequenceData.sequence_type = typeRow?.sequence_type || "troubleshooting";
 
       console.log("📖 Get Sequence Detail - Success");
       res.json(sequenceData);
@@ -872,7 +959,7 @@ app.get(
 
       if (error) {
         console.error("✅ Validate Sequence - Supabase error:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: 'Internal server error' });
       }
 
       console.log("✅ Validate Sequence - Validation result:", data);
@@ -891,7 +978,7 @@ app.post(
   requireRole(["manager", "admin"]),
   async (req, res) => {
     try {
-      const { key, name, description, category, first_step } = req.body;
+      const { key, name, description, category, first_step, sequence_type } = req.body;
 
       if (!key || !name || !first_step) {
         return res.status(400).json({
@@ -921,7 +1008,18 @@ app.post(
 
       if (error) {
         console.error("➕ Create Sequence - Supabase error:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: 'Internal server error' });
+      }
+
+      // Update sequence_type if provided
+      if (sequence_type && VALID_SEQUENCE_TYPES.includes(sequence_type)) {
+        const { error: typeError } = await supabase
+          .from("sequences_metadata")
+          .update({ sequence_type })
+          .eq("sequence_key", key);
+        if (typeError) {
+          console.error("➕ Create Sequence - sequence_type update error:", typeError);
+        }
       }
 
       console.log("➕ Create Sequence - Success");
@@ -941,7 +1039,7 @@ app.put(
   async (req, res) => {
     try {
       const { key } = req.params;
-      const { name, description, category, is_active } = req.body;
+      const { name, description, category, is_active, sequence_type } = req.body;
 
       console.log("✏️ Update Sequence Metadata - Updating:", key);
 
@@ -958,7 +1056,18 @@ app.put(
 
       if (error) {
         console.error("✏️ Update Sequence Metadata - Supabase error:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: 'Internal server error' });
+      }
+
+      // Update sequence_type if provided
+      if (sequence_type && VALID_SEQUENCE_TYPES.includes(sequence_type)) {
+        const { error: typeError } = await supabase
+          .from("sequences_metadata")
+          .update({ sequence_type })
+          .eq("sequence_key", key);
+        if (typeError) {
+          console.error("✏️ Update Sequence Metadata - sequence_type update error:", typeError);
+        }
       }
 
       console.log("✏️ Update Sequence Metadata - Success");
@@ -993,7 +1102,7 @@ app.put(
 
       if (error) {
         console.error("🔄 Toggle Sequence - Supabase error:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: 'Internal server error' });
       }
 
       console.log("🔄 Toggle Sequence - Success");
@@ -1042,7 +1151,7 @@ app.post(
 
       if (error) {
         console.error("➕ Add Sequence Step - Supabase error:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: 'Internal server error' });
       }
 
       console.log("➕ Add Sequence Step - Success");
@@ -1082,7 +1191,7 @@ app.put(
 
       const { data, error } = await supabase.rpc("fn_update_sequence_step", {
         p_sequence_key: key,
-        p_step_num: parseInt(step_num),
+        p_step_num: parseInt(step_num, 10),
         p_message_template: message || null,
         p_doc_url: doc_url || null,
         p_doc_title: doc_title || null,
@@ -1095,7 +1204,7 @@ app.put(
 
       if (error) {
         console.error("✏️ Update Sequence Step - Supabase error:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: 'Internal server error' });
       }
 
       console.log("✏️ Update Sequence Step - Success");
@@ -1125,12 +1234,12 @@ app.delete(
 
       const { error } = await supabase.rpc("fn_delete_sequence_step", {
         p_sequence_key: key,
-        p_step_num: parseInt(step_num),
+        p_step_num: parseInt(step_num, 10),
       });
 
       if (error) {
         console.error("🗑️ Delete Sequence Step - Supabase error:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: 'Internal server error' });
       }
 
       console.log("🗑️ Delete Sequence Step - Success");
@@ -1159,7 +1268,7 @@ app.delete(
 
       if (error) {
         console.error("🗑️ Delete Sequence - Supabase error:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: 'Internal server error' });
       }
 
       console.log("🗑️ Delete Sequence - Success");
@@ -1185,7 +1294,7 @@ app.get("/api/sequences/:key/supplies", async (req, res) => {
 
     if (error) {
       console.error("🔧 Get Sequence Supplies - Supabase error:", error);
-      return res.status(500).json({ error: error.message });
+      return res.status(500).json({ error: 'Internal server error' });
     }
 
     // Handle array response from Supabase - return first item
@@ -1238,7 +1347,7 @@ app.post(
 
       if (error) {
         console.error("🔧 Add Sequence Tool - Supabase error:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: 'Internal server error' });
       }
 
       console.log("🔧 Add Sequence Tool - Success");
@@ -1279,7 +1388,7 @@ app.put(
 
       if (error) {
         console.error("🔧 Update Sequence Tool - Supabase error:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: 'Internal server error' });
       }
 
       console.log("🔧 Update Sequence Tool - Success");
@@ -1308,7 +1417,7 @@ app.delete(
 
       if (error) {
         console.error("🔧 Delete Sequence Tool - Supabase error:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: 'Internal server error' });
       }
 
       console.log("🔧 Delete Sequence Tool - Success");
@@ -1359,7 +1468,7 @@ app.post(
 
       if (error) {
         console.error("🔩 Add Sequence Part - Supabase error:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: 'Internal server error' });
       }
 
       console.log("🔩 Add Sequence Part - Success");
@@ -1410,7 +1519,7 @@ app.put(
 
       if (error) {
         console.error("🔩 Update Sequence Part - Supabase error:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: 'Internal server error' });
       }
 
       console.log("🔩 Update Sequence Part - Success");
@@ -1439,7 +1548,7 @@ app.delete(
 
       if (error) {
         console.error("🔩 Delete Sequence Part - Supabase error:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: 'Internal server error' });
       }
 
       console.log("🔩 Delete Sequence Part - Success");
@@ -1467,7 +1576,7 @@ app.get(
 
       if (error) {
         console.error("📂 Categories - Supabase error:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: 'Internal server error' });
       }
 
       // Extract unique category slugs and format them
@@ -1520,7 +1629,7 @@ app.get(
 
       if (error) {
         console.error("🎯 List Patterns - Supabase error:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: 'Internal server error' });
       }
 
       console.log(
@@ -1559,7 +1668,7 @@ app.get(
           return res.status(404).json({ error: "Pattern not found" });
         }
         console.error("🎯 Get Pattern - Supabase error:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: 'Internal server error' });
       }
 
       console.log("🎯 Get Pattern - Success");
@@ -1637,7 +1746,7 @@ app.post(
 
       if (error) {
         console.error("🎯 Create Pattern - Supabase error:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: 'Internal server error' });
       }
 
       console.log("🎯 Create Pattern - Success, created pattern:", data.id);
@@ -1717,7 +1826,7 @@ app.put(
           return res.status(404).json({ error: "Pattern not found" });
         }
         console.error("🎯 Update Pattern - Supabase error:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: 'Internal server error' });
       }
 
       console.log("🎯 Update Pattern - Success");
@@ -1761,7 +1870,7 @@ app.put(
           return res.status(404).json({ error: "Pattern not found" });
         }
         console.error("🎯 Toggle Pattern - Supabase error:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: 'Internal server error' });
       }
 
       console.log("🎯 Toggle Pattern - Success");
@@ -1791,7 +1900,7 @@ app.delete(
 
       if (error) {
         console.error("🎯 Delete Pattern - Supabase error:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: 'Internal server error' });
       }
 
       console.log("🎯 Delete Pattern - Success");
@@ -1849,7 +1958,7 @@ app.get("/api/tickets/public/:uuid", validateUuid, async (req, res) => {
 });
 
 // 2. POST /api/tickets/public/:uuid/comments - Add customer comment
-app.post("/api/tickets/public/:uuid/comments", validateUuid, async (req, res) => {
+app.post("/api/tickets/public/:uuid/comments", publicLimiter, validateUuid, async (req, res) => {
   try {
     const { uuid } = req.params;
     const { comment_text, author_name } = req.body;
@@ -1950,7 +2059,7 @@ app.put("/api/tickets/public/:uuid/resolve", validateUuid, async (req, res) => {
 });
 
 // 4. POST /api/tickets/public/:uuid/reopen - Reopen closed ticket
-app.post("/api/tickets/public/:uuid/reopen", validateUuid, async (req, res) => {
+app.post("/api/tickets/public/:uuid/reopen", publicLimiter, validateUuid, async (req, res) => {
   try {
     const { uuid } = req.params;
     const { reason, reopened_by_name } = req.body;
@@ -1986,6 +2095,7 @@ app.post("/api/tickets/public/:uuid/reopen", validateUuid, async (req, res) => {
 // 4b. POST /api/tickets/public/:uuid/attachments - Upload image attachment (public)
 app.post(
   "/api/tickets/public/:uuid/attachments",
+  publicLimiter,
   validateUuid,
   upload.single("file"),
   async (req, res) => {
@@ -2101,7 +2211,7 @@ app.post(
     } catch (err) {
       console.error("📎 Public Upload - Error:", err);
       if (err.message && err.message.includes("Invalid file type")) {
-        return res.status(400).json({ error: err.message });
+        return res.status(400).json({ error: 'Invalid file type. Only JPEG, PNG, GIF, WebP images and MP4, MOV, WebM videos are allowed.' });
       }
       res.status(500).json({ error: "Internal server error" });
     }
@@ -2109,7 +2219,7 @@ app.post(
 );
 
 // 5. POST /api/tickets/create - Create new ticket (public or tech)
-app.post("/api/tickets/create", async (req, res) => {
+app.post("/api/tickets/create", publicLimiter, async (req, res) => {
   try {
     const {
       phone,
@@ -2204,7 +2314,7 @@ app.post("/api/tickets/create", async (req, res) => {
 
     if (error) {
       console.error("🎫 Create Ticket - Supabase error:", error);
-      return res.status(500).json({ error: error.message });
+      return res.status(500).json({ error: 'Internal server error' });
     }
 
     console.log("🎫 Create Ticket - Ticket created with ID:", ticketId);
@@ -2293,8 +2403,8 @@ app.get(
   async (req, res) => {
     try {
       // Parse pagination parameters
-      const page = parseInt(req.query.page) || 1;
-      const limit = parseInt(req.query.limit) || 25;
+      const page = parseInt(req.query.page, 10) || 1;
+      const limit = parseInt(req.query.limit, 10) || 25;
 
       // Validate pagination parameters
       const validLimits = [10, 25, 50, 100];
@@ -2314,7 +2424,7 @@ app.get(
 
       if (error) {
         console.error("🎫 Get Unassigned Tickets - Supabase error:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: 'Internal server error' });
       }
 
       // Sort by priority (urgent first), then created_at
@@ -2372,8 +2482,8 @@ app.get(
   async (req, res) => {
     try {
       // Parse pagination parameters
-      const page = parseInt(req.query.page) || 1;
-      const limit = parseInt(req.query.limit) || 25;
+      const page = parseInt(req.query.page, 10) || 1;
+      const limit = parseInt(req.query.limit, 10) || 25;
 
       // Validate pagination parameters
       const validLimits = [10, 25, 50, 100];
@@ -2395,7 +2505,7 @@ app.get(
 
       if (error) {
         console.error("🎫 Get My Tickets - Supabase error:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: 'Internal server error' });
       }
 
       // Apply pagination
@@ -2444,8 +2554,8 @@ app.get(
   async (req, res) => {
     try {
       // Parse query parameters with defaults
-      const page = parseInt(req.query.page) || 1;
-      const limit = parseInt(req.query.limit) || 25;
+      const page = parseInt(req.query.page, 10) || 1;
+      const limit = parseInt(req.query.limit, 10) || 25;
       const status = req.query.status || "all";
       const search = req.query.search || "";
       const dateFrom = req.query.dateFrom || null;
@@ -2552,7 +2662,7 @@ app.get(
 
       // Apply search filter at database level using .or()
       if (search && search.trim()) {
-        const searchPattern = `%${search.trim()}%`;
+        const searchPattern = `%${sanitizeSearch(search.trim())}%`;
         query = query.or(`ticket_number.ilike.${searchPattern},subject.ilike.${searchPattern},owner_name.ilike.${searchPattern}`);
       }
 
@@ -2653,11 +2763,6 @@ app.get(
 
       // Handle array response from RPC
       const ticketData = Array.isArray(data) ? data[0] : data;
-
-      console.log("🎫 DEBUG - Raw RPC response fields:", Object.keys(ticketData || {}));
-      console.log("🎫 DEBUG - assigned_to:", ticketData?.assigned_to);
-      console.log("🎫 DEBUG - assigned_to_name:", ticketData?.assigned_to_name);
-      console.log("🎫 DEBUG - assigned_to_user:", ticketData?.assigned_to_user);
 
       if (!ticketData) {
         console.log("🎫 Get Tech Ticket Detail - Ticket not found:", uuid);
@@ -3004,7 +3109,7 @@ app.get(
   async (req, res) => {
     try {
       const { uuid } = req.params;
-      const limit = Math.min(Math.max(parseInt(req.query.limit) || 5, 1), 20);
+      const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 5, 1), 20);
 
       // First, get the current ticket's details
       const { data: currentTicket, error: currentError } = await supabase
@@ -3384,6 +3489,9 @@ const SEQUENCE_KEY_REGEX = /^[a-z0-9-]{1,50}$/;
 // Valid sequence categories
 const VALID_CATEGORIES = ['Electrical', 'Plumbing', 'HVAC', 'Appliances', 'Mechanical', 'Other'];
 
+// Valid sequence types
+const VALID_SEQUENCE_TYPES = ['linear', 'troubleshooting'];
+
 // 15c. POST /api/sequences/from-ticket - Create sequence from AI-generated data
 app.post(
   "/api/sequences/from-ticket",
@@ -3403,6 +3511,7 @@ app.post(
         keywords,
         tools,
         parts,
+        sequence_type,
       } = req.body;
 
       console.log("🔧 Create Sequence from Ticket - Creating:", sequence_key);
@@ -3486,6 +3595,17 @@ app.post(
       if (sequenceError) {
         console.error("🔧 Create Sequence from Ticket - Create error:", sequenceError);
         return res.status(500).json({ error: "Failed to create sequence" });
+      }
+
+      // Update sequence_type if provided
+      if (sequence_type && VALID_SEQUENCE_TYPES.includes(sequence_type)) {
+        const { error: typeError } = await supabase
+          .from("sequences_metadata")
+          .update({ sequence_type })
+          .eq("sequence_key", sequence_key);
+        if (typeError) {
+          console.error("🔧 Create Sequence from Ticket - sequence_type update error:", typeError);
+        }
       }
 
       console.log("🔧 Create Sequence from Ticket - Sequence created, adding remaining steps...");
@@ -3803,7 +3923,7 @@ app.get(
 
       if (error) {
         console.error("🎫 Get All Tickets - Supabase error:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: 'Internal server error' });
       }
 
       // Flatten the response
@@ -3921,29 +4041,17 @@ async function enrichWithDisplayNames(data, sequenceKeyField) {
 }
 
 // Other dashboard API routes
-app.get("/test-supabase", async (req, res) => {
-  // Try to pull just one row from session_events
-  const { data, error } = await supabase
-    .from("session_events")
-    .select("*")
-    .limit(1);
-
-  if (error) {
-    console.error("Supabase error:", error.message);
-    return res.status(500).json({ error: error.message });
-  }
-
-  res.json(data);
-});
-
-app.get("/api/session-events", async (req, res) => {
+app.get("/api/session-events", authenticateToken, async (req, res) => {
   const { data, error } = await supabase
     .from("session_events")
     .select("*")
     .order("created_at", { ascending: false })
     .limit(10);
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) {
+    console.error("Error fetching session events:", error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
   res.json(data);
 });
 
@@ -3976,7 +4084,8 @@ app.get("/api/resolution-by-step", authenticateToken, async (req, res) => {
 
     res.json(enrichedData);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("Error fetching resolution by step:", err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -4003,7 +4112,8 @@ app.get("/api/dashboard-summary", authenticateToken, async (req, res) => {
 
     res.json(data);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("Error fetching dashboard summary:", err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -4036,7 +4146,8 @@ app.get("/api/issue-distribution", authenticateToken, async (req, res) => {
 
     res.json(enrichedData);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("Error fetching issue distribution:", err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -4086,7 +4197,7 @@ app.get("/api/resolution-time-trend", authenticateToken, async (req, res) => {
     res.json(data);
   } catch (err) {
     console.error("📉 Resolution Time Trend - Error:", err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -4142,7 +4253,7 @@ app.get(
       res.json(enrichedData);
     } catch (err) {
       console.error("📊 First Contact Resolution - Error:", err.message);
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: 'Internal server error' });
     }
   }
 );
@@ -4187,7 +4298,7 @@ app.get(
       res.json(data);
     } catch (err) {
       console.error("🚐 Van Performance - Error:", err.message);
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: 'Internal server error' });
     }
   }
 );
@@ -4239,7 +4350,7 @@ app.get(
       res.json(data);
     } catch (err) {
       console.error("⚠️ Chronic Problem Vans - Error:", err.message);
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: 'Internal server error' });
     }
   }
 );
@@ -4344,7 +4455,7 @@ app.get(
       res.json(data);
     } catch (err) {
       console.error("🔄 Handoff Patterns - Error:", err.message);
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: 'Internal server error' });
     }
   }
 );
@@ -4388,7 +4499,7 @@ app.get("/api/call-volume-heatmap", authenticateToken, async (req, res) => {
     res.json(data);
   } catch (err) {
     console.error("🔥 Call Volume Heatmap - Error:", err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -4398,8 +4509,8 @@ app.get("/api/call-volume-heatmap", authenticateToken, async (req, res) => {
 app.get("/api/vans", authenticateToken, async (req, res) => {
   try {
     // Parse pagination and search parameters
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 25;
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 25;
     const searchQuery = req.query.search || '';
     const ownerIdFilter = req.query.owner_id || null;
 
@@ -4498,7 +4609,7 @@ app.get("/api/vans", authenticateToken, async (req, res) => {
     });
   } catch (err) {
     console.error("Error fetching vans:", err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -4534,7 +4645,7 @@ app.get("/api/vans/:id", authenticateToken, async (req, res) => {
     res.json(data);
   } catch (err) {
     console.error("Error fetching van:", err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -4559,7 +4670,7 @@ app.post(
         van_number: van_number.toUpperCase(),
         make,
         version: version || null,
-        year: parseInt(year),
+        year: parseInt(year, 10),
         vin: vin ? vin.toUpperCase() : null,
         owner_id,
         created_at: new Date().toISOString(),
@@ -4599,7 +4710,7 @@ app.post(
       res.status(201).json(data);
     } catch (err) {
       console.error("Error creating van:", err);
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: 'Internal server error' });
     }
   }
 );
@@ -4626,7 +4737,7 @@ app.put(
         van_number: van_number.toUpperCase(),
         make,
         version: version || null,
-        year: parseInt(year),
+        year: parseInt(year, 10),
         vin: vin ? vin.toUpperCase() : null,
         owner_id,
         updated_at: new Date().toISOString(),
@@ -4669,7 +4780,7 @@ app.put(
       res.json(data);
     } catch (err) {
       console.error("Error updating van:", err);
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: 'Internal server error' });
     }
   }
 );
@@ -4784,7 +4895,7 @@ app.delete(
       });
     } catch (err) {
       console.error("Error deleting van:", err);
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: 'Internal server error' });
     }
   }
 );
@@ -4795,8 +4906,8 @@ app.delete(
 app.get("/api/owners", authenticateToken, async (req, res) => {
   try {
     // Parse pagination and search parameters
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 25;
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 25;
     const searchQuery = req.query.search || '';
 
     // Validate pagination parameters
@@ -4825,7 +4936,7 @@ app.get("/api/owners", authenticateToken, async (req, res) => {
 
     // Apply search filters if search query exists
     if (searchQuery && searchQuery.trim() !== '') {
-      const searchTerm = `%${searchQuery.trim()}%`;
+      const searchTerm = `%${sanitizeSearch(searchQuery.trim())}%`;
 
       // Use OR filter to search across multiple fields
       // Note: Supabase doesn't support ILIKE with OR directly, so we need to use a different approach
@@ -4883,7 +4994,7 @@ app.get("/api/owners", authenticateToken, async (req, res) => {
     });
   } catch (err) {
     console.error("Error fetching owners:", err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -4913,7 +5024,7 @@ app.get("/api/owners/:id", authenticateToken, async (req, res) => {
     res.json(data);
   } catch (err) {
     console.error("Error fetching owner:", err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -4966,7 +5077,7 @@ app.post(
       res.status(201).json(data);
     } catch (err) {
       console.error("Error creating owner:", err);
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: 'Internal server error' });
     }
   }
 );
@@ -5024,7 +5135,7 @@ app.put(
       res.json(data);
     } catch (err) {
       console.error("Error updating owner:", err);
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: 'Internal server error' });
     }
   }
 );
@@ -5173,7 +5284,7 @@ app.delete(
       });
     } catch (err) {
       console.error("Error deleting owner:", err);
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: 'Internal server error' });
     }
   }
 );
@@ -5358,7 +5469,7 @@ app.post(
     } catch (error) {
       console.error("Error creating user:", error);
       res.status(500).json({
-        error: error.message || "Failed to create user",
+        error: "Failed to create user",
       });
     }
   }
@@ -5603,7 +5714,7 @@ app.put(
     } catch (error) {
       console.error("Error resetting password:", error);
       res.status(500).json({
-        error: error.message || "Failed to reset password",
+        error: "Failed to reset password",
       });
     }
   }
@@ -5689,7 +5800,38 @@ app.use((req, res, next) => {
   }
 });
 
+// Global error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err);
+  if (res.headersSent) {
+    return next(err);
+  }
+  res.status(err.status || 500).json({ error: 'Internal server error' });
+});
+
 // Start server
-app.listen(port, () => {
+const server = app.listen(port, () => {
   console.log(`Server running on http://localhost:${port}`);
+});
+
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received. Shutting down gracefully...');
+  server.close(() => process.exit(0));
+  setTimeout(() => {
+    console.error('Forced shutdown after timeout');
+    process.exit(1);
+  }, 10000);
+});
+
+process.on('SIGINT', () => {
+  console.log('SIGINT received. Shutting down gracefully...');
+  server.close(() => process.exit(0));
+  setTimeout(() => {
+    console.error('Forced shutdown after timeout');
+    process.exit(1);
+  }, 10000);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });

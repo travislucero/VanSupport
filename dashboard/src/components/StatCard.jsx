@@ -1,6 +1,6 @@
 import React from 'react';
 import { TrendingUp, TrendingDown } from 'lucide-react';
-import { theme } from '../styles/theme';
+import { theme, hexToRgba } from '../styles/theme';
 
 const StatCard = ({
   title,
@@ -19,7 +19,7 @@ const StatCard = ({
     if (baseColor === theme.colors.accent.warning) return theme.colors.accent.warningLight;
     if (baseColor === theme.colors.accent.danger) return theme.colors.accent.dangerLight;
     if (baseColor === theme.colors.accent.info) return theme.colors.accent.infoLight;
-    return `${baseColor}15`;
+    return hexToRgba(baseColor, 0.08);
   };
 
   const styles = {

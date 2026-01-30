@@ -22,6 +22,8 @@ import { useToast } from '../hooks/useToast.jsx';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
+export const SIDEBAR_WIDTH = '260px';
+
 const Sidebar = ({ user, onLogout, hasRole, isSiteAdmin }) => {
   const location = useLocation();
   const [adminExpanded, setAdminExpanded] = useState(true);
@@ -198,7 +200,7 @@ const Sidebar = ({ user, onLogout, hasRole, isSiteAdmin }) => {
   // Styles
   const styles = {
     sidebar: {
-      width: '260px',
+      width: SIDEBAR_WIDTH,
       height: '100vh',
       backgroundColor: theme.colors.background.secondary,
       borderRight: `1px solid ${theme.colors.border.light}`,

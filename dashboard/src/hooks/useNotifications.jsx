@@ -106,6 +106,12 @@ export const useNotifications = (isAuthenticated) => {
     };
   }, [isAuthenticated, fetchNotifications]);
 
+  const refetch = useCallback(() => {
+    const controller = new AbortController();
+    fetchNotifications(controller.signal);
+    return () => controller.abort();
+  }, [fetchNotifications]);
+
   return {
     notifications,
     unreadCount,
@@ -114,6 +120,6 @@ export const useNotifications = (isAuthenticated) => {
     markAsRead,
     markAllAsRead,
     dismissAll,
-    refetch: fetchNotifications,
+    refetch,
   };
 };

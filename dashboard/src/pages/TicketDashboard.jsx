@@ -118,14 +118,6 @@ const TicketDashboard = () => {
       const unassignedData = await unassignedRes.json();
       const myTicketsData = await myTicketsRes.json();
 
-      console.log('=== UNASSIGNED TICKETS DATA ===');
-      console.log('Pagination:', unassignedData.pagination);
-      console.log('Tickets:', unassignedData.tickets?.length || 0);
-
-      console.log('=== MY TICKETS DATA ===');
-      console.log('Pagination:', myTicketsData.pagination);
-      console.log('Tickets:', myTicketsData.tickets?.length || 0);
-
       setUnassignedTickets(unassignedData.tickets || []);
       setUnassignedPagination(unassignedData.pagination);
 
@@ -178,10 +170,6 @@ const TicketDashboard = () => {
       }
 
       const data = await response.json();
-
-      console.log('=== CLOSED TICKETS DATA ===');
-      console.log('Pagination:', data.pagination);
-      console.log('Tickets:', data.tickets?.length || 0);
 
       setClosedTickets(data.tickets || []);
       setClosedPagination(data.pagination);

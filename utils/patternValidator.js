@@ -41,16 +41,17 @@ class PatternValidator {
       );
     }
 
-    // Check for unbalanced brackets
-    const openBrackets = (pattern.match(/\[/g) || []).length;
-    const closeBrackets = (pattern.match(/\]/g) || []).length;
+    // Check for unbalanced brackets (strip escaped characters first)
+    const unescapedPattern = pattern.replace(/\\./g, '');
+    const openBrackets = (unescapedPattern.match(/\[/g) || []).length;
+    const closeBrackets = (unescapedPattern.match(/\]/g) || []).length;
     if (openBrackets !== closeBrackets) {
       errors.push("Unbalanced brackets in pattern");
     }
 
-    // Check for unbalanced parentheses
-    const openParens = (pattern.match(/\(/g) || []).length;
-    const closeParens = (pattern.match(/\)/g) || []).length;
+    // Check for unbalanced parentheses (using unescaped pattern)
+    const openParens = (unescapedPattern.match(/\(/g) || []).length;
+    const closeParens = (unescapedPattern.match(/\)/g) || []).length;
     if (openParens !== closeParens) {
       errors.push("Unbalanced parentheses in pattern");
     }
@@ -200,5 +201,5 @@ const patternValidator = new PatternValidator();
 // Export both the instance and the class
 export { patternValidator, PatternValidator };
 
-// Default export for CommonJS compatibility
+// Default export for convenience
 export default patternValidator;

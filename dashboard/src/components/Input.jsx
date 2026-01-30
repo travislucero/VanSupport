@@ -1,4 +1,4 @@
-import React, { forwardRef, useState } from 'react';
+import React, { forwardRef, useState, useId } from 'react';
 import { Eye, EyeOff, Search, X } from 'lucide-react';
 import { theme } from '../styles/theme';
 
@@ -25,6 +25,8 @@ const Input = forwardRef(({
   inputStyle = {},
   ...props
 }, ref) => {
+  const generatedId = useId();
+  const inputId = props.id || generatedId;
   const [isFocused, setIsFocused] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
@@ -230,7 +232,7 @@ const Input = forwardRef(({
     <div className={className} style={styles.container}>
       {label && (
         <div style={styles.labelWrapper}>
-          <label style={styles.label}>
+          <label htmlFor={inputId} style={styles.label}>
             {label}
             {required && <span style={styles.required}>*</span>}
           </label>
@@ -240,6 +242,7 @@ const Input = forwardRef(({
         {renderLeftIcon()}
         <input
           ref={ref}
+          id={inputId}
           type={isPassword && showPassword ? 'text' : type}
           placeholder={placeholder}
           value={value}
@@ -281,6 +284,8 @@ export const Textarea = forwardRef(({
   style = {},
   ...props
 }, ref) => {
+  const generatedId = useId();
+  const textareaId = props.id || generatedId;
   const [isFocused, setIsFocused] = useState(false);
 
   const getBorderColor = () => {
@@ -330,13 +335,14 @@ export const Textarea = forwardRef(({
   return (
     <div className={className} style={styles.container}>
       {label && (
-        <label style={styles.label}>
+        <label htmlFor={textareaId} style={styles.label}>
           {label}
           {required && <span style={styles.required}>*</span>}
         </label>
       )}
       <textarea
         ref={ref}
+        id={textareaId}
         placeholder={placeholder}
         value={value}
         onChange={onChange}

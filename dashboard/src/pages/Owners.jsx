@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth.jsx';
 import Sidebar from '../components/Sidebar';
@@ -59,6 +59,9 @@ function Owners() {
 
   // Validation state
   const [formErrors, setFormErrors] = useState({});
+
+  // Timeout ref for success message cleanup
+  const successTimeoutRef = useRef(null);
 
   // Debounce search query (500ms delay)
   useEffect(() => {
@@ -151,7 +154,13 @@ function Owners() {
 
   const showSuccess = useCallback((message) => {
     setSuccess(message);
-    setTimeout(() => setSuccess(''), 3000);
+    clearTimeout(successTimeoutRef.current);
+    successTimeoutRef.current = setTimeout(() => setSuccess(''), 3000);
+  }, []);
+
+  // Clean up success timeout on unmount
+  useEffect(() => {
+    return () => clearTimeout(successTimeoutRef.current);
   }, []);
 
   const handleCreateOwner = useCallback(async () => {
